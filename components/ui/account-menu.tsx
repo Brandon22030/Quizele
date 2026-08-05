@@ -44,7 +44,7 @@ export function AccountMenu() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 rounded-md border border-adire bg-card p-2 shadow-soft">
+        <div className="absolute right-0 z-50 mt-2 w-56 rounded-md border border-adire bg-card p-2 shadow-soft">
           <div className="border-b border-adire/30 px-3 py-2">
             <p className="text-sm font-medium text-foreground truncate">
               {email ?? "Créateur"}
