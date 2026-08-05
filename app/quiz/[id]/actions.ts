@@ -28,7 +28,6 @@ export async function saveQuiz(
       titre: quiz.titre,
       description: quiz.description || null,
       categorie: quiz.categorie || null,
-      couverture_url: quiz.couverture_url,
       mode: quiz.mode,
       aleatoire_questions: quiz.aleatoire_questions,
       aleatoire_options: quiz.aleatoire_options,
@@ -165,37 +164,4 @@ export async function publishQuiz(quizId: string) {
 
   revalidatePath(`/quiz/${quizId}`);
   revalidatePath("/tableau-de-bord");
-}
-
-export async function uploadCover(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/connexion");
-  }
-
-  const file = formData.get("cover") as File | null;
-  if (!file) {
-    throw new Error("Aucun fichier reçu");
-  }
-
-  const extension = file.name.split(".").pop() ?? "jpg";
-  const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
-
-  const { error } = await supabase.storage
-    .from("covers")
-    .upload(path, file, { contentType: file.type });
-
-  if (error) {
-    throw error;
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("covers").getPublicUrl(path);
-
-  return publicUrl;
 }

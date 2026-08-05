@@ -69,13 +69,13 @@ export function ResultScreen({
       if (shareApi.canShare?.({ files: [file] })) {
         await shareApi.share({
           title: `Mon score sur ${result.quiz_titre}`,
-          text: `${result.pseudo} a obtenu ${result.score} pts sur ${result.quiz_titre} !`,
+          text: `${result.pseudo} a obtenu ${result.bonnes_reponses}/${result.total_questions} bonnes réponses sur ${result.quiz_titre} !`,
           files: [file],
         });
       } else if (shareApi.share) {
         await shareApi.share({
           title: `Mon score sur ${result.quiz_titre}`,
-          text: `${result.pseudo} a obtenu ${result.score} pts sur ${result.quiz_titre} !`,
+          text: `${result.pseudo} a obtenu ${result.bonnes_reponses}/${result.total_questions} bonnes réponses sur ${result.quiz_titre} !`,
           url: shareUrl,
         });
       } else {
@@ -102,11 +102,9 @@ export function ResultScreen({
 
         <section className="space-y-4 text-center">
           <p className="text-5xl font-display text-or sm:text-7xl md:text-8xl">
-            {result.score}
+            {result.bonnes_reponses} / {result.total_questions}
           </p>
-          <p className="text-xl text-craie">
-            {result.bonnes_reponses} / {result.total_questions} bonnes réponses
-          </p>
+          <p className="text-xl text-craie">bonnes réponses</p>
           <div className="flex justify-center gap-6 text-sm text-adire">
             <span>Temps : {formatDuration(result.temps_total_ms)}</span>
             <span>
@@ -209,7 +207,7 @@ export function ResultScreen({
                   <span className="text-craie">
                     {entry.rang}. {entry.pseudo}
                   </span>
-                  <span className="text-or">{entry.score} pts</span>
+                  <span className="text-or">{entry.bonnes_reponses} bonnes réponses</span>
                 </li>
               ))}
             </ol>

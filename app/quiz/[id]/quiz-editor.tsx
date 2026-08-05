@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, ChevronUp, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, Copy, Plus, Settings, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { Rubrique } from "@/components/ui/rubrique";
 import { RuleFrame } from "@/components/ui/rule-frame";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
-import { CoverUpload } from "@/components/ui/cover-upload";
 import {
   publishQuiz,
   saveQuiz,
@@ -47,7 +47,6 @@ function buildEditableQuiz(raw: Record<string, unknown>): EditableQuiz {
     titre: (raw.titre as string) ?? "",
     description: (raw.description as string) ?? "",
     categorie: (raw.categorie as string) ?? "",
-    couverture_url: (raw.couverture_url as string | null) ?? null,
     mode: (raw.mode as EditableQuiz["mode"]) ?? "libre",
     aleatoire_questions: (raw.aleatoire_questions as boolean) ?? false,
     aleatoire_options: (raw.aleatoire_options as boolean) ?? false,
@@ -142,6 +141,7 @@ export function QuizEditor({
     "saved"
   );
   const [isPublishing, startPublishing] = useTransition();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -389,6 +389,14 @@ export function QuizEditor({
             {saveStatus === "dirty" && "Modifications en cours…"}
           </span>
           <Button
+            variant="ghost"
+            size="md"
+            aria-label="Métadonnées et paramètres du quiz"
+            onClick={() => setIsSettingsOpen(true)}
+          >
+            <Settings className="size-4" aria-hidden="true" />
+          </Button>
+          <Button
             variant="primary"
             size="md"
             loading={isPublishing}
@@ -490,119 +498,7 @@ export function QuizEditor({
 
         {/* Colonne de droite : édition */}
         <section className="space-y-6 overflow-y-auto p-4">
-          <Card className="space-y-4">
-            <h2 className="font-display text-lg text-foreground">
-              Métadonnées du quiz
-                </h2>
-                <FormField id="titre" label="Titre">
-                  <Input
-                    id="titre"
-                    value={quiz.titre}
-                    onChange={(event) => updateQuiz("titre", event.target.value)}
-                    placeholder="Titre du quiz"
-                  />
-                </FormField>
-                <FormField id="description" label="Description">
-                  <Textarea
-                    id="description"
-                    value={quiz.description}
-                    onChange={(event) =>
-                      updateQuiz("description", event.target.value)
-                    }
-                    placeholder="De quoi parle ce quiz ?"
-                  />
-                </FormField>
-                <FormField id="categorie" label="Catégorie">
-                  <Input
-                    id="categorie"
-                    value={quiz.categorie}
-                    onChange={(event) =>
-                      updateQuiz("categorie", event.target.value)
-                    }
-                    placeholder="Par exemple : Nouveau Testament"
-                  />
-                </FormField>
-                <FormField id="couverture" label="Image de couverture">
-                  <CoverUpload
-                    value={quiz.couverture_url}
-                    onChange={(url) => updateQuiz("couverture_url", url)}
-                  />
-                </FormField>
-              </Card>
-
-              <Card className="space-y-4">
-                <h2 className="font-display text-lg text-foreground">
-                  Paramètres
-                </h2>
-                <fieldset className="space-y-3">
-                  <legend className="text-sm font-medium text-foreground">
-                    Déroulement
-                  </legend>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={quiz.mode === "libre"}
-                      onChange={() => updateQuiz("mode", "libre")}
-                    />
-                    <span>Chacun avance à son rythme</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={quiz.mode === "synchronise"}
-                      onChange={() => updateQuiz("mode", "synchronise")}
-                    />
-                    <span>Je pilote question par question</span>
-                  </label>
-                </fieldset>
-
-                <div className="space-y-2">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={quiz.aleatoire_questions}
-                      onChange={(event) =>
-                        updateQuiz("aleatoire_questions", event.target.checked)
-                      }
-                    />
-                    <span>Mélanger l&apos;ordre des questions</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={quiz.aleatoire_options}
-                      onChange={(event) =>
-                        updateQuiz("aleatoire_options", event.target.checked)
-                      }
-                    />
-                    <span>Mélanger les propositions</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={quiz.correction_immediate}
-                      onChange={(event) =>
-                        updateQuiz("correction_immediate", event.target.checked)
-                      }
-                    />
-                    <span>Montrer la correction après chaque question</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={quiz.bonus_rapidite}
-                      onChange={(event) =>
-                        updateQuiz("bonus_rapidite", event.target.checked)
-                      }
-                    />
-                    <span>Récompenser la rapidité</span>
-                  </label>
-                </div>
-              </Card>
-
-              {selectedQuestion && (
+          {selectedQuestion && (
                 <Card className="space-y-4">
                   <h2 className="font-display text-lg text-foreground">
                     Édition de la question
@@ -655,20 +551,6 @@ export function QuizEditor({
                       <option value={30}>30s</option>
                       <option value={60}>60s</option>
                     </select>
-                  </FormField>
-
-                  <FormField id="points" label="Points">
-                    <Input
-                      id="points"
-                      type="number"
-                      min={0}
-                      value={selectedQuestion.points}
-                      onChange={(event) =>
-                        updateQuestion(selectedQuestion.id, {
-                          points: Number(event.target.value),
-                        })
-                      }
-                    />
                   </FormField>
 
                   <FormField id="reference" label="Référence biblique">
@@ -791,6 +673,104 @@ export function QuizEditor({
           )}
         </section>
       </main>
+
+      <Modal
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        title="Métadonnées et paramètres"
+      >
+        <div className="space-y-6">
+          <div className="space-y-4">
+            <FormField id="titre" label="Titre">
+              <Input
+                id="titre"
+                value={quiz.titre}
+                onChange={(event) => updateQuiz("titre", event.target.value)}
+                placeholder="Titre du quiz"
+              />
+            </FormField>
+            <FormField id="description" label="Description">
+              <Textarea
+                id="description"
+                value={quiz.description}
+                onChange={(event) =>
+                  updateQuiz("description", event.target.value)
+                }
+                placeholder="De quoi parle ce quiz ?"
+              />
+            </FormField>
+            <FormField id="categorie" label="Catégorie">
+              <Input
+                id="categorie"
+                value={quiz.categorie}
+                onChange={(event) =>
+                  updateQuiz("categorie", event.target.value)
+                }
+                placeholder="Par exemple : Nouveau Testament"
+              />
+            </FormField>
+          </div>
+
+          <div className="space-y-4 border-t border-adire/30 pt-4">
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium text-foreground">
+                Déroulement
+              </legend>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={quiz.mode === "libre"}
+                  onChange={() => updateQuiz("mode", "libre")}
+                />
+                <span>Chacun avance à son rythme</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="mode"
+                  checked={quiz.mode === "synchronise"}
+                  onChange={() => updateQuiz("mode", "synchronise")}
+                />
+                <span>Je pilote question par question</span>
+              </label>
+            </fieldset>
+
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={quiz.aleatoire_questions}
+                  onChange={(event) =>
+                    updateQuiz("aleatoire_questions", event.target.checked)
+                  }
+                />
+                <span>Mélanger l&apos;ordre des questions</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={quiz.aleatoire_options}
+                  onChange={(event) =>
+                    updateQuiz("aleatoire_options", event.target.checked)
+                  }
+                />
+                <span>Mélanger les propositions</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={quiz.correction_immediate}
+                  onChange={(event) =>
+                    updateQuiz("correction_immediate", event.target.checked)
+                  }
+                />
+                <span>Montrer la correction après chaque question</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

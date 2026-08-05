@@ -362,7 +362,7 @@ export function SessionScreen({
                         <span className="text-base text-craie">{row.pseudo}</span>
                       </span>
                       <span className="font-mono text-or">
-                        {row.score_total} pts
+                        {row.score_total} bonnes réponses
                       </span>
                     </li>
                   ))}
@@ -518,7 +518,7 @@ export function SessionScreen({
                       className="flex justify-between text-sm text-craie"
                     >
                       <span>{p.pseudo}</span>
-                      <span className="text-adire">{p.score_total} pts</span>
+                      <span className="text-adire">{p.score_total} bonnes réponses</span>
                     </li>
                   ))}
                 </ul>

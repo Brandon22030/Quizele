@@ -14,7 +14,6 @@ export type CorrectionItem = {
 export type ResultData = {
   participant_id: string;
   pseudo: string;
-  score: number;
   bonnes_reponses: number;
   total_questions: number;
   temps_total_ms: number;
@@ -29,7 +28,7 @@ export type ResultData = {
 export type LeaderboardEntry = {
   rang: number;
   pseudo: string;
-  score: number;
+  bonnes_reponses: number;
 };
 
 function toStringArray(value: unknown): string[] {
@@ -58,7 +57,6 @@ export function parseResultData(
   return {
     participant_id: participantId,
     pseudo: (row.pseudo as string) ?? "Participant",
-    score: (row.score_total as number) ?? 0,
     bonnes_reponses: (row.bonnes_reponses as number) ?? 0,
     total_questions: (row.total_questions as number) ?? 0,
     temps_total_ms: (row.temps_total_ms as number) ?? 0,
@@ -105,7 +103,7 @@ export async function fetchLeaderboard(
   return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
     rang: (row.rang as number) ?? 0,
     pseudo: (row.pseudo as string) ?? "",
-    score: (row.score_total as number) ?? 0,
+    bonnes_reponses: (row.score_total as number) ?? 0,
   }));
 }
 

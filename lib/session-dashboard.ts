@@ -99,16 +99,20 @@ export function downloadLeaderboardCsv(
 
 export function buildScoreDistribution(
   entries: DashboardEntry[],
-  bucketSize = 10
+  bucketSize = 1
 ): { label: string; count: number }[] {
   if (entries.length === 0) return [];
 
   const maxScore = Math.max(...entries.map((e) => e.score), bucketSize);
-  const bucketCount = Math.ceil(maxScore / bucketSize);
-  const buckets = Array.from({ length: bucketCount }, (_, index) => ({
-    label: `${index * bucketSize}-${(index + 1) * bucketSize - 1}`,
-    count: 0,
-  }));
+  const bucketCount = Math.ceil((maxScore + 1) / bucketSize);
+  const buckets = Array.from({ length: bucketCount }, (_, index) =>
+    bucketSize === 1
+      ? { label: `${index}`, count: 0 }
+      : {
+          label: `${index * bucketSize}-${(index + 1) * bucketSize - 1}`,
+          count: 0,
+        }
+  );
 
   for (const entry of entries) {
     const index = Math.min(

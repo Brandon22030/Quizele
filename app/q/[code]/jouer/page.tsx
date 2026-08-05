@@ -87,7 +87,6 @@ function parseQuestion(row: Record<string, unknown>): GameQuestion | null {
     enonce: (question.enonce as string) ?? "",
     type: (question.type as GameQuestion["type"]) ?? "unique",
     duree_sec: (question.duree_sec as number) ?? 20,
-    points: (question.points as number) ?? 0,
     indice: (question.indice as string | null) ?? null,
     options: options.map((o) => ({
       id: o.id as string,

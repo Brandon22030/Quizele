@@ -32,7 +32,8 @@ export async function GET(request: Request) {
   const row = data as Record<string, unknown>;
   const quizTitre = (row.quiz_titre as string) ?? "Quiz";
   const pseudo = (row.pseudo as string) ?? "Participant";
-  const score = (row.score_total as number) ?? 0;
+  const bonnesReponses = (row.bonnes_reponses as number) ?? 0;
+  const totalQuestions = (row.total_questions as number) ?? 0;
 
   return new ImageResponse(
     (
@@ -77,9 +78,9 @@ export async function GET(request: Request) {
           </p>
           <p style={{ fontSize: 40, marginBottom: 24 }}>{quizTitre}</p>
           <p style={{ fontSize: 120, color: OR, marginBottom: 16 }}>
-            {score}
+            {bonnesReponses} / {totalQuestions}
           </p>
-          <p style={{ fontSize: 36, marginBottom: 40 }}>pts</p>
+          <p style={{ fontSize: 36, marginBottom: 40 }}>bonnes réponses</p>
           <p style={{ fontSize: 32, marginBottom: 16 }}>
             {pseudo}
           </p>

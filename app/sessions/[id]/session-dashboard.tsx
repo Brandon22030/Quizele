@@ -191,7 +191,7 @@ export function SessionDashboard({
                   <tr>
                     <th className="px-4 py-3">Rang</th>
                     <th className="px-4 py-3">Pseudo</th>
-                    <th className="px-4 py-3">Score</th>
+                    <th className="px-4 py-3">Bonnes réponses</th>
                     <th className="px-4 py-3">Temps</th>
                     <th className="px-4 py-3">Terminé</th>
                   </tr>
@@ -217,7 +217,7 @@ export function SessionDashboard({
         </section>
 
         <section className="space-y-4">
-          <h2 className="font-display text-2xl">Distribution des scores</h2>
+          <h2 className="font-display text-2xl">Distribution des bonnes réponses</h2>
           {distribution.length === 0 ? (
             <p className="text-muted-foreground">Pas assez de données.</p>
           ) : (

@@ -7,7 +7,6 @@ export type GameQuestion = {
   enonce: string;
   type: "unique" | "multiple" | "vrai_faux" | "texte";
   duree_sec: number;
-  points: number;
   indice: string | null;
   options: {
     id: string;
@@ -48,7 +47,6 @@ export async function fetchCurrentQuestion(
     enonce: (question.enonce as string) ?? "",
     type: (question.type as GameQuestion["type"]) ?? "unique",
     duree_sec: (question.duree_sec as number) ?? 20,
-    points: (question.points as number) ?? 0,
     indice: (question.indice as string | null) ?? null,
     options: options.map((o) => ({
       id: o.id as string,
@@ -61,7 +59,6 @@ export async function fetchCurrentQuestion(
 
 export type AnswerResult = {
   is_correct: boolean;
-  points_gagnes: number;
   bonnes_reponses: string[];
   explication: string | null;
   reference_biblique: string | null;
@@ -95,7 +92,6 @@ export async function submitAnswer(
 
   return {
     is_correct: (row.est_correcte as boolean) ?? false,
-    points_gagnes: (row.points_obtenus as number) ?? 0,
     bonnes_reponses: correctIds.map((id) => optionsById[id] ?? id),
     explication: (correction?.explication as string | null) ?? null,
     reference_biblique: (correction?.reference_biblique as string | null) ?? null,

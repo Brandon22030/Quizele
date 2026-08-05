@@ -58,7 +58,10 @@ export function GameScreen({
   const [connectionState, setConnectionState] = useState<"ok" | "retrying">(
     "ok"
   );
-  const [totalScore, setTotalScore] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [totalQuestions, setTotalQuestions] = useState(
+    initialQuestion?.total_questions ?? 0
+  );
 
   const pendingAnswerRef = useRef<{
     questionId: string;
@@ -83,6 +86,7 @@ export function GameScreen({
         return;
       }
       setQuestion(current);
+      setTotalQuestions(current.total_questions);
       setSelectedIds([]);
       setResult(null);
       setScreen("question");
@@ -150,7 +154,7 @@ export function GameScreen({
   function handleAnswerResponse(questionId: string, answer: AnswerResult) {
     if (answer.is_finished) {
       if (pilotageManuel) {
-        setTotalScore((prev) => prev + answer.points_gagnes);
+        if (answer.is_correct) setCorrectCount((prev) => prev + 1);
         setScreen("attente_resultats");
         return;
       }
@@ -165,7 +169,7 @@ export function GameScreen({
     }
 
     setResult(answer);
-    setTotalScore((prev) => prev + answer.points_gagnes);
+    if (answer.is_correct) setCorrectCount((prev) => prev + 1);
     setScreen("correction");
   }
 
@@ -197,7 +201,7 @@ export function GameScreen({
           const pending = pendingResultRef.current;
           if (pending && next.reponses_reveles_le && question?.id === pending.questionId) {
             setResult(pending.answer);
-            setTotalScore((prev) => prev + pending.answer.points_gagnes);
+            if (pending.answer.is_correct) setCorrectCount((prev) => prev + 1);
             pendingResultRef.current = null;
             setScreen("correction");
             return;
@@ -285,7 +289,9 @@ export function GameScreen({
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-encre p-4 text-center text-craie">
         <h1 className="font-display text-3xl">Partie terminée !</h1>
-        <p className="text-lg">Score total : <span className="text-or">{totalScore}</span> pts</p>
+        <p className="text-lg">
+          <span className="text-or">{correctCount}</span> / {totalQuestions} bonnes réponses
+        </p>
         <p className="text-sm text-adire">Tu peux fermer cette page.</p>
       </main>
     );
@@ -400,7 +406,6 @@ export function GameScreen({
               >
                 {result.is_correct ? "Juste !" : "Faux"}
               </p>
-              <p className="mt-2 text-2xl text-or">+{result.points_gagnes} pts</p>
             </div>
 
             <div className="space-y-2 rounded-sm border border-adire/40 p-4">

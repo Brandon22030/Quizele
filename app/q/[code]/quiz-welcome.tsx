@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
@@ -23,7 +22,6 @@ export function QuizWelcome({
   statut,
   titre,
   description,
-  couvertureUrl,
   animateur,
   questionsCount,
   estimatedDuration,
@@ -32,7 +30,6 @@ export function QuizWelcome({
   statut: "attente" | "ouverte";
   titre: string;
   description: string;
-  couvertureUrl: string | null;
   animateur: string;
   questionsCount: number;
   estimatedDuration: number;
@@ -123,18 +120,6 @@ export function QuizWelcome({
         className="w-full max-w-md space-y-6 rounded-md border border-adire bg-card p-6 text-center text-card-foreground"
         position="top"
       >
-        {couvertureUrl && (
-          <div className="relative mx-auto aspect-video w-full max-w-xs overflow-hidden rounded-sm">
-            <Image
-              src={couvertureUrl}
-              alt={titre}
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
-        )}
-
         <div>
           <h1 className="font-display text-2xl text-foreground">{titre}</h1>
           {description && (

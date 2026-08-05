@@ -25,7 +25,7 @@ export default async function QuizWelcomePage({
 
   const { data: quiz, error: quizError } = await supabase
     .from("quizzes")
-    .select("titre, description, couverture_url, auteur_id")
+    .select("titre, description, auteur_id")
     .eq("id", session.quiz_id as string)
     .single();
 
@@ -62,7 +62,6 @@ export default async function QuizWelcomePage({
       statut={session.statut as "attente" | "ouverte"}
       titre={(quiz.titre as string) ?? "Quiz"}
       description={(quiz.description as string) ?? ""}
-      couvertureUrl={(quiz.couverture_url as string | null) ?? null}
       animateur={(author?.pseudo as string) ?? "Anonyme"}
       questionsCount={questionsCount}
       estimatedDuration={estimatedDuration}

@@ -27,7 +27,6 @@ export type EditableQuiz = {
   titre: string;
   description: string;
   categorie: string;
-  couverture_url: string | null;
   mode: "libre" | "synchronise";
   aleatoire_questions: boolean;
   aleatoire_options: boolean;
