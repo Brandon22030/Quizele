@@ -6,8 +6,8 @@ import { RuleFrame } from "@/components/ui/rule-frame";
 import { LiveDemo } from "@/app/live-demo";
 import { JoinCodeForm } from "@/app/join-code-form";
 
-const SITE_URL = "https://quizele.app";
-const TITLE = "Quizele — quiz bibliques en direct";
+const SITE_URL = "https://quizdeszeles.app";
+const TITLE = "Quizdeszeles — quiz bibliques en direct";
 const DESCRIPTION =
   "Crée des quiz bibliques, partage-les avec un code et joue avec ta salle en temps réel. Pas d'installation, pas de compte pour les participants.";
 
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     url: SITE_URL,
-    siteName: "Quizele",
+    siteName: "Quizdeszeles",
     locale: "fr_FR",
     type: "website",
   },
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Quizele",
+  name: "Quizdeszeles",
   url: SITE_URL,
   description: DESCRIPTION,
   inLanguage: "fr",
@@ -56,7 +56,7 @@ export default function HomePage() {
       />
 
       <header className="flex items-center justify-between border-b border-adire px-6 py-4">
-        <span className="font-display text-xl">Quizele</span>
+        <span className="font-display text-xl">Quizdeszeles</span>
         <div className="flex items-center gap-3">
           <Link
             href="/rejoindre"
@@ -86,7 +86,7 @@ export default function HomePage() {
 
         <section className="border-t border-adire px-6 py-12 text-center sm:py-20">
           <p className="mx-auto max-w-2xl font-display text-2xl leading-snug sm:text-3xl">
-            Quizele te permet de créer un quiz biblique, de le partager avec un
+            Quizdeszeles te permet de créer un quiz biblique, de le partager avec un
             code et de jouer avec ta salle en direct — sans installer quoi que
             ce soit.
           </p>
@@ -142,7 +142,7 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t border-adire px-6 py-6 text-center text-sm text-muted-foreground">
-        Quizele — quiz bibliques pour groupes, écoles du dimanche et soirées.
+        Quizdeszeles — quiz bibliques pour groupes, écoles du dimanche et soirées.
       </footer>
     </div>
   );

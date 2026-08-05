@@ -139,7 +139,7 @@ export default function StyleguidePage() {
     <main className="mx-auto max-w-3xl space-y-16 px-4 py-8">
       <header className="space-y-2 border-b border-adire pb-6">
         <h1 className="font-display text-3xl text-foreground">
-          Styleguide Quizele
+          Styleguide Quizdeszeles
         </h1>
         <p className="text-base text-muted-foreground">
           Direction artistique « Encre et Indigo » — mobile d&apos;abord.

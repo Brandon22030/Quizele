@@ -73,7 +73,7 @@ export async function GET(request: Request) {
               marginBottom: 24,
             }}
           >
-            Quizele
+            Quizdeszeles
           </p>
           <p style={{ fontSize: 40, marginBottom: 24 }}>{quizTitre}</p>
           <p style={{ fontSize: 120, color: OR, marginBottom: 16 }}>

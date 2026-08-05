@@ -58,7 +58,7 @@ export function ResultScreen({
       )}&code=${encodeURIComponent(code)}`;
       const response = await fetch(imageUrl);
       const blob = await response.blob();
-      const file = new File([blob], "quizele-score.png", { type: blob.type });
+      const file = new File([blob], "quizdeszeles-score.png", { type: blob.type });
       const shareUrl = `${window.location.origin}/q/${code}`;
 
       const shareApi = navigator as Navigator & {
@@ -81,7 +81,7 @@ export function ResultScreen({
       } else {
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
-        link.download = "quizele-score.png";
+        link.download = "quizdeszeles-score.png";
         link.click();
         URL.revokeObjectURL(link.href);
       }

@@ -26,9 +26,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Quizele — quiz bibliques en direct",
+  title: "Quizdeszeles — quiz bibliques en direct",
   description: "Crée des quiz bibliques, partage-les avec un code et joue avec ta salle en temps réel.",
-  metadataBase: new URL("https://quizele.app"),
+  metadataBase: new URL("https://quizdeszeles.app"),
 };
 
 export default function RootLayout({

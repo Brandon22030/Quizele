@@ -59,7 +59,7 @@ export default function OpenGraphImage() {
               marginBottom: 24,
             }}
           >
-            Quizele
+            Quizdeszeles
           </p>
           <p style={{ fontSize: 72, fontWeight: 700, marginBottom: 24 }}>
             Quiz bibliques en direct

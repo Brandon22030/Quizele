@@ -151,7 +151,7 @@ export async function createSampleQuiz() {
       .insert({
       auteur_id: authData.user.id,
       titre: "Premiers pas",
-      description: "Un modèle pour découvrir Quizele en créant votre premier quiz.",
+      description: "Un modèle pour découvrir Quizdeszeles en créant votre premier quiz.",
       categorie: "Découverte",
       mode: "libre",
       aleatoire_questions: true,
