@@ -85,6 +85,16 @@ export function QuizWelcome({
     setIsJoining(true);
     try {
       const result = await joinSession(code, trimmed);
+
+      if (!result.ok) {
+        addToast({
+          title: "Impossible de rejoindre",
+          description: result.error,
+          variant: "error",
+        });
+        return;
+      }
+
       if (result.reprise) {
         addToast({
           title: "Reprise de ta partie",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Copy, Pencil, Play, Trash2 } from "lucide-react";
@@ -36,61 +36,65 @@ function formatDate(iso: string) {
 export function QuizCard({ quiz }: { quiz: QuizSummary }) {
   const router = useRouter();
   const { addToast } = useToast();
-  const [isPending, startTransition] = useTransition();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!window.confirm("Supprimer ce quiz ? Cette action est irréversible.")) {
       return;
     }
 
-    startTransition(async () => {
-      try {
-        await deleteQuiz(quiz.id);
-        addToast({
-          title: "Quiz supprimé",
-          variant: "success",
-        });
-      } catch (error) {
-        addToast({
-          title: "Erreur lors de la suppression",
-          description: error instanceof Error ? error.message : "Réessayez.",
-          variant: "error",
-        });
-      }
-    });
+    setIsDeleting(true);
+    try {
+      await deleteQuiz(quiz.id);
+      addToast({
+        title: "Quiz supprimé",
+        variant: "success",
+      });
+    } catch (error) {
+      addToast({
+        title: "Erreur lors de la suppression",
+        description: error instanceof Error ? error.message : "Réessayez.",
+        variant: "error",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
-  function handleDuplicate() {
-    startTransition(async () => {
-      try {
-        await duplicateQuiz(quiz.id);
-        addToast({
-          title: "Quiz dupliqué",
-          variant: "success",
-        });
-      } catch (error) {
-        addToast({
-          title: "Erreur lors de la duplication",
-          description: error instanceof Error ? error.message : "Réessayez.",
-          variant: "error",
-        });
-      }
-    });
+  async function handleDuplicate() {
+    setIsDuplicating(true);
+    try {
+      await duplicateQuiz(quiz.id);
+      addToast({
+        title: "Quiz dupliqué",
+        variant: "success",
+      });
+    } catch (error) {
+      addToast({
+        title: "Erreur lors de la duplication",
+        description: error instanceof Error ? error.message : "Réessayez.",
+        variant: "error",
+      });
+    } finally {
+      setIsDuplicating(false);
+    }
   }
 
-  function handleLaunch() {
-    startTransition(async () => {
-      try {
-        const session = await launchQuiz(quiz.id);
-        router.push(`/session/${session.session_id}?code=${session.code_court}`);
-      } catch (error) {
-        addToast({
-          title: "Erreur lors du lancement",
-          description: error instanceof Error ? error.message : "Réessayez.",
-          variant: "error",
-        });
-      }
-    });
+  async function handleLaunch() {
+    setIsLaunching(true);
+    try {
+      const session = await launchQuiz(quiz.id);
+      router.push(`/session/${session.session_id}?code=${session.code_court}`);
+    } catch (error) {
+      addToast({
+        title: "Erreur lors du lancement",
+        description: error instanceof Error ? error.message : "Réessayez.",
+        variant: "error",
+      });
+      setIsLaunching(false);
+    }
   }
 
   return (
@@ -137,7 +141,7 @@ export function QuizCard({ quiz }: { quiz: QuizSummary }) {
           size="md"
           className="min-h-0 px-2 py-2"
           aria-label="Dupliquer le quiz"
-          loading={isPending}
+          loading={isDuplicating}
           onClick={handleDuplicate}
         >
           <Copy className="size-4" aria-hidden="true" />
@@ -148,7 +152,7 @@ export function QuizCard({ quiz }: { quiz: QuizSummary }) {
           size="md"
           className="min-h-0 px-2 py-2"
           aria-label="Lancer une session"
-          loading={isPending}
+          loading={isLaunching}
           onClick={handleLaunch}
         >
           <Play className="size-4" aria-hidden="true" />
@@ -159,7 +163,7 @@ export function QuizCard({ quiz }: { quiz: QuizSummary }) {
           size="md"
           className="min-h-0 px-2 py-2 text-rubrique hover:text-rubrique"
           aria-label="Supprimer le quiz"
-          loading={isPending}
+          loading={isDeleting}
           onClick={handleDelete}
         >
           <Trash2 className="size-4" aria-hidden="true" />

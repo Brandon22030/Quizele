@@ -15,17 +15,21 @@ function mapError(message: string): string {
   return message;
 }
 
+export type JoinSessionResult =
+  | { ok: true; participant_id: string; reprise: boolean }
+  | { ok: false; error: string };
+
 export async function joinSession(
   code: string,
   pseudo: string
-): Promise<{ participant_id: string; reprise: boolean }> {
+): Promise<JoinSessionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    throw new Error("Connexion anonyme requise. Recharge la page.");
+    return { ok: false, error: "Connexion anonyme requise. Recharge la page." };
   }
 
   const { data, error } = await supabase.rpc("rejoindre_session", {
@@ -34,15 +38,16 @@ export async function joinSession(
   });
 
   if (error) {
-    throw new Error(mapError(error.message));
+    return { ok: false, error: mapError(error.message) };
   }
 
   const row = data as Record<string, unknown> | null;
   if (!row) {
-    throw new Error("Réponse inattendue du serveur.");
+    return { ok: false, error: "Réponse inattendue du serveur." };
   }
 
   return {
+    ok: true,
     participant_id: row.participant_id as string,
     reprise: (row.reprise as boolean) ?? false,
   };
