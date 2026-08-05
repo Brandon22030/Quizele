@@ -1,26 +1,199 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Couleurs « Encre et Indigo » */
+  --color-encre: #0e1626;
+  --color-indigo: #2b3f8c;
+  --color-adire: #6b7fd1;
+  --color-craie: #f3f0e7;
+  --color-rubrique: #b8402e;
+  --color-or: #c8963e;
+
+  /* Polices */
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-instrument-sans);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* Échelle typographique */
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.5;
+  --text-base: 16px;
+  --text-base--line-height: 1.5;
+  --text-lg: 20px;
+  --text-lg--line-height: 1.35;
+  --text-xl: 26px;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 34px;
+  --text-2xl--line-height: 1.15;
+  --text-3xl: 48px;
+  --text-3xl--line-height: 1.1;
+
+  /* Rayons */
+  --radius-sm: 2px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+
+  /* Espacements sur grille de 4px, plus épaisseur de la réglure */
+  --spacing-rule: 3px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-11: 44px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* Ombre douce unique */
+  --shadow-soft: 0 1px 3px 0 rgba(14, 22, 38, 0.08);
+
+  /* Variables shadcn/ui */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Thème « craie » — création, lecture */
+:root {
+  --background: #f3f0e7;
+  --foreground: #0e1626;
+  --card: #f3f0e7;
+  --card-foreground: #0e1626;
+  --popover: #f3f0e7;
+  --popover-foreground: #0e1626;
+  --primary: #2b3f8c;
+  --primary-foreground: #f3f0e7;
+  --secondary: #6b7fd1;
+  --secondary-foreground: #f3f0e7;
+  --muted: color-mix(in srgb, #6b7fd1 15%, transparent);
+  --muted-foreground: #0e1626;
+  --accent: #6b7fd1;
+  --accent-foreground: #f3f0e7;
+  --destructive: #b8402e;
+  --border: #6b7fd1;
+  --input: #6b7fd1;
+  --ring: #2b3f8c;
+  --radius: 6px;
+  --sidebar: #f3f0e7;
+  --sidebar-foreground: #0e1626;
+  --sidebar-primary: #2b3f8c;
+  --sidebar-primary-foreground: #f3f0e7;
+  --sidebar-accent: color-mix(in srgb, #6b7fd1 15%, transparent);
+  --sidebar-accent-foreground: #0e1626;
+  --sidebar-border: #6b7fd1;
+  --sidebar-ring: #2b3f8c;
+}
+
+/* Thème « encre » — jeu, fond sombre */
+.dark,
+[data-theme="encre"] {
+  --background: #0e1626;
+  --foreground: #f3f0e7;
+  --card: #0e1626;
+  --card-foreground: #f3f0e7;
+  --popover: #0e1626;
+  --popover-foreground: #f3f0e7;
+  --primary: #2b3f8c;
+  --primary-foreground: #f3f0e7;
+  --secondary: #6b7fd1;
+  --secondary-foreground: #f3f0e7;
+  --muted: color-mix(in srgb, #6b7fd1 20%, transparent);
+  --muted-foreground: #f3f0e7;
+  --accent: #6b7fd1;
+  --accent-foreground: #f3f0e7;
+  --destructive: #b8402e;
+  --border: color-mix(in srgb, #6b7fd1 40%, transparent);
+  --input: color-mix(in srgb, #6b7fd1 40%, transparent);
+  --ring: #6b7fd1;
+  --sidebar: #0e1626;
+  --sidebar-foreground: #f3f0e7;
+  --sidebar-primary: #2b3f8c;
+  --sidebar-primary-foreground: #f3f0e7;
+  --sidebar-accent: color-mix(in srgb, #6b7fd1 20%, transparent);
+  --sidebar-accent-foreground: #f3f0e7;
+  --sidebar-border: color-mix(in srgb, #6b7fd1 40%, transparent);
+  --sidebar-ring: #6b7fd1;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+  .font-display {
+    font-weight: 600;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-or {
+    color: var(--color-or);
+  }
+  .bg-or {
+    background-color: var(--color-or);
+  }
+  .text-rubrique {
+    color: var(--color-rubrique);
+  }
+  .bg-rubrique {
+    background-color: var(--color-rubrique);
+  }
+}
+
+/* Pulsation lente de la réglure en phase critique */
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-slow {
+    animation: none;
+  }
 }
