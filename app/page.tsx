@@ -55,18 +55,18 @@ export default function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
-      <header className="flex items-center justify-between border-b border-adire px-6 py-4">
-        <span className="font-display text-xl">Quizdeszeles</span>
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between border-b border-adire px-4 py-3 sm:px-6 sm:py-4">
+        <span className="font-display text-lg sm:text-xl">Quizdeszeles</span>
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href="/rejoindre"
-            className="inline-flex h-12 items-center justify-center rounded-sm px-5 text-base font-medium text-foreground transition-colors hover:bg-adire/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-10 items-center justify-center rounded-sm px-3 text-sm font-medium text-foreground transition-colors hover:bg-adire/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-12 sm:px-5 sm:text-base"
           >
             Rejoindre
           </Link>
           <Link
             href="/connexion"
-            className="inline-flex h-12 items-center justify-center rounded-sm bg-indigo px-5 text-base font-medium text-craie transition-colors hover:bg-adire focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-sm bg-indigo px-3 text-sm font-medium text-craie transition-colors hover:bg-adire focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-12 sm:px-5 sm:text-base"
           >
             Créer un quiz
           </Link>

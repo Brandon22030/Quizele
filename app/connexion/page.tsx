@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -167,6 +168,13 @@ export default function ConnexionPage() {
           </Button>
         )}
       </RuleFrame>
+
+      <Link
+        href="/"
+        className="mt-6 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        ← Revenir à l&apos;accueil
+      </Link>
     </main>
   );
 }
