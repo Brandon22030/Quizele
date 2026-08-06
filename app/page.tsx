@@ -6,7 +6,7 @@ import { RuleFrame } from "@/components/ui/rule-frame";
 import { LiveDemo } from "@/app/live-demo";
 import { JoinCodeForm } from "@/app/join-code-form";
 
-const SITE_URL = "https://quizdeszeles.app";
+const SITE_URL = "https://quizdeszeles.vercel.app";
 const TITLE = "Quizdeszeles — quiz bibliques en direct";
 const DESCRIPTION =
   "Crée des quiz bibliques, partage-les avec un code et joue avec ta salle en temps réel. Pas d'installation, pas de compte pour les participants.";
