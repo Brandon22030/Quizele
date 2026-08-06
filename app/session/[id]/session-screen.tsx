@@ -85,6 +85,7 @@ export function SessionScreen({
   const [isPushing, setIsPushing] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
 
   const joinUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -282,6 +283,56 @@ export function SessionScreen({
     }
   }
 
+  async function handleShareClassement() {
+    if (isSharing) return;
+    setIsSharing(true);
+
+    try {
+      const imageUrl = `/api/share-classement?session_id=${encodeURIComponent(
+        sessionId
+      )}`;
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const file = new File([blob], "quizdeszeles-classement.png", {
+        type: blob.type,
+      });
+      const shareUrl = `${window.location.origin}/rejoindre?code=${code}`;
+
+      const shareApi = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean;
+        share?: (data?: ShareData) => Promise<void>;
+      };
+
+      if (shareApi.canShare?.({ files: [file] })) {
+        await shareApi.share({
+          title: `Classement final — ${quizTitle}`,
+          text: `Découvre le classement final de ${quizTitle} !`,
+          files: [file],
+        });
+      } else if (shareApi.share) {
+        await shareApi.share({
+          title: `Classement final — ${quizTitle}`,
+          text: `Découvre le classement final de ${quizTitle} !`,
+          url: shareUrl,
+        });
+      } else {
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "quizdeszeles-classement.png";
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    } catch (error) {
+      addToast({
+        title: "Partage impossible",
+        description: error instanceof Error ? error.message : "Réessaie.",
+        variant: "error",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  }
+
   async function handleClose() {
     if (!window.confirm("Clôturer la session pour tous les participants ?")) {
       return;
@@ -368,6 +419,15 @@ export function SessionScreen({
                   ))}
                 </ol>
               )}
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                loading={isSharing}
+                onClick={handleShareClassement}
+              >
+                Partager le classement
+              </Button>
             </div>
           </RuleFrame>
         ) : (
