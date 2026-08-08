@@ -38,6 +38,11 @@ export async function GET(request: Request) {
 
   const quizTitre = (quiz?.titre as string) ?? "Quiz";
 
+  const { count: totalQuestions } = await supabase
+    .from("questions")
+    .select("id", { count: "exact", head: true })
+    .eq("quiz_id", session.quiz_id as string);
+
   const { data, error } = await supabase.rpc("classement", {
     p_session: sessionId,
     p_limite: 10,
@@ -154,7 +159,7 @@ export async function GET(request: Request) {
                     </span>
                   </div>
                   <span style={{ fontSize: 32, color: OR, fontFamily: "monospace" }}>
-                    {row.score_total} bonnes réponses
+                    {row.score_total} / {totalQuestions ?? 0} bonnes réponses
                   </span>
                 </div>
               ))

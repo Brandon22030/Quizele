@@ -24,12 +24,14 @@ export function SessionDashboard({
   sessionStatus,
   initialLeaderboard,
   initialStats,
+  totalQuestions,
 }: {
   sessionId: string;
   quizTitre: string;
   sessionStatus: string;
   initialLeaderboard: DashboardEntry[];
   initialStats: QuestionStat[];
+  totalQuestions: number;
 }) {
   const { addToast } = useToast();
   const supabase = useMemo(() => createClient(), []);
@@ -191,7 +193,9 @@ export function SessionDashboard({
                   <tr>
                     <th className="px-4 py-3">Rang</th>
                     <th className="px-4 py-3">Pseudo</th>
-                    <th className="px-4 py-3">Bonnes réponses</th>
+                    <th className="px-4 py-3">
+                      Bonnes réponses (sur {totalQuestions})
+                    </th>
                     <th className="px-4 py-3">Temps</th>
                     <th className="px-4 py-3">Terminé</th>
                   </tr>
@@ -201,7 +205,9 @@ export function SessionDashboard({
                     <tr key={entry.rang} className="border-t border-adire/30">
                       <td className="px-4 py-3">{entry.rang}</td>
                       <td className="px-4 py-3">{entry.pseudo}</td>
-                      <td className="px-4 py-3">{entry.score}</td>
+                      <td className="px-4 py-3">
+                        {entry.score} / {totalQuestions}
+                      </td>
                       <td className="px-4 py-3">
                         {Math.round(entry.temps_total_ms / 1000)}s
                       </td>

@@ -207,7 +207,9 @@ export function ResultScreen({
                   <span className="text-craie">
                     {entry.rang}. {entry.pseudo}
                   </span>
-                  <span className="text-or">{entry.bonnes_reponses} bonnes réponses</span>
+                  <span className="text-or">
+                    {entry.bonnes_reponses} / {result.total_questions} bonnes réponses
+                  </span>
                 </li>
               ))}
             </ol>

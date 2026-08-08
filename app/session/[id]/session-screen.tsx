@@ -413,7 +413,7 @@ export function SessionScreen({
                         <span className="text-base text-craie">{row.pseudo}</span>
                       </span>
                       <span className="font-mono text-or">
-                        {row.score_total} bonnes réponses
+                        {row.score_total} / {questions.length} bonnes réponses
                       </span>
                     </li>
                   ))}
@@ -430,7 +430,7 @@ export function SessionScreen({
               </Button>
             </div>
           </RuleFrame>
-        ) : (
+        ) : !activeQuestionId ? (
           <RuleFrame
             className="w-full max-w-3xl border border-adire/40 bg-encre p-6 sm:p-10"
             position="top"
@@ -470,7 +470,7 @@ export function SessionScreen({
               </div>
             </div>
           </RuleFrame>
-        )}
+        ) : null}
 
         {mode === "synchronise" && activeQuestion && !resultatsReveles && (
           <RuleFrame
@@ -488,16 +488,9 @@ export function SessionScreen({
                 {activeQuestion.options.map((option) => (
                   <li
                     key={option.id}
-                    className={`rounded-sm border px-4 py-2 text-sm ${
-                      option.est_correcte
-                        ? "border-or bg-or/10 text-craie"
-                        : "border-adire/40 text-craie"
-                    }`}
+                    className="rounded-sm border border-adire/40 px-4 py-2 text-sm text-craie"
                   >
                     {option.libelle}
-                    {option.est_correcte && (
-                      <span className="ml-2 text-or">— bonne réponse</span>
-                    )}
                   </li>
                 ))}
               </ul>

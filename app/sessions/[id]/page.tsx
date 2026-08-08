@@ -43,10 +43,15 @@ export default async function SessionsPage({
     notFound();
   }
 
-  const [{ data: leaderboardData }, { data: statsData }] = await Promise.all([
-    supabase.rpc("classement", { p_session: id }),
-    supabase.rpc("stats_session", { p_session_id: id }),
-  ]);
+  const [{ data: leaderboardData }, { data: statsData }, { count: totalQuestions }] =
+    await Promise.all([
+      supabase.rpc("classement", { p_session: id }),
+      supabase.rpc("stats_session", { p_session_id: id }),
+      supabase
+        .from("questions")
+        .select("id", { count: "exact", head: true })
+        .eq("quiz_id", session.quiz_id as string),
+    ]);
 
   const initialLeaderboard = ((leaderboardData ?? []) as Record<string, unknown>[]).map(
     (row) => ({
@@ -75,6 +80,7 @@ export default async function SessionsPage({
       sessionStatus={(session.statut as string) ?? "ouverte"}
       initialLeaderboard={initialLeaderboard}
       initialStats={initialStats}
+      totalQuestions={totalQuestions ?? 0}
     />
   );
 }
