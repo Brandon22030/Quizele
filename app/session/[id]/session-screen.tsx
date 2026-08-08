@@ -37,6 +37,8 @@ type SessionQuestion = {
   id: string;
   enonce: string;
   type: string;
+  explication: string | null;
+  reference_biblique: string | null;
   options: QuestionOption[];
 };
 
@@ -218,7 +220,7 @@ export function SessionScreen({
     : 0;
   const isLastQuestion =
     currentQuestionIndex > 0 && currentQuestionIndex === questionIds.length;
-  const isRevealed = correctionImmediate || Boolean(reponsesRevelesLe);
+  const isRevealed = Boolean(reponsesRevelesLe);
 
   async function handleNextQuestion() {
     const nextIndex = activeQuestionId
@@ -488,12 +490,30 @@ export function SessionScreen({
                 {activeQuestion.options.map((option) => (
                   <li
                     key={option.id}
-                    className="rounded-sm border border-adire/40 px-4 py-2 text-sm text-craie"
+                    className={`rounded-sm border px-4 py-2 text-sm ${
+                      isRevealed && option.est_correcte
+                        ? "border-or bg-or/10 text-craie"
+                        : "border-adire/40 text-craie"
+                    }`}
                   >
                     {option.libelle}
+                    {isRevealed && option.est_correcte && (
+                      <span className="ml-2 text-or">— bonne réponse</span>
+                    )}
                   </li>
                 ))}
               </ul>
+              {isRevealed && activeQuestion.explication && (
+                <div className="space-y-1 rounded-sm border border-adire/40 bg-adire/10 p-4">
+                  <p className="text-sm font-medium text-or">Explication</p>
+                  <p className="text-sm text-craie">{activeQuestion.explication}</p>
+                  {activeQuestion.reference_biblique && (
+                    <p className="text-xs text-adire">
+                      Réf. : {activeQuestion.reference_biblique}
+                    </p>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-adire">
                 Réponses reçues : {answersCount} / {participants.length}
               </p>
@@ -501,7 +521,7 @@ export function SessionScreen({
                 <p className="text-sm text-adire">
                   {isRevealed
                     ? "Correction révélée aux participants."
-                    : "Les participants voient leur résultat une fois que tu valides."}
+                    : "Les participants voient leur résultat une fois que tu révèles la réponse."}
                 </p>
               )}
             </div>
@@ -529,7 +549,7 @@ export function SessionScreen({
                   loading={isValidating}
                   onClick={handleValidate}
                 >
-                  Valider les réponses
+                  Révéler la réponse
                 </Button>
               ) : isLastQuestion ? (
                 <Button

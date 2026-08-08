@@ -582,7 +582,7 @@ export function QuizEditor({
 
                 <FormField
                   id="explication"
-                  label="Explication"
+                  label="Explication (optionnel)"
                   help="Texte affiché lors de la correction. C'est là que se joue la valeur pédagogique du quiz."
                 >
                   <Textarea

@@ -47,7 +47,9 @@ export default async function SessionPage({
 
   const { data: questions, error: questionsError } = await supabase
     .from("questions")
-    .select("id, ordre, enonce, type, options(id, libelle, est_correcte, ordre)")
+    .select(
+      "id, ordre, enonce, type, explication, reference_biblique, options(id, libelle, est_correcte, ordre)"
+    )
     .eq("quiz_id", quizId)
     .order("ordre", { ascending: true });
 
@@ -76,6 +78,8 @@ export default async function SessionPage({
     id: q.id as string,
     enonce: q.enonce as string,
     type: q.type as string,
+    explication: (q.explication as string | null) ?? null,
+    reference_biblique: (q.reference_biblique as string | null) ?? null,
     options: ((q.options as { id: string; libelle: string; est_correcte: boolean; ordre: number }[] | null) ?? [])
       .slice()
       .sort((a, b) => a.ordre - b.ordre)
