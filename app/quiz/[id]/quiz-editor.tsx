@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronDown, ChevronUp, Copy, Plus, Settings, Trash2 } from "lucide-react";
 
@@ -144,17 +144,50 @@ export function QuizEditor({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { addToast } = useToast();
 
+  const lastSavedRef = useRef(
+    JSON.stringify({ quiz, questions })
+  );
+
   useEffect(() => {
+    const current = JSON.stringify({ quiz, questions });
+    if (current === lastSavedRef.current) return;
+
     let cancelled = false;
     const raf = requestAnimationFrame(() => setSaveStatus("dirty"));
     const timer = setTimeout(async () => {
       if (cancelled) return;
       setSaveStatus("saving");
       try {
-        await saveQuiz(quiz, questions);
-        if (!cancelled) {
-          setSaveStatus("saved");
-        }
+        const { questionIdMap, optionIdMap } = await saveQuiz(quiz, questions);
+        if (cancelled) return;
+        setQuestions((prev) => {
+          const next = prev.map((q) => {
+            const qMap = questionIdMap.find((m) => m.clientId === q.id);
+            const newQuestionId = qMap?.dbId ?? q.id;
+            return {
+              ...q,
+              id: newQuestionId,
+              isNew: false,
+              options: q.options.map((o) => {
+                const oMap = optionIdMap.find((m) => m.clientId === o.id);
+                return {
+                  ...o,
+                  id: oMap?.dbId ?? o.id,
+                  isNew: false,
+                };
+              }),
+            };
+          });
+          const hasPending = next.some(
+            (q) =>
+              q.isNew || q.options.some((o) => o.isNew)
+          );
+          if (!hasPending) {
+            lastSavedRef.current = JSON.stringify({ quiz, questions: next });
+          }
+          return next;
+        });
+        setSaveStatus("saved");
       } catch (error) {
         if (!cancelled) {
           setSaveStatus("dirty");

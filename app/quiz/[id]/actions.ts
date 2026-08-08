@@ -12,7 +12,10 @@ import type {
 export async function saveQuiz(
   quiz: EditableQuiz,
   questions: EditableQuestion[]
-) {
+): Promise<{
+  questionIdMap: { clientId: string; dbId: string }[];
+  optionIdMap: { clientId: string; dbId: string }[];
+}> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -58,6 +61,9 @@ export async function saveQuiz(
     await supabase.from("questions").delete().in("id", idsToDelete);
   }
 
+  const questionIdMap: { clientId: string; dbId: string }[] = [];
+  const optionIdMap: { clientId: string; dbId: string }[] = [];
+
   for (const question of questions) {
     const questionPayload = {
       quiz_id: quiz.id,
@@ -84,6 +90,7 @@ export async function saveQuiz(
         throw error ?? new Error("Impossible de créer la question");
       }
       questionId = inserted.id as string;
+      questionIdMap.push({ clientId: question.id, dbId: questionId });
     } else {
       const { error } = await supabase
         .from("questions")
@@ -121,10 +128,18 @@ export async function saveQuiz(
       };
 
       if (option.isNew) {
-        const { error } = await supabase.from("options").insert(optionPayload);
-        if (error) {
-          throw error;
+        const { data: insertedOption, error } = await supabase
+          .from("options")
+          .insert(optionPayload)
+          .select()
+          .single();
+        if (error || !insertedOption) {
+          throw error ?? new Error("Impossible de créer l'option");
         }
+        optionIdMap.push({
+          clientId: option.id,
+          dbId: insertedOption.id as string,
+        });
       } else {
         const { error } = await supabase
           .from("options")
@@ -140,6 +155,8 @@ export async function saveQuiz(
 
   revalidatePath(`/quiz/${quiz.id}`);
   revalidatePath("/tableau-de-bord");
+
+  return { questionIdMap, optionIdMap };
 }
 
 export async function publishQuiz(quizId: string) {
