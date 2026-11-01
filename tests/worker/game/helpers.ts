@@ -1,7 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
 import { expect } from "vitest";
-import { serverMessageSchema, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
+import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import { quizDemo, type QuizDefinition } from "../../../src/server/game/fixtures/quiz-demo";
 import { signToken } from "../../../src/server/game/tokens";
 
@@ -11,7 +11,24 @@ const secret = () => env.PLAYER_TOKEN_SECRET as string;
 let counter = 0;
 export const newCode = () => `G${String(++counter).padStart(5, "0")}`;
 
-export const stubFor = (code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(code));
+// Une partie est identifiée par son sid ; le code court n'est que sa porte d'entrée.
+const sids = new Map<string, string>();
+export const sidFor = (code: string): string => {
+  let sid = sids.get(code);
+  if (!sid) {
+    sid = crypto.randomUUID();
+    sids.set(code, sid);
+  }
+  return sid;
+};
+// Nouvelle partie sous un code déjà utilisé : les jetons de l'ancienne partie doivent être refusés.
+export const reuseCode = (code: string): string => {
+  const sid = crypto.randomUUID();
+  sids.set(code, sid);
+  return sid;
+};
+export const stubFor = (code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(sidFor(code)));
+export const aliasStubFor = (code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(`alias:${code}`));
 
 export class Client {
   readonly messages: ServerMessage[] = [];
@@ -63,21 +80,23 @@ export class Client {
 }
 
 export async function rawConnect(code: string, token: string | null): Promise<Response> {
-  const query = token === null ? "" : `?token=${encodeURIComponent(token)}`;
-  return exports.default.fetch(`${ORIGIN}/ws/${code}${query}`, { headers: { Upgrade: "websocket" } });
+  const protocols = token ? `${WS_SUBPROTOCOL}, ${token}` : WS_SUBPROTOCOL;
+  return exports.default.fetch(`${ORIGIN}/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": protocols } });
 }
 
 export async function connect(code: string, token: string): Promise<Client> {
   const response = await rawConnect(code, token);
   expect(response.status).toBe(101);
+  expect(response.headers.get("Sec-WebSocket-Protocol")).toBe(WS_SUBPROTOCOL);
   const ws = response.webSocket!;
   ws.accept();
   return new Client(ws);
 }
 
-export const hostToken = (code: string) => signToken(secret(), { code, role: "host" });
-export const signFor = (code: string, claims: Parameters<typeof signToken>[1], now?: number, ttl?: number) =>
-  signToken(secret(), claims, now, ttl);
+type ClaimsInput = Omit<Parameters<typeof signToken>[1], "sid"> & { sid?: string };
+export const hostToken = (code: string) => signToken(secret(), { code, sid: sidFor(code), role: "host" });
+export const signFor = (_code: string, claims: ClaimsInput, now?: number, ttl?: number) =>
+  signToken(secret(), { ...claims, sid: claims.sid ?? sidFor(claims.code) }, now, ttl);
 
 export async function join(code: string, pseudo: string): Promise<Response> {
   return exports.default.fetch(`${ORIGIN}/api/parties/${code}/joueurs`, {
@@ -106,7 +125,7 @@ export async function addPlayer(code: string, pseudo: string): Promise<Player> {
 
 export async function setup(playerCount: number, quiz?: QuizDefinition) {
   const code = newCode();
-  if (quiz) await stubFor(code).init(code, quiz);
+  if (quiz) await stubFor(code).init(code, sidFor(code), quiz);
   const host = await connect(code, await hostToken(code));
   host.send({ type: "resume" });
   await host.waitFor("snapshot");

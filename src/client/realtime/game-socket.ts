@@ -1,5 +1,6 @@
 import ReconnectingWebSocket from "partysocket/ws";
-import { serverMessageSchema, type ClientMessage, type ServerMessage } from "../../shared/protocol";
+import { localNow } from "../../shared/clock";
+import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../shared/protocol";
 
 export type ConnectionStatus = "connecting" | "open" | "reconnecting";
 
@@ -19,20 +20,21 @@ const SILENCE_LIMIT_MS = 50_000;
 export class GameSocket {
   private readonly socket: ReconnectingWebSocket;
   private readonly pingTimer: ReturnType<typeof setInterval>;
-  private lastActivity = Date.now();
+  private lastActivity = localNow();
   private opened = false;
 
   constructor(private readonly options: GameSocketOptions) {
     const base = options.baseUrl ?? `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
-    // L'URL est recalculée à chaque tentative : le jeton est relu au cas où il aurait été renouvelé.
+    // Le jeton voyage dans Sec-WebSocket-Protocol, pas dans l'URL (journaux, historique). Il est relu à chaque
+    // tentative au cas où il aurait été renouvelé.
     this.socket = new ReconnectingWebSocket(
-      async () => `${base}/ws/${options.code}?token=${encodeURIComponent(await options.getToken())}`,
-      undefined,
+      `${base}/ws/${options.code}`,
+      async () => [WS_SUBPROTOCOL, await options.getToken()],
       { maxEnqueuedMessages: 20, minReconnectionDelay: 500, maxReconnectionDelay: 8_000 },
     );
     this.socket.addEventListener("open", () => {
       this.opened = true;
-      this.lastActivity = Date.now();
+      this.lastActivity = localNow();
       options.onStatus("open");
       this.send({ type: "resume" });
     });
@@ -57,7 +59,7 @@ export class GameSocket {
   }
 
   private handleMessage(data: unknown): void {
-    this.lastActivity = Date.now();
+    this.lastActivity = localNow();
     if (typeof data !== "string" || data === "pong") return;
     let json: unknown;
     try {
@@ -70,7 +72,7 @@ export class GameSocket {
   }
 
   private ping(): void {
-    if (Date.now() - this.lastActivity > SILENCE_LIMIT_MS) {
+    if (localNow() - this.lastActivity > SILENCE_LIMIT_MS) {
       this.socket.reconnect();
       return;
     }

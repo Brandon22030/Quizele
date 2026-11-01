@@ -108,9 +108,9 @@ describe("partie de 50 joueurs", () => {
     expect(reveals[49]!.you).toMatchObject({ wasCorrect: false, score: 0 });
     expect(reveals[0]!.correctOptionIds).toEqual([Q1_CORRECT]);
     expect(reveals[0]!.ranking).toHaveLength(10);
-    expect(reveals[0]!.ranking.every((r) => r.score === 1)).toBe(true);
+    expect(reveals[0]!.ranking!.every((r) => r.score === 1)).toBe(true);
     const hostReveal = await host.waitFor("reveal");
-    expect(hostReveal.ranking.filter((r) => r.score === 1)).toHaveLength(10);
+    expect(hostReveal.ranking!.filter((r) => r.score === 1)).toHaveLength(10);
 
     const stub = stubFor(code);
     const rows = await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("SELECT COUNT(*) AS n FROM answers").one().n);

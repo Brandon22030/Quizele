@@ -2,7 +2,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { afterEach, describe, expect, it } from "vitest";
 import { ANSWER_TOLERANCE_MS, MAX_PLAYERS } from "../../../src/shared/protocol";
 import {
-  addPlayer, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  addPlayer, aliasStubFor, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -108,9 +108,9 @@ describe("inscription sur un code inconnu", () => {
     const response = await join(code, "Awa");
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "game_not_found" });
-    expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM meta")).toEqual([{ n: 0 }]);
-    expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM players")).toEqual([{ n: 0 }]);
-    expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM questions")).toEqual([{ n: 0 }]);
+    // Aucune table du tout, pas seulement des tables sans ligne : ni dans l'objet de partie, ni dans l'alias.
+    expect(await sqlOf(code, "SELECT name FROM sqlite_master")).toEqual([]);
+    expect(await runInDurableObject(aliasStubFor(code), (_i, state) => state.storage.sql.exec("SELECT name FROM sqlite_master").toArray())).toEqual([]);
     expect(await runInDurableObject(stubFor(code), (_i, state) => state.storage.getAlarm())).toBeNull();
   });
 
@@ -124,7 +124,7 @@ describe("inscription sur un code inconnu", () => {
     const code = newCode();
     expect((await rawConnect(code, await signFor(code, { code, role: "screen" }))).status).toBe(404);
     expect((await rawConnect(code, await signFor(code, { code, role: "player", playerId: "x" }))).status).toBe(404);
-    expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM meta")).toEqual([{ n: 0 }]);
+    expect(await sqlOf(code, "SELECT name FROM sqlite_master")).toEqual([]);
     const host = await connect(code, await signFor(code, { code, role: "host" }));
     opened.push(host);
     expect((await join(code, "Awa")).status).toBe(201);
@@ -363,13 +363,15 @@ describe("réponses : cas limites", () => {
     expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM answers")).toEqual([{ n: 1 }]);
   });
 
-  it("une réponse tardive reste comptée dans le compteur mais ne marque aucun point", async () => {
+  it("une réponse tardive est enregistrée mais ne marque aucun point et n'entre pas dans le compteur", async () => {
     const { code, host, players } = await start(1);
     await rewindQuestion(code, 20_000 + ANSWER_TOLERANCE_MS + 1_000);
     expect(await answerAndAck(players[0]!.client, "q1", ["q1b"])).toMatchObject({ late: true });
     host.send({ type: "reveal" });
     const reveal = await host.waitFor("reveal");
-    expect(reveal.ranking[0]).toMatchObject({ score: 0, totalMs: 0 });
+    expect(reveal.ranking?.[0]).toMatchObject({ score: 0, totalMs: 0 });
+    expect(await sqlOf(code, "SELECT late FROM answers")).toEqual([{ late: 1 }]);
+    expect(host.messages.some((m) => m.type === "answer_count")).toBe(false);
   });
 });
 
@@ -457,8 +459,8 @@ describe("aucune fuite de correction", () => {
     await players[0]!.client.waitFor("question");
     host.send({ type: "reveal" });
     const reveal = await players[0]!.client.waitFor("reveal");
-    expect(Object.keys(reveal).sort()).toEqual(["questionId", "ranking", "type", "you"]);
-    expect(Object.keys(reveal.you!).sort()).toEqual(["rank", "score", "wasCorrect"]);
+    // Sans correction, le joueur ne reçoit ni résultat personnel ni classement avant la fin de la partie.
+    expect(Object.keys(reveal).sort()).toEqual(["questionId", "type"]);
   });
 });
 

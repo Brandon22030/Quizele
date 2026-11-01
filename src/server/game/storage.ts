@@ -1,4 +1,4 @@
-import type { Phase, QuestionKind, RankingEntry } from "../../shared/protocol";
+import { phaseSchema, type Phase, type QuestionKind, type RankingEntry } from "../../shared/protocol";
 import type { QuizDefinition } from "./fixtures/quiz-demo";
 
 // Migrations versionnées : on n'édite jamais une entrée existante, on en ajoute une.
@@ -26,6 +26,8 @@ const MIGRATIONS: string[] = [
 
 export interface MetaState {
   code: string | null;
+  sid: string;
+  lastHostAt: number;
   title: string;
   showCorrectAnswer: boolean;
   phase: Phase;
@@ -63,6 +65,11 @@ export class GameStorage {
     private readonly storage: DurableObjectStorage,
   ) {}
 
+  // Lecture seule : savoir si la partie existe sans rien écrire dans un objet encore vide.
+  hasSchema(): boolean {
+    return this.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'meta'").toArray().length > 0;
+  }
+
   migrate(): void {
     this.sql.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)");
     const row = this.sql.exec<{ version: number }>("SELECT MAX(version) AS version FROM schema_version").one();
@@ -82,9 +89,11 @@ export class GameStorage {
     }
     return {
       code: values.get("code") ?? null,
+      sid: values.get("sid") ?? "",
+      lastHostAt: Number(values.get("last_host_at") ?? 0),
       title: values.get("title") ?? "",
       showCorrectAnswer: values.get("show_correct") === "1",
-      phase: (values.get("phase") as Phase | undefined) ?? "lobby",
+      phase: phaseSchema.catch("lobby").parse(values.get("phase")),
       index: Number(values.get("idx") ?? 0),
       startedAt: Number(values.get("started_at") ?? 0),
       durationMs: Number(values.get("duration_ms") ?? 0),
@@ -98,7 +107,7 @@ export class GameStorage {
     }
   }
 
-  loadQuiz(code: string, quiz: QuizDefinition): void {
+  loadQuiz(code: string, sid: string, quiz: QuizDefinition, now: number): void {
     this.storage.transactionSync(() => {
       quiz.questions.forEach((question, position) => {
         this.sql.exec(
@@ -112,7 +121,7 @@ export class GameStorage {
           );
         });
       });
-      this.writeMeta({ code, title: quiz.title, show_correct: quiz.showCorrectAnswer ? 1 : 0, phase: "lobby", idx: 0 });
+      this.writeMeta({ code, sid, title: quiz.title, show_correct: quiz.showCorrectAnswer ? 1 : 0, phase: "lobby", idx: 0, last_host_at: now });
     });
   }
 
@@ -140,13 +149,20 @@ export class GameStorage {
       .map((row) => ({ id: row.id, label: row.label, isCorrect: row.isCorrect === 1 }));
   }
 
-  addPlayer(id: string, pseudo: string, now: number): "ok" | "taken" {
+  addPlayer(id: string, pseudo: string, key: string, now: number): "ok" | "taken" {
     // La contrainte UNIQUE sur pseudo_key tranche les inscriptions simultanées.
     const cursor = this.sql.exec(
       "INSERT INTO players (id, pseudo, pseudo_key, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(pseudo_key) DO NOTHING",
-      id, pseudo, pseudo.toLowerCase(), now,
+      id, pseudo, key, now,
     );
     return cursor.rowsWritten > 0 ? "ok" : "taken";
+  }
+
+  removePlayer(id: string): boolean {
+    return this.storage.transactionSync(() => {
+      this.sql.exec("DELETE FROM answers WHERE player_id = ?", id);
+      return this.sql.exec("DELETE FROM players WHERE id = ?", id).rowsWritten > 0;
+    });
   }
 
   playerCount(): number {
@@ -180,8 +196,9 @@ export class GameStorage {
     return row ? { optionIds: JSON.parse(row.optionIds) as string[], correct: row.correct === 1, late: row.late === 1 } : null;
   }
 
+  // Les réponses tardives sont enregistrées mais ne comptent pas : l'hôte voit qui a répondu dans les temps.
   answeredCount(questionId: string): number {
-    return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM answers WHERE question_id = ?", questionId).one().n;
+    return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM answers WHERE question_id = ? AND late = 0", questionId).one().n;
   }
 
   correctPlayerIds(questionId: string): Set<string> {
@@ -200,6 +217,19 @@ export class GameStorage {
         excludingQuestionId,
       )
       .toArray();
+  }
+
+  // Table de correspondance code court -> sid, portée par un objet d'alias distinct des parties.
+  // Prototype sans D1 : QZ-002-07 la remplace par game_sessions (code -> sid) dans D1.
+  aliasSid(): string | null {
+    if (this.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'alias'").toArray().length === 0) return null;
+    return this.sql.exec<{ sid: string }>("SELECT sid FROM alias").toArray()[0]?.sid ?? null;
+  }
+
+  setAliasSid(sid: string): void {
+    this.sql.exec("CREATE TABLE IF NOT EXISTS alias (sid TEXT NOT NULL)");
+    this.sql.exec("DELETE FROM alias");
+    this.sql.exec("INSERT INTO alias (sid) VALUES (?)", sid);
   }
 
   purge(): Promise<void> {

@@ -48,3 +48,12 @@ describe("clock : chrono de question", () => {
     expect(clock.remaining()).toBe(13_000);
   });
 });
+
+describe("clock : localNow", () => {
+  it("lit l'heure locale et sert d'horloge par défaut du chrono", async () => {
+    const { localNow, createQuestionClock } = await import("../../src/shared/clock");
+    expect(Math.abs(localNow() - Date.now())).toBeLessThan(50);
+    const clock = createQuestionClock({ startedAt: Date.now(), serverNow: Date.now(), durationMs: 10_000 });
+    expect(clock.remaining()).toBeGreaterThan(9_000);
+  });
+});

@@ -94,14 +94,22 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
     }
     case "reveal": {
       const { type: _type, ...reveal } = message;
-      return { ...state, phase: "revealed", reveal, me: state.me && reveal.you ? { ...state.me, score: reveal.you.score } : state.me };
+      return { ...state, error: null, phase: "revealed", reveal, me: state.me && reveal.you ? { ...state.me, score: reveal.you.score } : state.me };
     }
     case "finished":
-      return { ...state, phase: "finished", ranking: message.ranking };
+      return { ...state, error: null, phase: "finished", ranking: message.ranking };
     case "answer_ack":
-      return { ...state, answered: true, lateAnswer: message.late };
+      return { ...state, error: null, answered: true, lateAnswer: message.late };
     case "answer_count":
+      // Un compteur en retard d'une question précédente ne doit pas écraser celui de la question courante.
+      if (state.question?.questionId !== message.questionId) return state;
       return { ...state, answeredCount: message.count };
+    case "player_left":
+      return {
+        ...state,
+        playerCount: message.count,
+        players: state.players.filter((p) => p.id !== message.playerId),
+      };
     case "player_joined":
       return {
         ...state,

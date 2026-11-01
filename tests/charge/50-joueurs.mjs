@@ -17,12 +17,13 @@ const encoder = new TextEncoder();
 const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
 
 async function signToken(secret, claims) {
-  const payload = b64url(encoder.encode(JSON.stringify({ c: claims.code, r: claims.role, p: claims.playerId, e: Date.now() + 3_600_000 })));
+  const payload = b64url(encoder.encode(JSON.stringify({ c: claims.code, s: claims.sid, r: claims.role, p: claims.playerId, e: Date.now() + 3_600_000 })));
   const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
   return `${payload}.${b64url(new Uint8Array(signature))}`;
 }
 
+const SUBPROTOCOL = "quizdeszeles.v1";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stats = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -32,12 +33,13 @@ const stats = (values) => {
 const fmt = (s) => `n=${s.n} médiane=${s.mediane.toFixed(1)} ms, p95=${s.p95.toFixed(1)} ms, max=${s.max.toFixed(1)} ms`;
 
 class Client {
-  constructor(url) {
+  constructor(url, token) {
     this.messages = [];
     this.raw = [];
     this.waiters = [];
     this.sent = 0;
-    this.ws = new WebSocket(url);
+    // Le jeton voyage dans Sec-WebSocket-Protocol, pas dans l'URL.
+    this.ws = new WebSocket(url, [SUBPROTOCOL, token]);
     this.ws.addEventListener("message", (event) => {
       if (event.data === "pong") return;
       const at = performance.now();
@@ -133,7 +135,7 @@ const secret = JSON.parse(readFileSync(CONFIG, "utf8")).vars?.PLAYER_TOKEN_SECRE
 if (!secret) throw new Error("PLAYER_TOKEN_SECRET absent de dist/server/wrangler.json");
 const wsBase = BASE.replace(/^http/, "ws");
 const connectTo = async (code, token) => {
-  const client = new Client(`${wsBase}/ws/${code}?token=${encodeURIComponent(token)}`);
+  const client = new Client(`${wsBase}/ws/${code}`, token);
   await client.opened;
   client.send({ type: "resume" });
   await client.waitFor((m) => m.type === "snapshot");
@@ -150,7 +152,7 @@ const QUIZ = [
 async function playGame(index, report, pid) {
   const cpu = () => (pid ? workerdCpu(pid) : 0);
   const code = `L${Date.now().toString(36).slice(-4).toUpperCase()}${index}`.slice(0, 6).padEnd(6, "0");
-  const host = await connectTo(code, await signToken(secret, { code, role: "host" }));
+  const host = await connectTo(code, await signToken(secret, { code, sid: crypto.randomUUID(), role: "host" }));
 
   const cpuStart = cpu();
   const t0 = performance.now();
@@ -194,10 +196,13 @@ async function playGame(index, report, pid) {
 
     for (const [i, p] of players.entries()) leaks += p.client.raw.slice(marks[i]).filter((raw) => FORBIDDEN.test(raw)).length;
 
+    const cpuBeforeReveal = cpu();
     const tReveal = performance.now();
     host.send({ type: "reveal" });
     const reveals = await Promise.all(players.map((p) => p.client.waitFor((m) => m.type === "reveal" && m.questionId === q.id)));
     report.reveal.push(...reveals.map((m) => m.at - tReveal));
+    report.cpuReveal += cpu() - cpuBeforeReveal;
+    report.reveals += 1;
 
     if (qi === 0) {
       // Reconnexion de 10 joueurs : instantané complet attendu, réponse déjà comptée.
@@ -231,7 +236,7 @@ async function playGame(index, report, pid) {
 }
 
 const server = await startServer();
-const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0 };
+const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuReveal: 0, reveals: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0 };
 let exitCode = 0;
 try {
   // Les parties successives chauffent le Worker : la première est comptée à part dans la sortie.
@@ -253,6 +258,8 @@ try {
     console.log(`Durée totale : ${(wallMs / 1000).toFixed(1)} s ; CPU workerd total : ${ms(cpuAfter - cpuBefore)} ms`);
     console.log(`CPU inscriptions + connexions (${PARTIES * JOUEURS} HTTP + WebSocket) : ${ms(report.cpuJoin)} ms, soit ${(report.cpuJoin * 1000 / (PARTIES * JOUEURS)).toFixed(2)} ms par joueur`);
     console.log(`CPU déroulé (${report.incomingPlay} messages entrants, diffusions, reprises incluses) : ${ms(report.cpuPlay)} ms, soit ${(report.cpuPlay * 1000 / report.incomingPlay).toFixed(2)} ms par message entrant`);
+    // Mesure par `ps` (centième de seconde) autour d'une révélation seule : majorant, appel à ps compris dans la fenêtre.
+    console.log(`CPU d'une révélation à ${JOUEURS} sockets : ${(report.cpuReveal * 1000 / report.reveals).toFixed(0)} ms en moyenne sur ${report.reveals} révélations`);
     if (report.hibernationPauseMs) console.log(`CPU pendant la pause d'inactivité de ${report.hibernationPauseMs / 1000} s (sockets ouverts) : ${ms(report.cpuPause)} ms`);
   }
   if (report.leaks > 0) throw new Error("correction détectée avant révélation");

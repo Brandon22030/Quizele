@@ -1,5 +1,8 @@
-// Seul fichier autorisé à lire l'heure locale côté navigateur (lint:jetons).
-// Le chrono se déduit de startedAt et serverNow reçus du Durable Object, jamais de l'heure locale seule.
+// Seul fichier autorisé à appeler Date.now() côté navigateur (lint:jetons) : tout autre module du client
+// lit l'heure locale par localNow(). Le chrono se déduit de startedAt et serverNow reçus du Durable Object,
+// jamais de l'heure locale seule.
+
+export const localNow = (): number => Date.now();
 
 export interface ClockSample {
   startedAt: number;
@@ -26,15 +29,15 @@ export interface QuestionClock {
   checkExpired(): boolean;
 }
 
-export function createQuestionClock(sample: ClockSample, localNow: () => number = Date.now): QuestionClock {
+export function createQuestionClock(sample: ClockSample, now: () => number = localNow): QuestionClock {
   // Dérive figée à la réception du message : une horloge locale qui saute ensuite ne décale pas le chrono.
-  const drift = computeDrift(localNow(), sample.serverNow);
+  const drift = computeDrift(now(), sample.serverNow);
   let expired = false;
   return {
-    remaining: () => remainingMs(localNow(), sample.startedAt, drift, sample.durationMs),
-    elapsed: () => elapsedMs(localNow(), sample.startedAt, drift, sample.durationMs),
+    remaining: () => remainingMs(now(), sample.startedAt, drift, sample.durationMs),
+    elapsed: () => elapsedMs(now(), sample.startedAt, drift, sample.durationMs),
     checkExpired() {
-      if (expired || elapsedMs(localNow(), sample.startedAt, drift, sample.durationMs) < sample.durationMs) return false;
+      if (expired || elapsedMs(now(), sample.startedAt, drift, sample.durationMs) < sample.durationMs) return false;
       expired = true;
       return true;
     },

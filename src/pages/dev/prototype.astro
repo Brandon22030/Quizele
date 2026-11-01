@@ -15,7 +15,12 @@ const role = Astro.url.searchParams.get("role") === "host" ? "host" : "player";
 if (!GAME_CODE_PATTERN.test(code)) {
   return new Response("Code de partie invalide", { status: 400 });
 }
-const hostToken = role === "host" ? await signToken(env.PLAYER_TOKEN_SECRET ?? "", { code, role: "host" }) : undefined;
+const secret = env.PLAYER_TOKEN_SECRET;
+if (!secret) {
+  throw new Error("PLAYER_TOKEN_SECRET manquant : impossible de signer le jeton hôte de la démo");
+}
+// Un nouveau sid par chargement de la page hôte : chaque ouverture crée une partie neuve sous ce code.
+const hostToken = role === "host" ? await signToken(secret, { code, sid: crypto.randomUUID(), role: "host" }) : undefined;
 ---
 
 <Base title="Prototype temps réel">

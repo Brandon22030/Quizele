@@ -55,3 +55,27 @@ describe("session-state", () => {
     expect(state.connection).toBe("reconnecting");
   });
 });
+
+describe("session-state : corrections de revue", () => {
+  it("ignore un compteur de réponses d'une autre question", () => {
+    let state = apply(initialSessionState, { type: "question", ...question });
+    state = apply(state, { type: "answer_count", questionId: "q1", count: 2, total: 3 });
+    const after = apply(state, { type: "answer_count", questionId: "q0", count: 9, total: 9 });
+    expect(after.answeredCount).toBe(2);
+  });
+
+  it("remet l'erreur à zéro sur answer_ack, reveal et finished", () => {
+    const failed = apply(initialSessionState, { type: "error", code: "wrong_phase" });
+    expect(failed.error).toBe("wrong_phase");
+    expect(apply(failed, { type: "answer_ack", questionId: "q1", duplicate: false, late: false }).error).toBeNull();
+    expect(apply(failed, { type: "reveal", questionId: "q1" }).error).toBeNull();
+    expect(apply(failed, { type: "finished", ranking: [] }).error).toBeNull();
+  });
+
+  it("player_left retire le joueur et met à jour le compte", () => {
+    let state = apply(initialSessionState, { type: "player_joined", player: { id: "p1", pseudo: "Awa" }, count: 1 });
+    state = apply(state, { type: "player_left", playerId: "p1", count: 0 });
+    expect(state.players).toEqual([]);
+    expect(state.playerCount).toBe(0);
+  });
+});

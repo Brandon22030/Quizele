@@ -14,10 +14,39 @@ export const MAX_OPTIONS = 8;
 export const ANSWER_TOLERANCE_MS = 2000;
 export const PLAYER_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
+// Sous-protocole WebSocket : le jeton voyage dans Sec-WebSocket-Protocol et non dans l'URL (journaux, historique).
+export const WS_SUBPROTOCOL = "quizdeszeles.v1";
+export const MAX_MESSAGE_BYTES = 2048;
+
+const PSEUDO_RAW_MAX = 200;
+const graphemes = new Intl.Segmenter("fr", { granularity: "grapheme" });
+// Tout caractère de catégorie C (contrôle, zéro largeur, surcharge de sens d'écriture...) sauf U+200D,
+// nécessaire aux emojis composés (famille, drapeaux).
+const FORBIDDEN_PSEUDO_CHARS = /[^\P{C}\u200D]/u;
+
+export function normalizePseudo(raw: string): string {
+  return raw.normalize("NFKC").trim();
+}
+
+// Clé d'unicité : deux pseudos qui ne diffèrent que par la casse sont le même joueur.
+export function pseudoKey(pseudo: string): string {
+  return normalizePseudo(pseudo).toLocaleLowerCase("fr");
+}
+
 export const pseudoSchema = z
   .string()
-  .transform((valeur) => valeur.trim())
-  .pipe(z.string().min(1).max(PSEUDO_MAX_LENGTH));
+  .max(PSEUDO_RAW_MAX)
+  .transform(normalizePseudo)
+  .pipe(
+    z
+      .string()
+      .refine((valeur) => !FORBIDDEN_PSEUDO_CHARS.test(valeur))
+      .refine((valeur) => {
+        let count = 0;
+        for (const _ of graphemes.segment(valeur)) count += 1;
+        return count >= 1 && count <= PSEUDO_MAX_LENGTH;
+      }),
+  );
 
 export const joinRequestSchema = z.object({ pseudo: pseudoSchema });
 export type JoinRequest = z.infer<typeof joinRequestSchema>;
@@ -33,6 +62,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("start") }),
   z.strictObject({ type: z.literal("reveal") }),
   z.strictObject({ type: z.literal("next") }),
+  z.strictObject({ type: z.literal("kick"), playerId: z.string().min(1).max(64) }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
@@ -68,7 +98,8 @@ export const revealPayloadSchema = z.object({
   correctOptionIds: z.array(z.string()).optional(),
   explanation: z.string().optional(),
   reference: z.string().optional(),
-  ranking: z.array(rankingEntrySchema),
+  // Absent pour les joueurs et l'écran quand la correction est masquée : le classement trahirait la réponse.
+  ranking: z.array(rankingEntrySchema).optional(),
   you: z.object({ wasCorrect: z.boolean(), score: z.number().int(), rank: z.number().int() }).optional(),
 });
 export type RevealPayload = z.infer<typeof revealPayloadSchema>;
@@ -90,7 +121,8 @@ export const snapshotSchema = z.object({
     .object({
       playerId: z.string(),
       pseudo: z.string(),
-      score: z.number().int(),
+      // Absent quand la correction est masquée et que la partie n'est pas finie.
+      score: z.number().int().optional(),
       answered: z.boolean(),
       answeredOptionIds: z.array(z.string()).optional(),
     })
@@ -106,6 +138,7 @@ export const errorCodeSchema = z.enum([
   "wrong_phase",
   "unknown_question",
   "invalid_options",
+  "unknown_player",
 ]);
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
@@ -121,6 +154,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("answer_count"), questionId: z.string(), count: z.number().int(), total: z.number().int() }),
   z.object({ type: z.literal("player_joined"), player: playerInfoSchema, count: z.number().int() }),
+  z.object({ type: z.literal("player_left"), playerId: z.string(), count: z.number().int() }),
   z.object({ type: z.literal("error"), code: errorCodeSchema }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

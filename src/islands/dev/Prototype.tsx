@@ -9,7 +9,7 @@ interface Props {
 }
 
 const bouton =
-  "min-h-11 rounded-md border-trait border-vert-foret bg-creme px-4 font-affiche text-base text-vert-foret shadow-relief-sm";
+  "min-h-11 rounded-md border-trait border-vert-foret bg-creme px-4 font-affiche text-base text-vert-foret shadow-relief-sm focus-visible:outline-vert-foret";
 
 const libelleConnexion = {
   connecting: "Connexion en cours...",
