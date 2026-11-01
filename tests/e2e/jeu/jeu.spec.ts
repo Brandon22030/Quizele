@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-const URL = "/dev/styleguide-jeu";
+// Serveur de développement partagé avec tests/e2e/ui (voir playwright.config.ts) : la planche n'existe qu'en DEV.
+const URL = "http://localhost:4323/dev/styleguide-jeu";
 
 async function ouvrir(page: Page) {
   await page.goto(URL);
@@ -284,3 +285,74 @@ for (const reduced of [false, true]) {
     expect(debord).toBeLessThanOrEqual(0);
   });
 }
+
+test("chrono en direct : une seule expiration par horloge, relancer repart de 12 s", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(URL);
+  await hydrate(page);
+  const zone = page.locator("#chrono");
+  const live = zone.getByRole("timer").nth(4);
+  const relancer = zone.getByRole("button", { name: "Relancer le chrono" });
+  await expect(relancer).toHaveCount(0);
+  await page.clock.runFor(13_000);
+  await expect(live).toHaveAttribute("aria-label", "Temps écoulé");
+  await expect(relancer).toHaveCount(1);
+  // Le temps continue de passer : aucun second déclenchement ne doit faire réapparaître ou dupliquer quoi que ce soit.
+  await page.clock.runFor(30_000);
+  await expect(relancer).toHaveCount(1);
+  await relancer.click();
+  await expect(relancer).toHaveCount(0);
+  await expect(live).toHaveAttribute("aria-label", /secondes? restantes?/);
+  await page.clock.runFor(13_000);
+  await expect(live).toHaveAttribute("aria-label", "Temps écoulé");
+  await expect(relancer).toHaveCount(1);
+});
+
+test("correction masquée : aucune pilule de score dans l'en-tête", async ({ page }) => {
+  await ouvrir(page);
+  const zone = page.locator("#masquee");
+  await expect(zone.getByText(/Question 3 sur 10/)).toBeVisible();
+  await expect(zone.getByText(/juste/i)).toHaveCount(0);
+  await expect(zone.getByText("Ton score")).toHaveCount(0);
+  // Contrôle : l'écran de question, lui, affiche bien le score.
+  await expect(page.locator("#ecran-d").getByText("2 justes")).toHaveCount(1);
+});
+
+test("statuts : la région status est présente dès le départ et reçoit le texte sans être recréée", async ({ page }) => {
+  await ouvrir(page);
+  const regions = page.locator("#statuts [role=status]");
+  await expect(regions).toHaveCount(5);
+  await expect(regions.nth(0)).toContainText("Connexion…");
+  await expect(regions.nth(1)).toContainText("Connexion perdue");
+  // Statuts terminaux : région vide, l'alerte est à part.
+  for (const i of [2, 3, 4]) await expect(regions.nth(i)).toHaveText("");
+});
+
+test("clavier Android : un change vide efface la case, sans keydown Backspace", async ({ page }) => {
+  await ouvrir(page);
+  const cases = page.locator("#code").getByRole("textbox");
+  await cases.nth(0).evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.setData("text", "K7Q2M3");
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(cases.nth(1)).toHaveValue("7");
+  await cases.nth(1).fill("");
+  const v = async () => (await cases.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).join("");
+  await expect.poll(v).toBe("KQ2M3");
+  await cases.nth(4).fill("");
+  await expect.poll(v).toBe("KQ2M");
+});
+
+test("alphabet : saisie clavier de 0, O, 1, I ignorée", async ({ page }) => {
+  await ouvrir(page);
+  const cases = page.locator("#code").getByRole("textbox");
+  const v = async () => (await cases.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).join("");
+  // Le code de la planche est prérempli : on le vide d'abord.
+  await cases.nth(4).focus();
+  for (let i = 0; i < 6; i++) await page.keyboard.press("Backspace");
+  await expect.poll(v).toBe("");
+  await cases.nth(0).focus();
+  await page.keyboard.type("K0O1I7");
+  await expect.poll(v).toBe("K7");
+});
