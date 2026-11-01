@@ -1,0 +1,15 @@
+---
+import Base from "../../layouts/Base.astro";
+import StyleguideJeu from "../../components/jeu/demo/StyleguideJeu";
+
+// Planche des composants de jeu : n'existe qu'en développement.
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404 });
+}
+---
+
+<Base title="Styleguide du jeu">
+  <main>
+    <StyleguideJeu client:load />
+  </main>
+</Base>
