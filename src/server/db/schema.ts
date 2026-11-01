@@ -129,6 +129,14 @@ export const mailQuota = sqliteTable("mail_quota", {
   count: integer("count").notNull(),
 });
 
+// Compteurs génériques à fenêtre fixe (lancements de parties par heure et par animateur), hors de rate_limit que
+// Better Auth purge après 60 s, et de mail_quota qui appartient au plafond d'envoi de courriels.
+export const quota = sqliteTable("quota", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const quizzes = sqliteTable(
   "quizzes",
   {

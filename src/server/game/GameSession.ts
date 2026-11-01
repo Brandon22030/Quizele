@@ -412,12 +412,15 @@ export class GameSession extends DurableObject<Env> {
     this.sendToPlayer(state.playerId, { type: "reveal", ...this.ownPaceReveal(meta, question, state.playerId) });
   }
 
-  // Un joueur sans socket ouvert à l'échéance de sa question (onglet fermé, ou jamais connecté) est marqué terminé : il
-  // garde ses points, mais ne bloque plus la fin automatique de la partie.
+  // À l'échéance d'une question on ne teste jamais le socket : iOS et Android ferment le WebSocket d'un téléphone
+  // verrouillé, et ce joueur doit retrouver sa partie. Seul le dépassement de l'attente après correction, sans socket
+  // ouvert (onglet fermé, ou jamais connecté), marque le joueur terminé : il garde ses points mais ne bloque plus la
+  // fin automatique.
   private async expireOwnPace(meta: MetaState, playerId: string): Promise<void> {
     const state = this.store.playerState(playerId);
     const question = state ? this.questionOf(meta, playerId, state.idx) : null;
     if (!state || !question) return;
+    if (state.phase === "question") return this.revealOwnPace(meta, state, question);
     if (this.ctx.getWebSockets(`p:${playerId}`).length === 0) {
       this.store.savePlayerState({ ...state, phase: "done" }, null);
       const finished = this.store.doneCount();
@@ -425,12 +428,8 @@ export class GameSession extends DurableObject<Env> {
       this.broadcast(["host", "screen"], () => ({ type: "progress", finished, total }));
       return;
     }
-    if (state.phase === "revealed") {
-      // Joueur encore connecté mais inactif : on revérifie plus tard, il peut simplement lire sa correction.
-      this.store.savePlayerState(state, Date.now() + REVEALED_IDLE_MS);
-      return;
-    }
-    await this.revealOwnPace(meta, state, question);
+    // Joueur encore connecté mais inactif : on revérifie plus tard, il peut simplement lire sa correction.
+    this.store.savePlayerState(state, Date.now() + REVEALED_IDLE_MS);
   }
 
   private ownPaceReveal(meta: MetaState, question: StoredQuestion, playerId: string): RevealPayload {
