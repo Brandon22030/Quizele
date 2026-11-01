@@ -1,5 +1,5 @@
 // Test de charge local : 50 joueurs simulés contre `wrangler dev` (bundle dist/server).
-// Usage : npm run build && npm run test:charge   (options : --parties=N, --joueurs=N, --sans-pause)
+// Usage : npm run build && npm run test:charge   (options : --parties=N, --joueurs=N, --lot=N, --sans-pause)
 // Aucun appel distant : le serveur écoute sur localhost et le secret est la valeur factice de wrangler.jsonc.
 import { spawn, execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
@@ -8,6 +8,8 @@ import { once } from "node:events";
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, "").split("=")).map(([k, v]) => [k, v ?? true]));
 const PARTIES = Number(args.parties ?? 3);
 const JOUEURS = Number(args.joueurs ?? 50);
+// Le proxy local de wrangler dev répond 500 quand quelques centaines de POST arrivent ensemble : on inscrit par lots.
+const LOT = Number(args.lot ?? 50);
 const PAUSE_HIBERNATION_MS = args["sans-pause"] ? 0 : 12_000;
 const PORT = Number(process.env.CHARGE_PORT ?? 4330);
 const BASE = process.env.CHARGE_URL ?? `http://localhost:${PORT}`;
@@ -157,14 +159,24 @@ async function playGame(index, report, pid) {
   const cpuStart = cpu();
   const t0 = performance.now();
   const players = [];
-  await Promise.all(
-    Array.from({ length: JOUEURS }, async (_, i) => {
-      const res = await fetch(`${BASE}/api/parties/${code}/joueurs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pseudo: `J${i}` }) });
-      if (res.status !== 201) throw new Error(`inscription refusée (${res.status})`);
-      const { playerId, token } = await res.json();
-      players[i] = { client: await connectTo(code, token), playerId, token };
-    }),
-  );
+  for (let start = 0; start < JOUEURS; start += LOT) {
+    await Promise.all(
+      Array.from({ length: Math.min(LOT, JOUEURS - start) }, async (_, k) => {
+        const i = start + k;
+        const post = () =>
+          fetch(`${BASE}/api/parties/${code}/joueurs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pseudo: `J${i}` }) });
+        let res = await post();
+        // Une seule nouvelle tentative, comptée et affichée : un second 500 fait échouer le test.
+        if (res.status === 500) {
+          report.retries500 += 1;
+          res = await post();
+        }
+        if (res.status !== 201) throw new Error(`inscription refusée (${res.status})`);
+        const { playerId, token } = await res.json();
+        players[i] = { client: await connectTo(code, token), playerId, token };
+      }),
+    );
+  }
   report.joinMs.push(performance.now() - t0);
   const cpuJoined = cpu();
   report.cpuJoin += cpuJoined - cpuStart;
@@ -236,7 +248,7 @@ async function playGame(index, report, pid) {
 }
 
 const server = await startServer();
-const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuReveal: 0, reveals: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0 };
+const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuReveal: 0, reveals: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0, retries500: 0 };
 let exitCode = 0;
 try {
   // Les parties successives chauffent le Worker : la première est comptée à part dans la sortie.
@@ -248,7 +260,8 @@ try {
   const cpuAfter = server.pid ? workerdCpu(server.pid) : null;
 
   console.log(`Parties : ${PARTIES} x ${JOUEURS} joueurs, ${QUIZ.length} questions, ${report.answers} réponses comptées, ${report.reconnected} reprises, fuites de correction : ${report.leaks}`);
-  console.log(`Inscription + connexion de ${JOUEURS} joueurs : ${fmt(stats(report.joinMs))}`);
+  console.log(`Inscription + connexion de ${JOUEURS} joueurs (lots de ${LOT}, réessais inclus) : ${fmt(stats(report.joinMs))}`);
+  console.log(`Inscriptions réessayées après un 500 du proxy local : ${report.retries500} sur ${PARTIES * JOUEURS}`);
   console.log(`Diffusion de la question (hôte -> ${JOUEURS} joueurs) : ${fmt(stats(report.question))}`);
   console.log(`Accusé de réception de ${JOUEURS} réponses simultanées : ${fmt(stats(report.ack))}`);
   console.log(`Compteur hôte à ${JOUEURS} réponses : ${fmt(stats(report.count))}`);
