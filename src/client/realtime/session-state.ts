@@ -31,6 +31,7 @@ export interface SessionState {
 }
 
 export type SessionAction =
+  | { type: "reset" }
   | { type: "connection"; status: ConnectionStatus }
   | { type: "message"; message: ServerMessage; clock: QuestionClock | null };
 
@@ -54,6 +55,8 @@ export const initialSessionState: SessionState = {
 };
 
 export function sessionReducer(state: SessionState, action: SessionAction): SessionState {
+  // Seul moyen de sortir d'un statut terminal : changer de partie.
+  if (action.type === "reset") return initialSessionState;
   if (action.type === "connection") {
     // Une fin définitive (exclusion, partie terminée, lien invalide) ne se défait pas.
     if (isTerminalStatus(state.connection)) return state;

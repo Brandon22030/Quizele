@@ -27,6 +27,8 @@ export function useGameSession({ code, getToken, baseUrl }: UseGameSessionOption
   getTokenRef.current = getToken;
 
   useEffect(() => {
+    // Sans cette remise à zéro, le statut terminal d'une partie précédente survivrait au changement de code.
+    dispatch({ type: "reset" });
     const socket = new GameSocket({
       code,
       baseUrl,

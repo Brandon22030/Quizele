@@ -31,6 +31,9 @@ export interface GameSocketOptions {
 const PING_INTERVAL_MS = 20_000;
 // Au-delà, la connexion est considérée comme zombie (réseau mobile coupé sans événement close).
 const SILENCE_LIMIT_MS = 50_000;
+// Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs en
+// ligne sans jamais avoir ouvert le socket (environ 12 s avec le délai croissant), on abandonne.
+export const MAX_FAILED_ATTEMPTS = 8;
 
 export class GameSocket {
   private readonly socket: ReconnectingWebSocket;
@@ -38,6 +41,7 @@ export class GameSocket {
   private lastActivity = localNow();
   private opened = false;
   private stopped = false;
+  private failedAttempts = 0;
 
   constructor(private readonly options: GameSocketOptions) {
     const base = options.baseUrl ?? `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
@@ -66,6 +70,12 @@ export class GameSocket {
       if (terminal) {
         this.close();
         options.onStatus(terminal);
+        return;
+      }
+      // Hors ligne, l'échec ne dit rien du jeton : seul un échec avec réseau compte.
+      if (!this.opened && globalThis.navigator?.onLine !== false && ++this.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+        this.close();
+        options.onStatus("rejected");
         return;
       }
       options.onStatus(this.opened ? "reconnecting" : "connecting");

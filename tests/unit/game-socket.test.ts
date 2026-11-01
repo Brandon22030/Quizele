@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GameSocket, terminalStatusFor, type ConnectionStatus } from "../../src/client/realtime/game-socket";
+import { GameSocket, MAX_FAILED_ATTEMPTS, terminalStatusFor, type ConnectionStatus } from "../../src/client/realtime/game-socket";
 
 class FakeWebSocket extends EventTarget {
   static instances: FakeWebSocket[] = [];
@@ -35,6 +35,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("document", { addEventListener: () => {}, removeEventListener: () => {}, visibilityState: "visible" });
   vi.stubGlobal("window", { addEventListener: () => {}, removeEventListener: () => {} });
+  vi.stubGlobal("navigator", { onLine: true });
   FakeWebSocket.instances = [];
   statuses = [];
   socket = new GameSocket({
@@ -89,5 +90,41 @@ describe("GameSocket : fermetures définitives", () => {
 
   it("terminalStatusFor ne traite comme définitifs que les codes applicatifs 4001 à 4004", () => {
     expect([1000, 1001, 1006, 1008, 1009, 4000, 4005].map(terminalStatusFor)).toEqual([null, null, null, null, null, null, null]);
+  });
+});
+
+describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
+  // Chaque tentative échoue avant ouverture, comme un 401 vu par le navigateur (1006).
+  async function failNextAttempt(): Promise<void> {
+    const before = FakeWebSocket.instances.length;
+    await vi.waitFor(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+      expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
+    });
+    FakeWebSocket.instances.at(-1)!.serverClose(1006);
+  }
+
+  it(`passe à "rejected" après ${MAX_FAILED_ATTEMPTS} échecs sans jamais avoir ouvert, puis ne retente plus`, async () => {
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS - 1; i += 1) await failNextAttempt();
+    expect(statuses.at(-1)).toBe("connecting");
+    await failNextAttempt();
+    expect(statuses.at(-1)).toBe("rejected");
+    const attempts = FakeWebSocket.instances.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(FakeWebSocket.instances).toHaveLength(attempts);
+  });
+
+  it("hors ligne, les échecs ne comptent pas", async () => {
+    vi.stubGlobal("navigator", { onLine: false });
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS + 2; i += 1) await failNextAttempt();
+    expect(statuses).not.toContain("rejected");
+  });
+
+  it("une fois le socket ouvert, les coupures suivantes ne mènent jamais à \"rejected\"", async () => {
+    await firstSocket();
+    FakeWebSocket.instances[0]!.serverClose(1006);
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS + 2; i += 1) await failNextAttempt();
+    expect(statuses).not.toContain("rejected");
+    expect(statuses.at(-1)).toBe("reconnecting");
   });
 });

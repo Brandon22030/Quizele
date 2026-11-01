@@ -88,3 +88,18 @@ describe("session-state : statuts terminaux", () => {
     expect(state.connection).toBe(status);
   });
 });
+
+describe("session-state : changement de partie", () => {
+  it("un statut terminal résiste aux changements de connexion mais pas à la remise à zéro d'un nouveau code", () => {
+    let state = sessionReducer(initialSessionState, { type: "connection", status: "open" });
+    state = apply(state, { type: "finished", ranking: [] });
+    state = sessionReducer(state, { type: "connection", status: "ended" });
+    expect(sessionReducer(state, { type: "connection", status: "open" }).connection).toBe("ended");
+    // useGameSession envoie "reset" à chaque nouveau code avant d'ouvrir le socket de la nouvelle partie.
+    state = sessionReducer(state, { type: "reset" });
+    expect(state).toEqual(initialSessionState);
+    state = sessionReducer(state, { type: "connection", status: "open" });
+    expect(state.connection).toBe("open");
+    expect(state.phase).toBeNull();
+  });
+});
