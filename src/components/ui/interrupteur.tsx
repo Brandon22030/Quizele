@@ -17,7 +17,7 @@ export function Interrupteur({ label, description, className, ...rest }: Interru
       <span className="flex-1">
         <span className="block font-bold">{label}</span>
         {description ? (
-          <span id={descriptionId} className="block text-sm font-semibold text-vert-mousse in-data-foret:text-creme">
+          <span id={descriptionId} className="block text-sm font-semibold text-vert-mousse foret:text-creme">
             {description}
           </span>
         ) : null}
@@ -29,7 +29,7 @@ export function Interrupteur({ label, description, className, ...rest }: Interru
           "flex h-10 w-16 shrink-0 items-center rounded-pill border-trait border-vert-foret bg-creme px-1",
           "group-has-checked:justify-end group-has-checked:bg-vert-eclat",
           "peer-focus-visible:outline-trait peer-focus-visible:outline-offset-2 peer-focus-visible:outline-vert-foret",
-          "in-data-foret:peer-focus-visible:outline-jaune-soleil",
+          "foret:peer-focus-visible:outline-jaune-soleil",
           "group-has-disabled:cursor-not-allowed group-has-disabled:border-dashed",
         )}
       >

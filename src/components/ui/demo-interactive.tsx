@@ -14,7 +14,7 @@ import { Repli } from "./repli";
 import { Toast, ZoneToasts } from "./toast";
 
 interface DemoInteractiveProps {
-  /** Sur fond forêt, les dialogues sont omis : leur papier crème garde son propre anneau de focus. */
+  /** Sur fond forêt : même démo, pour vérifier que les dialogues crème gardent leur anneau vert forêt. */
   foret?: boolean;
 }
 
@@ -31,16 +31,12 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap gap-3">
-        {foret ? null : (
-          <>
-            <Button variante="creme" taille="petit" onClick={() => setFeuille(true)}>
-              Ouvrir la feuille
-            </Button>
-            <Button variante="creme" taille="petit" onClick={() => setModal(true)}>
-              Ouvrir la modale
-            </Button>
-          </>
-        )}
+        <Button variante="creme" taille="petit" onClick={() => setFeuille(true)}>
+          Ouvrir la feuille
+        </Button>
+        <Button variante="creme" taille="petit" onClick={() => setModal(true)}>
+          Ouvrir la modale
+        </Button>
         <Button variante="soleil" taille="petit" onClick={() => setToast(true)}>
           Afficher un message
         </Button>
@@ -108,28 +104,24 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
         Tes modifications sont gardées sur ce téléphone et partiront dès que le réseau revient.
       </EtatErreur>
 
-      {foret ? null : (
-        <>
-          <Feuille open={feuille} onClose={() => setFeuille(false)} titre="Tes questions">
-            <p className="text-base font-semibold">Réorganise tes questions avec les flèches ou en les glissant.</p>
-            <Button taille="petit" onClick={() => setFeuille(false)}>
-              Terminé
-            </Button>
-          </Feuille>
-          <Modal open={modal} onClose={() => setModal(false)} titre="Supprimer ce quiz ?">
-            <p className="text-base font-semibold">Cette action est définitive.</p>
-            <div className="flex gap-3">
-              <Button variante="creme" taille="petit" onClick={() => setModal(false)}>
-                Annuler
-              </Button>
-              <Button taille="petit" onClick={() => setModal(false)}>
-                <Trash2 aria-hidden="true" className="size-4" />
-                Supprimer
-              </Button>
-            </div>
-          </Modal>
-        </>
-      )}
+      <Feuille open={feuille} onClose={() => setFeuille(false)} titre="Tes questions">
+        <p className="text-base font-semibold">Réorganise tes questions avec les flèches ou en les glissant.</p>
+        <Button taille="petit" onClick={() => setFeuille(false)}>
+          Terminé
+        </Button>
+      </Feuille>
+      <Modal open={modal} onClose={() => setModal(false)} titre="Supprimer ce quiz ?">
+        <p className="text-base font-semibold">Cette action est définitive.</p>
+        <div className="flex gap-3">
+          <Button variante="creme" taille="petit" onClick={() => setModal(false)}>
+            Annuler
+          </Button>
+          <Button taille="petit" onClick={() => setModal(false)}>
+            <Trash2 aria-hidden="true" className="size-4" />
+            Supprimer
+          </Button>
+        </div>
+      </Modal>
 
       {toast ? (
         <ZoneToasts>

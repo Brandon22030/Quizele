@@ -57,7 +57,7 @@ export function Onglets({ onglets, label, valeur, defaultValeur, onChange, child
       <div
         role="tablist"
         aria-label={label}
-        className="flex gap-1 rounded-pill border-trait border-vert-foret bg-creme p-1 in-data-foret:border-vert-nuit"
+        className="flex gap-1 rounded-pill border-trait border-vert-foret bg-creme p-1 foret:border-vert-nuit"
       >
         {onglets.map((onglet, index) => {
           const selectionne = onglet.id === actif;
@@ -79,7 +79,7 @@ export function Onglets({ onglets, label, valeur, defaultValeur, onChange, child
               className={cn(
                 "grid min-h-11 flex-1 place-items-center rounded-pill px-3 font-extrabold",
                 selectionne ? "bg-vert-foret text-jaune-soleil" : "text-vert-foret",
-                "in-data-foret:focus-visible:outline-jaune-soleil",
+                "foret:focus-visible:outline-jaune-soleil",
               )}
             >
               {onglet.label}

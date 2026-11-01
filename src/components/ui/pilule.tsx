@@ -5,8 +5,8 @@ export type PiluleVariant = "foret" | "soleil" | "creme";
 
 const variants: Record<PiluleVariant, string> = {
   foret: "bg-vert-foret text-creme",
-  soleil: "bg-jaune-soleil text-vert-foret in-data-foret:border-vert-nuit",
-  creme: "bg-creme text-vert-foret in-data-foret:border-vert-nuit",
+  soleil: "bg-jaune-soleil text-vert-foret foret:border-vert-nuit",
+  creme: "bg-creme text-vert-foret foret:border-vert-nuit",
 };
 
 interface PiluleProps extends HTMLAttributes<HTMLSpanElement> {

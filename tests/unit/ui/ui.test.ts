@@ -188,3 +188,14 @@ describe("OptionMode, Repli, Squelette, EtatErreur, Toast, MenuCompte", () => {
     expect(html).toContain("Se déconnecter");
   });
 });
+
+describe("thème forêt", () => {
+  it("les composants utilisent la variante foret (data-theme) et plus data-foret", () => {
+    const html = rendre(h(Button, { variante: "soleil" }, "x"));
+    expect(html).toContain("foret:focus-visible:outline-jaune-soleil");
+    expect(html).not.toContain("data-foret");
+  });
+  it("les dialogues marquent leur papier crème pour interrompre le thème forêt", () => {
+    expect(rendre(h(Modal, { open: false, onClose: () => {}, titre: "t" }, "x"))).toContain("data-papier");
+  });
+});

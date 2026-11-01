@@ -9,12 +9,12 @@ const base =
   "inline-flex items-center justify-center gap-2 border-trait border-vert-foret font-affiche tracking-wide select-none " +
   "transition-transform hover:-translate-y-px hover:translate-x-px " +
   "active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui " +
-  "in-data-foret:focus-visible:outline-jaune-soleil";
+  "foret:focus-visible:outline-jaune-soleil";
 
 const variants: Record<ButtonVariant, string> = {
   primaire: "bg-vert-foret text-jaune-soleil shadow-relief-vif",
-  soleil: "bg-jaune-soleil text-vert-foret shadow-relief in-data-foret:border-vert-nuit",
-  creme: "bg-creme text-vert-foret shadow-relief in-data-foret:border-vert-nuit",
+  soleil: "bg-jaune-soleil text-vert-foret shadow-relief foret:border-vert-nuit",
+  creme: "bg-creme text-vert-foret shadow-relief foret:border-vert-nuit",
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -25,7 +25,7 @@ const sizes: Record<ButtonSize, string> = {
 // Un état désactivé ne baisse pas l'opacité du texte (contraste AA) : contour pointillé et relief retiré.
 const disabledClasses =
   "cursor-not-allowed border-dashed bg-transparent text-vert-mousse shadow-none hover:translate-x-0 hover:translate-y-0 " +
-  "active:translate-x-0 active:translate-y-0 active:shadow-none in-data-foret:text-creme";
+  "active:translate-x-0 active:translate-y-0 active:shadow-none foret:text-creme";
 
 interface CommonProps {
   variante?: ButtonVariant;
@@ -112,7 +112,7 @@ export function IconButton({ label, icone, variante = "creme", danger = false, c
       className={cn(
         "grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret shadow-relief-sm",
         "transition-transform active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui",
-        "in-data-foret:focus-visible:outline-jaune-soleil in-data-foret:border-vert-nuit",
+        "foret:focus-visible:outline-jaune-soleil foret:border-vert-nuit",
         variante === "soleil" ? "bg-jaune-soleil" : "bg-creme",
         danger ? "text-piment" : "text-vert-foret",
         "disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-vert-mousse disabled:shadow-none",

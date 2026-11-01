@@ -4,7 +4,7 @@ import { cn } from "./cn";
 const champ =
   "w-full rounded-md border-trait bg-creme px-4 text-lg font-bold text-vert-foret placeholder:font-semibold placeholder:text-vert-mousse " +
   "disabled:cursor-not-allowed disabled:border-dashed disabled:text-vert-mousse " +
-  "in-data-foret:focus-visible:outline-jaune-soleil";
+  "foret:focus-visible:outline-jaune-soleil";
 
 interface InvalidProps {
   invalide?: boolean;

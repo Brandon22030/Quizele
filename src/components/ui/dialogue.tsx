@@ -30,6 +30,7 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
     <dialog
       ref={ref}
       aria-labelledby={titreId}
+      data-papier=""
       // Échap : on laisse l'état parent décider (le dialogue se ferme via la prop open, jamais en douce).
       onCancel={(e) => {
         e.preventDefault();

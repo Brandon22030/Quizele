@@ -16,7 +16,7 @@ export function OptionMode({ titre, description, className, ...rest }: OptionMod
           "flex items-start gap-3 rounded-md border-trait border-vert-foret bg-creme p-4 text-vert-foret",
           "peer-checked:bg-vert-foret peer-checked:text-creme peer-checked:shadow-relief-vif",
           "peer-focus-visible:outline-trait peer-focus-visible:outline-offset-2 peer-focus-visible:outline-vert-foret",
-          "in-data-foret:peer-focus-visible:outline-jaune-soleil",
+          "foret:peer-focus-visible:outline-jaune-soleil",
           "peer-disabled:cursor-not-allowed peer-disabled:border-dashed",
         )}
       >

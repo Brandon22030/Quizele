@@ -125,7 +125,7 @@ export function DemoStatiqueJaune() {
   );
 }
 
-/** Variantes statiques sur fond forêt (le conteneur porte data-foret). */
+/** Variantes statiques sur fond forêt (le conteneur porte data-theme="foret"). */
 export function DemoStatiqueForet() {
   return (
     <div className="flex flex-col gap-6">

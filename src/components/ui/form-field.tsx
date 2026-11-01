@@ -30,7 +30,7 @@ export function FormField({ label, aide, erreur, className, children }: FormFiel
       </label>
       {children({ id, "aria-describedby": describedby, "aria-invalid": erreur ? true : undefined })}
       {aide ? (
-        <p id={aideId} className="text-sm font-semibold text-vert-mousse in-data-foret:text-creme">
+        <p id={aideId} className="text-sm font-semibold text-vert-mousse foret:text-creme">
           {aide}
         </p>
       ) : null}

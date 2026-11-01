@@ -17,14 +17,14 @@ export function Repli({ titre, icone, defaultOpen = false, children, className }
       open={defaultOpen}
       className={cn(
         "group rounded-md border-trait border-dashed border-vert-foret open:border-solid open:bg-creme open:text-vert-foret",
-        "in-data-foret:border-creme in-data-foret:open:border-vert-nuit",
+        "foret:border-creme foret:open:border-vert-nuit",
         className,
       )}
     >
       <summary
         className={cn(
           "flex min-h-14 cursor-pointer list-none items-center gap-2 rounded-md px-4 font-extrabold",
-          "in-data-foret:focus-visible:outline-jaune-soleil in-data-foret:group-open:focus-visible:outline-vert-foret",
+          "foret:focus-visible:outline-jaune-soleil foret:group-open:focus-visible:outline-vert-foret",
         )}
       >
         {icone ? (
