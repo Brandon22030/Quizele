@@ -8,13 +8,18 @@ interface Props {
   hostToken?: string;
 }
 
-const bouton =
-  "min-h-11 rounded-md border-trait border-vert-foret bg-creme px-4 font-affiche text-base text-vert-foret shadow-relief-sm focus-visible:outline-vert-foret";
+// Anneau complet et explicite : une règle `outline-none` d'un autre composant peut écraser le style de base.
+const focus =
+  "focus-visible:outline-solid focus-visible:outline-(length:--spacing-trait) focus-visible:outline-offset-2 focus-visible:outline-vert-foret";
+const bouton = `min-h-11 rounded-md border-trait border-vert-foret bg-creme px-4 font-affiche text-base text-vert-foret shadow-relief-sm ${focus}`;
 
 const libelleConnexion = {
   connecting: "Connexion en cours...",
   open: "Connecté",
   reconnecting: "Connexion perdue, reprise en cours...",
+  kicked: "Tu as été exclu de la partie par l'animateur.",
+  ended: "Cette partie est terminée.",
+  rejected: "Lien invalide ou expiré : rejoins la partie de nouveau.",
 } as const;
 
 function Partie({ code, role, getToken }: { code: string; role: "host" | "player"; getToken: () => string }) {
@@ -137,7 +142,7 @@ export default function Prototype({ code, role, hostToken }: Props) {
     return (
       <form onSubmit={rejoindre} className="flex flex-col gap-3">
         <label htmlFor="pseudo" className="font-affiche text-lg">Ton pseudo</label>
-        <input id="pseudo" value={pseudo} maxLength={20} required onChange={(e) => setPseudo(e.target.value)} className="min-h-11 rounded-md border-trait border-vert-foret bg-creme px-3" />
+        <input id="pseudo" value={pseudo} maxLength={20} required onChange={(e) => setPseudo(e.target.value)} className={`min-h-11 rounded-md border-trait border-vert-foret bg-creme px-3 ${focus}`} />
         {erreur && <p role="alert" className="text-sm text-piment">{erreur}</p>}
         <button className={bouton} disabled={envoi}>{envoi ? "Connexion..." : "Rejoindre"}</button>
       </form>

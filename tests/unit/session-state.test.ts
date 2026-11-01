@@ -79,3 +79,12 @@ describe("session-state : corrections de revue", () => {
     expect(state.playerCount).toBe(0);
   });
 });
+
+describe("session-state : statuts terminaux", () => {
+  it.each(["kicked", "ended", "rejected"] as const)("le statut %s ne se défait pas sur un événement de connexion tardif", (status) => {
+    let state = sessionReducer(initialSessionState, { type: "connection", status });
+    state = sessionReducer(state, { type: "connection", status: "reconnecting" });
+    state = sessionReducer(state, { type: "connection", status: "open" });
+    expect(state.connection).toBe(status);
+  });
+});

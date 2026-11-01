@@ -9,7 +9,7 @@ import type {
   Snapshot,
 } from "../../shared/protocol";
 import type { QuestionClock } from "../../shared/clock";
-import type { ConnectionStatus } from "./game-socket";
+import { isTerminalStatus, type ConnectionStatus } from "./game-socket";
 
 export interface SessionState {
   connection: ConnectionStatus;
@@ -54,7 +54,11 @@ export const initialSessionState: SessionState = {
 };
 
 export function sessionReducer(state: SessionState, action: SessionAction): SessionState {
-  if (action.type === "connection") return { ...state, connection: action.status };
+  if (action.type === "connection") {
+    // Une fin définitive (exclusion, partie terminée, lien invalide) ne se défait pas.
+    if (isTerminalStatus(state.connection)) return state;
+    return { ...state, connection: action.status };
+  }
   const { message, clock } = action;
   switch (message.type) {
     case "snapshot":

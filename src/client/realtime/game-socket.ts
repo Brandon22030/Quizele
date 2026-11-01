@@ -1,8 +1,21 @@
 import ReconnectingWebSocket from "partysocket/ws";
 import { localNow } from "../../shared/clock";
-import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../shared/protocol";
+import { CLOSE_CODES, WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../shared/protocol";
 
-export type ConnectionStatus = "connecting" | "open" | "reconnecting";
+// Statuts terminaux : le serveur a refermé avec un code applicatif, se reconnecter ne servirait à rien.
+export type TerminalStatus = "kicked" | "ended" | "rejected";
+export type ConnectionStatus = "connecting" | "open" | "reconnecting" | TerminalStatus;
+
+export function terminalStatusFor(code: number): TerminalStatus | null {
+  if (code === CLOSE_CODES.kicked) return "kicked";
+  if (code === CLOSE_CODES.gameGone) return "ended";
+  // 4001, et 4002 réservé : tout autre refus applicatif vaut lien invalide.
+  if (code >= 4001 && code <= 4004) return "rejected";
+  return null;
+}
+
+export const isTerminalStatus = (status: ConnectionStatus): status is TerminalStatus =>
+  status === "kicked" || status === "ended" || status === "rejected";
 
 export interface GameSocketOptions {
   code: string;
@@ -11,6 +24,8 @@ export interface GameSocketOptions {
   onStatus: (status: ConnectionStatus) => void;
   // Base `ws://hote` ou `wss://hote` ; par défaut, l'origine de la page.
   baseUrl?: string;
+  // Pour les tests : constructeur WebSocket de remplacement.
+  WebSocket?: typeof WebSocket;
 }
 
 const PING_INTERVAL_MS = 20_000;
@@ -22,6 +37,7 @@ export class GameSocket {
   private readonly pingTimer: ReturnType<typeof setInterval>;
   private lastActivity = localNow();
   private opened = false;
+  private stopped = false;
 
   constructor(private readonly options: GameSocketOptions) {
     const base = options.baseUrl ?? `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
@@ -30,7 +46,13 @@ export class GameSocket {
     this.socket = new ReconnectingWebSocket(
       `${base}/ws/${options.code}`,
       async () => [WS_SUBPROTOCOL, await options.getToken()],
-      { maxEnqueuedMessages: 20, minReconnectionDelay: 500, maxReconnectionDelay: 8_000 },
+      {
+        maxEnqueuedMessages: 20,
+        minReconnectionDelay: 500,
+        maxReconnectionDelay: 8_000,
+        shouldReconnectOnClose: (event) => terminalStatusFor(event.code) === null,
+        WebSocket: options.WebSocket,
+      },
     );
     this.socket.addEventListener("open", () => {
       this.opened = true;
@@ -38,7 +60,16 @@ export class GameSocket {
       options.onStatus("open");
       this.send({ type: "resume" });
     });
-    this.socket.addEventListener("close", () => options.onStatus(this.opened ? "reconnecting" : "connecting"));
+    this.socket.addEventListener("close", (event) => {
+      if (this.stopped) return;
+      const terminal = terminalStatusFor(event.code);
+      if (terminal) {
+        this.close();
+        options.onStatus(terminal);
+        return;
+      }
+      options.onStatus(this.opened ? "reconnecting" : "connecting");
+    });
     this.socket.addEventListener("message", (event) => this.handleMessage(event.data));
     this.pingTimer = setInterval(() => this.ping(), PING_INTERVAL_MS);
     document.addEventListener("visibilitychange", this.onVisible);
@@ -52,6 +83,7 @@ export class GameSocket {
   }
 
   close(): void {
+    this.stopped = true;
     clearInterval(this.pingTimer);
     document.removeEventListener("visibilitychange", this.onVisible);
     window.removeEventListener("online", this.resync);
@@ -72,6 +104,7 @@ export class GameSocket {
   }
 
   private ping(): void {
+    if (this.stopped) return;
     if (localNow() - this.lastActivity > SILENCE_LIMIT_MS) {
       this.socket.reconnect();
       return;
@@ -80,6 +113,7 @@ export class GameSocket {
   }
 
   private readonly resync = (): void => {
+    if (this.stopped) return;
     if (this.socket.readyState === WebSocket.OPEN) this.send({ type: "resume" });
     else this.socket.reconnect();
   };
