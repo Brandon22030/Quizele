@@ -1,13 +1,13 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { availableLoginMethods, createAuth, MAGIC_LINK_DAILY_MAX } from "../../../src/server/auth/auth";
+import { availableLoginMethods, createAuth, isMagicLinkPath, MAGIC_LINK_DAILY_MAX } from "../../../src/server/auth/auth";
 import { consumeDailyMailQuota, dailyMailQuotaKey, hashEmailKey, normalizeEmailKey } from "../../../src/server/auth/email-quota";
 import { PROTECTED_PREFIXES, safeReturnPath, shouldResolveSession } from "../../../src/server/auth/routes";
 import { sendMail } from "../../../src/server/mail/send-mail";
 import { magicLinkMail } from "../../../src/server/mail/templates";
 import { freshDb } from "../db/helpers";
-import { authEnv, authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
+import { authEnv, authFetch, captureConsoleMail, freshIp, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
 
 beforeEach(async () => {
   await freshDb();
@@ -32,6 +32,19 @@ describe("limite par adresse : validation, normalisation, empreinte", () => {
     expect(normalizeEmailKey("victime+a+b@example.fr")).toBe("victime@example.fr");
     expect(normalizeEmailKey("VICTIME@example.fr\t")).toBe("victime@example.fr");
     expect(normalizeEmailKey("autre@example.fr")).toBe("autre@example.fr");
+  });
+
+  it("gmail.com et googlemail.com : points ignorés et domaines confondus", async () => {
+    expect(normalizeEmailKey("Vic.Ti.Me+x@GoogleMail.com")).toBe("victime@gmail.com");
+    expect(normalizeEmailKey("v.ictime@gmail.com")).toBe("victime@gmail.com");
+    // Ailleurs, le point est significatif.
+    expect(normalizeEmailKey("v.ictime@example.fr")).toBe("v.ictime@example.fr");
+    captureConsoleMail();
+    const statuses: number[] = [];
+    for (const email of ["victime@gmail.com", "v.ictime@gmail.com", "vic.time@googlemail.com", "V.I.C.T.I.M.E+z@gmail.com"]) {
+      statuses.push((await requestMagicLink(email)).status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429]);
   });
 
   it("les variantes +tag d'une même boîte partagent la limite, l'envoi part vers l'adresse saisie", async () => {
@@ -69,6 +82,91 @@ describe("limite par adresse : validation, normalisation, empreinte", () => {
   });
 });
 
+describe("variantes de chemin et de corps du lien magique", () => {
+  const post = (path: string, body: BodyInit, contentType: string | null = "application/json") => {
+    const headers = new Headers({ origin: ORIGIN, "cf-connecting-ip": freshIp() });
+    if (contentType !== null) headers.set("content-type", contentType);
+    const request = new Request(`${ORIGIN}${path}`, { method: "POST", headers, body, redirect: "manual" });
+    return createAuth(authEnv(), request).handler(request);
+  };
+  const variants = [
+    "/api/auth/sign-in/magic-link/",
+    "/api/auth/sign-in/magic-link//",
+    "/api/auth//sign-in/magic-link",
+    "/api/auth/sign-in//magic-link",
+    "/api/auth/sign-in%2Fmagic-link",
+    "/api/auth/sign-in/magic-link%2F",
+    "/api/auth/sign-in/magic%2Dlink",
+    "/api/auth/sign-in/Magic-Link",
+    "/API/AUTH/sign-in/magic-link/",
+    "/api/auth/sign-in/./magic-link",
+    "/api/auth/x/../sign-in/magic-link",
+  ];
+
+  it("reconnaît le chemin quelles que soient barres finales, doubles barres, casse ou encodage", () => {
+    for (const path of ["/api/auth/sign-in/magic-link", ...variants.map((v) => new URL(v, ORIGIN).pathname)]) {
+      expect(isMagicLinkPath(path), path).toBe(true);
+    }
+    for (const path of ["/api/auth/sign-in/magic-link-x", "/api/auth/magic-link/verify", "/api/auth/sign-in/social"]) {
+      expect(isMagicLinkPath(path), path).toBe(false);
+    }
+  });
+
+  it.each(variants)("%s : 429 au 4e appel pour une même adresse, et compté dans le plafond", async (path) => {
+    const mail = captureConsoleMail();
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i += 1) statuses.push((await post(path, JSON.stringify({ email: "variante@example.test" }))).status);
+    expect(statuses.slice(0, 3).every((s) => s !== 429)).toBe(true);
+    expect(statuses[3]).toBe(429);
+    expect(await count("SELECT count AS n FROM mail_quota")).toBe(3);
+    expect(mail.spy.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("une variante de chemin ne réinitialise pas la limite de l'adresse", async () => {
+    captureConsoleMail();
+    for (let i = 0; i < 3; i += 1) expect((await requestMagicLink("melange@example.test")).status).toBe(200);
+    expect((await post("/api/auth/sign-in/magic-link/", JSON.stringify({ email: "melange@example.test" }))).status).toBe(429);
+  });
+
+  it.each([
+    "application/x-www-form-urlencoded, application/json",
+    "application/x-www-form-urlencoded; application/json",
+    "text/plain; application/json",
+    "application/jsonx",
+    "multipart/form-data",
+    null,
+  ])("Content-Type %j : 415, rien n'est envoyé ni compté", async (contentType) => {
+    const mail = captureConsoleMail();
+    const res = await post("/api/auth/sign-in/magic-link", "email=form%40example.test", contentType);
+    expect(res.status).toBe(415);
+    expect(mail.spy).not.toHaveBeenCalled();
+    expect(await count("SELECT COUNT(*) AS n FROM mail_quota")).toBe(0);
+    expect(await count("SELECT COUNT(*) AS n FROM rate_limit WHERE key LIKE 'magic-link:%'")).toBe(0);
+  });
+
+  it("le formulaire déguisé en JSON par une liste de types ne passe pas, même avec un JSON valide", async () => {
+    const mail = captureConsoleMail();
+    const res = await post("/api/auth/sign-in/magic-link", JSON.stringify({ email: "liste@example.test" }), "application/x-www-form-urlencoded, application/json");
+    expect(res.status).toBe(415);
+    expect(mail.spy).not.toHaveBeenCalled();
+  });
+
+  it("application/json avec charset, quelle que soit la casse, est accepté", async () => {
+    captureConsoleMail();
+    for (const contentType of ["application/json; charset=utf-8", "Application/JSON"]) {
+      expect((await post("/api/auth/sign-in/magic-link", JSON.stringify({ email: "charset@example.test" }), contentType)).status).toBe(200);
+    }
+  });
+
+  it.each(["email=x%40example.test", "{", "[]", "null", "\"\"", ""])("corps JSON illisible %j : 400, rien n'est envoyé ni compté", async (body) => {
+    const mail = captureConsoleMail();
+    const res = await post("/api/auth/sign-in/magic-link", body);
+    expect(res.status).toBe(400);
+    expect(mail.spy).not.toHaveBeenCalled();
+    expect(await count("SELECT COUNT(*) AS n FROM mail_quota")).toBe(0);
+  });
+});
+
 describe("plafond global quotidien", () => {
   const seedDailyCount = (n: number) =>
     env.DB.prepare("INSERT INTO mail_quota (key, count) VALUES (?1, ?2)").bind(dailyMailQuotaKey(Date.now()), n).run();
@@ -76,6 +174,7 @@ describe("plafond global quotidien", () => {
   it("vaut 80 et bloque au-delà, quelles que soient l'adresse et l'IP", async () => {
     expect(MAGIC_LINK_DAILY_MAX).toBe(80);
     const mail = captureConsoleMail();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await seedDailyCount(MAGIC_LINK_DAILY_MAX - 2);
     const statuses: number[] = [];
     for (let i = 0; i < 4; i += 1) {
@@ -83,6 +182,9 @@ describe("plafond global quotidien", () => {
     }
     expect(statuses).toEqual([200, 200, 429, 429]);
     expect(mail.spy).toHaveBeenCalledTimes(2);
+    const warnings = warn.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(warnings).toMatch(/plafond quotidien/);
+    expect(warnings).not.toMatch(/jour\d@example\.test/);
     expect(await count("SELECT count AS n FROM mail_quota")).toBe(MAGIC_LINK_DAILY_MAX);
   });
 
