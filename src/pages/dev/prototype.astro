@@ -2,7 +2,7 @@
 import { env } from "cloudflare:workers";
 import Base from "../../layouts/Base.astro";
 import Prototype from "../../islands/dev/Prototype";
-import { GAME_CODE_PATTERN } from "../../server/game/router";
+import { GAME_CODE_PATTERN, aliasStub, gameStub } from "../../server/game/router";
 import { signToken } from "../../server/game/tokens";
 
 // Page de démonstration du prototype temps réel : n'existe qu'en développement.
@@ -19,8 +19,15 @@ const secret = env.PLAYER_TOKEN_SECRET;
 if (!secret) {
   throw new Error("PLAYER_TOKEN_SECRET manquant : impossible de signer le jeton hôte de la démo");
 }
-// Un nouveau sid par chargement de la page hôte : chaque ouverture crée une partie neuve sous ce code.
-const hostToken = role === "host" ? await signToken(secret, { code, sid: crypto.randomUUID(), role: "host" }) : undefined;
+// L'hôte qui recharge la page reprend la partie en cours sous ce code ; un nouveau sid n'est tiré que si aucune
+// partie n'est en cours, sinon le routeur refuserait ce second hôte (409).
+async function hostSid(): Promise<string> {
+  const current = await aliasStub(env, code).currentSid();
+  if (!current) return crypto.randomUUID();
+  const phase = await gameStub(env, current).currentPhase();
+  return phase !== null && phase !== "finished" ? current : crypto.randomUUID();
+}
+const hostToken = role === "host" ? await signToken(secret, { code, sid: await hostSid(), role: "host" }) : undefined;
 ---
 
 <Base title="Prototype temps réel">

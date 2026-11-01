@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { connect, join, rawConnect, setup, type Client } from "./helpers";
+import { closeCodeOf, connect, join, setup, type Client } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
@@ -38,8 +38,12 @@ describe("seau à jetons et reconnexion en boucle", () => {
     const { code, host, players } = await game(1);
     const closed = closeOf(players[0]!.client);
     host.send({ type: "kick", playerId: players[0]!.playerId });
-    expect((await closed).code).toBe(1008);
-    for (let i = 0; i < 5; i += 1) expect((await rawConnect(code, players[0]!.token)).status).toBe(401);
+    expect((await closed).code).toBe(4003);
+    // 4003 est définitif : le client cesse de se reconnecter au lieu de boucler sur un refus anonyme.
+    for (let i = 0; i < 5; i += 1) expect(await closeCodeOf(code, players[0]!.token)).toBe(4003);
+    // Décision produit : pas de retour sous le même pseudo (ni une variante de casse), un autre pseudo est accepté.
+    expect((await join(code, "Joueur 0")).status).toBe(409);
+    expect((await join(code, "JOUEUR 0")).status).toBe(409);
     expect((await join(code, "Autre")).status).toBe(201);
   });
 

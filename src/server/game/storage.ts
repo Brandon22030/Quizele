@@ -22,7 +22,20 @@ const MIGRATIONS: string[] = [
      PRIMARY KEY (player_id, question_id)
    );
    CREATE INDEX answers_question ON answers(question_id);`,
+  // Pseudos bannis par exclusion, et seaux à jetons par joueur ou rôle : ils survivent à la fermeture du
+  // socket, sinon une reconnexion remettrait le seau à plein.
+  `CREATE TABLE banned (pseudo_key TEXT PRIMARY KEY, player_id TEXT NOT NULL);
+   CREATE TABLE buckets (
+     key TEXT PRIMARY KEY, tokens REAL NOT NULL, at INTEGER NOT NULL, connect_tokens REAL NOT NULL, connect_at INTEGER NOT NULL
+   );`,
 ];
+
+export interface BucketState {
+  tokens: number;
+  at: number;
+  connectTokens: number;
+  connectAt: number;
+}
 
 export interface MetaState {
   code: string | null;
@@ -149,7 +162,8 @@ export class GameStorage {
       .map((row) => ({ id: row.id, label: row.label, isCorrect: row.isCorrect === 1 }));
   }
 
-  addPlayer(id: string, pseudo: string, key: string, now: number): "ok" | "taken" {
+  addPlayer(id: string, pseudo: string, key: string, now: number): "ok" | "taken" | "banned" {
+    if (this.sql.exec("SELECT 1 FROM banned WHERE pseudo_key = ?", key).toArray().length > 0) return "banned";
     // La contrainte UNIQUE sur pseudo_key tranche les inscriptions simultanées.
     const cursor = this.sql.exec(
       "INSERT INTO players (id, pseudo, pseudo_key, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT(pseudo_key) DO NOTHING",
@@ -158,11 +172,40 @@ export class GameStorage {
     return cursor.rowsWritten > 0 ? "ok" : "taken";
   }
 
-  removePlayer(id: string): boolean {
+  // L'exclusion bannit la clé de pseudo pour la partie : le joueur ne revient pas sous le même nom.
+  kickPlayer(id: string): boolean {
     return this.storage.transactionSync(() => {
+      const row = this.sql.exec<{ key: string }>("SELECT pseudo_key AS key FROM players WHERE id = ?", id).toArray()[0];
+      if (!row) return false;
+      this.sql.exec("INSERT INTO banned (pseudo_key, player_id) VALUES (?, ?) ON CONFLICT(pseudo_key) DO NOTHING", row.key, id);
       this.sql.exec("DELETE FROM answers WHERE player_id = ?", id);
-      return this.sql.exec("DELETE FROM players WHERE id = ?", id).rowsWritten > 0;
+      this.sql.exec("DELETE FROM players WHERE id = ?", id);
+      return true;
     });
+  }
+
+  isBanned(playerId: string): boolean {
+    return this.sql.exec("SELECT 1 FROM banned WHERE player_id = ?", playerId).toArray().length > 0;
+  }
+
+  bucket(key: string): BucketState | null {
+    return (
+      this.sql
+        .exec<{ tokens: number; at: number; connectTokens: number; connectAt: number }>(
+          "SELECT tokens, at, connect_tokens AS connectTokens, connect_at AS connectAt FROM buckets WHERE key = ?",
+          key,
+        )
+        .toArray()[0] ?? null
+    );
+  }
+
+  saveBucket(key: string, state: BucketState): void {
+    this.sql.exec(
+      `INSERT INTO buckets (key, tokens, at, connect_tokens, connect_at) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET tokens = excluded.tokens, at = excluded.at,
+         connect_tokens = excluded.connect_tokens, connect_at = excluded.connect_at`,
+      key, state.tokens, state.at, state.connectTokens, state.connectAt,
+    );
   }
 
   playerCount(): number {
@@ -221,15 +264,18 @@ export class GameStorage {
 
   // Table de correspondance code court -> sid, portée par un objet d'alias distinct des parties.
   // Prototype sans D1 : QZ-002-07 la remplace par game_sessions (code -> sid) dans D1.
-  aliasSid(): string | null {
+  aliasHolder(): { sid: string; claimedAt: number } | null {
     if (this.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'alias'").toArray().length === 0) return null;
-    return this.sql.exec<{ sid: string }>("SELECT sid FROM alias").toArray()[0]?.sid ?? null;
+    return this.sql.exec<{ sid: string; claimedAt: number }>("SELECT sid, claimed_at AS claimedAt FROM alias").toArray()[0] ?? null;
   }
 
-  setAliasSid(sid: string): void {
-    this.sql.exec("CREATE TABLE IF NOT EXISTS alias (sid TEXT NOT NULL)");
+  // Comparaison-échange : synchrone dans le Durable Object, donc atomique face à un second hôte.
+  compareAndSetAlias(sid: string, expected: string | null, now: number): boolean {
+    if ((this.aliasHolder()?.sid ?? null) !== expected) return false;
+    this.sql.exec("CREATE TABLE IF NOT EXISTS alias (sid TEXT NOT NULL, claimed_at INTEGER NOT NULL)");
     this.sql.exec("DELETE FROM alias");
-    this.sql.exec("INSERT INTO alias (sid) VALUES (?)", sid);
+    this.sql.exec("INSERT INTO alias (sid, claimed_at) VALUES (?, ?)", sid, now);
+    return true;
   }
 
   purge(): Promise<void> {

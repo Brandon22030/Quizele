@@ -2,7 +2,7 @@ import { runDurableObjectAlarm, runInDurableObject, evictDurableObject } from "c
 import { afterEach, describe, expect, it } from "vitest";
 import { ANSWER_TOLERANCE_MS } from "../../../src/shared/protocol";
 import {
-  connect, demoQuiz, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  closeCodeOf, connect, demoQuiz, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -29,7 +29,8 @@ describe("jetons et connexion", () => {
     const signature = valid.split(".")[1];
     const forged = `${btoa(JSON.stringify({ c: code, r: "host", e: Date.now() + 1e9 })).replace(/=+$/, "")}.${signature}`;
     expect((await rawConnect(code, forged)).status).toBe(401);
-    expect((await rawConnect(code, await signFor(code, { code, role: "host" }, Date.now() - 10_000, 1000))).status).toBe(401);
+    // Jeton bien signé mais expiré : refus définitif (4001) pour que le client cesse de se reconnecter.
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "host" }, Date.now() - 10_000, 1000))).toBe(4001);
     const other = newCode();
     expect((await rawConnect(code, await signFor(other, { code: other, role: "host" }))).status).toBe(401);
   });
@@ -40,7 +41,7 @@ describe("jetons et connexion", () => {
     expect(res.status).toBe(426);
     expect((await rawConnect("ab", "x")).status).toBe(404);
     const playerToken = await signFor(code, { code, role: "player", playerId: "inconnu" });
-    expect((await rawConnect(code, playerToken)).status).toBe(404);
+    expect(await closeCodeOf(code, playerToken)).toBe(4004);
   });
 
   it("un jeton joueur d'une autre partie est refusé même avec un joueur valide ailleurs", async () => {
@@ -50,10 +51,9 @@ describe("jetons et connexion", () => {
     expect(response.status).toBe(401);
   });
 
-  it("refuse un joueur au jeton valide mais absent de la partie (401)", async () => {
+  it("refuse un joueur au jeton valide mais absent de la partie (4001)", async () => {
     const { code } = await game(0);
-    const response = await rawConnect(code, await signFor(code, { code, role: "player", playerId: "fantome" }));
-    expect(response.status).toBe(401);
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "player", playerId: "fantome" }))).toBe(4001);
   });
 });
 
@@ -272,7 +272,8 @@ describe("alarme, reprise et éviction", () => {
     const reveal = await players[0]!.client.waitFor("reveal");
     expect(reveal.you).toMatchObject({ wasCorrect: true, score: 1 });
     const versions = await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("SELECT COUNT(*) AS n, MAX(version) AS v FROM schema_version").one());
-    expect(versions).toEqual({ n: 1, v: 1 });
+    // Deux migrations (schéma initial, puis bannis et seaux), chacune appliquée une seule fois.
+    expect(versions).toEqual({ n: 2, v: 2 });
   });
 });
 

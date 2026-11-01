@@ -18,6 +18,14 @@ export const PLAYER_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 export const WS_SUBPROTOCOL = "quizdeszeles.v1";
 export const MAX_MESSAGE_BYTES = 2048;
 
+// Fermetures applicatives définitives : le client cesse de se reconnecter. 1008 (débit) et 1009 (taille)
+// restent des fermetures ordinaires, suivies d'une reconnexion.
+export const CLOSE_CODES = {
+  tokenRejected: 4001,
+  kicked: 4003,
+  gameGone: 4004,
+} as const;
+
 const PSEUDO_RAW_MAX = 200;
 const graphemes = new Intl.Segmenter("fr", { granularity: "grapheme" });
 // Tout caractère de catégorie C (contrôle, zéro largeur, surcharge de sens d'écriture...) sauf U+200D,
@@ -28,9 +36,14 @@ export function normalizePseudo(raw: string): string {
   return raw.normalize("NFKC").trim();
 }
 
-// Clé d'unicité : deux pseudos qui ne diffèrent que par la casse sont le même joueur.
+// Clé d'unicité : deux pseudos visuellement identiques sont le même joueur. Les caractères invisibles
+// (ZWJ, sélecteurs de variante, U+034F, U+3164...) sont ignorés ici seulement : le ZWJ reste permis à
+// l'affichage pour les emojis composés.
 export function pseudoKey(pseudo: string): string {
-  return normalizePseudo(pseudo).toLocaleLowerCase("fr");
+  return normalizePseudo(pseudo)
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
+    .replace(/\s+/gu, " ")
+    .toLocaleLowerCase("fr");
 }
 
 export const pseudoSchema = z
@@ -41,6 +54,8 @@ export const pseudoSchema = z
     z
       .string()
       .refine((valeur) => !FORBIDDEN_PSEUDO_CHARS.test(valeur))
+      // Un pseudo fait uniquement de caractères invisibles s'afficherait comme une case vide.
+      .refine((valeur) => pseudoKey(valeur).replace(/\s/gu, "") !== "")
       .refine((valeur) => {
         let count = 0;
         for (const _ of graphemes.segment(valeur)) count += 1;

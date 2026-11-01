@@ -8,6 +8,9 @@ export function isAnswerCorrect(kind: QuestionKind, selected: string[], correct:
   return chosen.size === correct.length && correct.every((id) => chosen.has(id));
 }
 
+// Un seul Collator pour tout le module : localeCompare en recréerait un à chaque comparaison.
+const pseudoCollator = new Intl.Collator("fr");
+
 export function rankEntries<T extends { score: number; totalMs: number; pseudo: string }>(entries: T[]): T[] {
-  return [...entries].sort((a, b) => b.score - a.score || a.totalMs - b.totalMs || a.pseudo.localeCompare(b.pseudo, "fr"));
+  return [...entries].sort((a, b) => b.score - a.score || a.totalMs - b.totalMs || pseudoCollator.compare(a.pseudo, b.pseudo));
 }

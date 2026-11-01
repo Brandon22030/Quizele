@@ -1,3 +1,5 @@
+import { CLOSE_CODES } from "../../shared/protocol";
+import { closedSocket } from "./reject";
 import { tokenFromRequest, verifyToken } from "./tokens";
 
 export const GAME_CODE_PATTERN = /^[A-Z0-9]{6}$/;
@@ -9,6 +11,14 @@ export const GAME_CODE_PATTERN = /^[A-Z0-9]{6}$/;
 export const aliasStub = (env: Env, code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(`alias:${code}`));
 export const gameStub = (env: Env, sid: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(sid));
 
+// Une partie terminée libère son code. Une réservation toute récente sans partie compte comme tenue : l'hôte qui
+// l'a posée est en train de créer sa partie.
+async function holdsCode(env: Env, alias: ReturnType<typeof aliasStub>, sid: string): Promise<boolean> {
+  const phase = await gameStub(env, sid).currentPhase();
+  if (phase === null) return alias.recentlyClaimed(sid);
+  return phase !== "finished";
+}
+
 // Vérifie le jeton avant de réveiller la partie : un jeton falsifié ne coûte aucune requête sur le DO de jeu.
 // Le DO revérifie ensuite lui-même, il ne fait pas confiance au routeur.
 export async function routeWebSocket(request: Request, env: Env): Promise<Response> {
@@ -17,18 +27,27 @@ export async function routeWebSocket(request: Request, env: Env): Promise<Respon
   if (!code || !GAME_CODE_PATTERN.test(code)) return new Response("Partie introuvable", { status: 404 });
   const secret = env.PLAYER_TOKEN_SECRET;
   if (!secret) return new Response("Configuration manquante", { status: 500 });
-  const claims = await verifyToken(secret, tokenFromRequest(request), { code });
-  if (!claims) return new Response("Jeton invalide", { status: 401 });
+  const token = tokenFromRequest(request);
+  const claims = await verifyToken(secret, token, { code });
+  if (!claims) {
+    // Jeton bien signé mais expiré : le client doit cesser de se reconnecter. Un jeton falsifié reste un 401.
+    if (await verifyToken(secret, token, { code }, 0)) return closedSocket(CLOSE_CODES.tokenRejected, "Jeton expiré");
+    return new Response("Jeton invalide", { status: 401 });
+  }
 
   const alias = aliasStub(env, code);
   const currentSid = await alias.currentSid();
   if (claims.role !== "host") {
-    if (currentSid === null) return new Response("Partie introuvable", { status: 404 });
-    if (currentSid !== claims.sid) return new Response("Jeton d'une ancienne partie", { status: 401 });
+    if (currentSid === null) return closedSocket(CLOSE_CODES.gameGone, "Partie introuvable");
+    if (currentSid !== claims.sid) return closedSocket(CLOSE_CODES.gameGone, "Partie terminée");
+  } else if (currentSid !== claims.sid) {
+    // Le code n'est repris que si la partie qui le détient n'est plus en cours. La réservation précède la
+    // création de la partie : deux hôtes simultanés ne peuvent pas réussir tous les deux.
+    if (currentSid !== null && (await holdsCode(env, alias, currentSid))) {
+      return new Response("Code déjà utilisé par une autre partie", { status: 409 });
+    }
+    if (!(await alias.registerSid(claims.sid, currentSid))) return new Response("Code déjà utilisé par une autre partie", { status: 409 });
   }
 
-  const response = await gameStub(env, claims.sid).fetch(request);
-  // L'alias n'est publié qu'une fois la partie réellement créée par l'hôte.
-  if (claims.role === "host" && response.status === 101 && currentSid !== claims.sid) await alias.registerSid(claims.sid);
-  return response;
+  return gameStub(env, claims.sid).fetch(request);
 }

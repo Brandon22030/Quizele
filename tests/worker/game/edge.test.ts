@@ -2,7 +2,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { afterEach, describe, expect, it } from "vitest";
 import { ANSWER_TOLERANCE_MS, MAX_PLAYERS } from "../../../src/shared/protocol";
 import {
-  addPlayer, aliasStubFor, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  addPlayer, aliasStubFor, closeCodeOf, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -122,8 +122,8 @@ describe("inscription sur un code inconnu", () => {
 
   it("un jeton joueur ou écran ne peut pas créer la partie ; une tentative échouée ne l'empêche pas d'exister ensuite", async () => {
     const code = newCode();
-    expect((await rawConnect(code, await signFor(code, { code, role: "screen" }))).status).toBe(404);
-    expect((await rawConnect(code, await signFor(code, { code, role: "player", playerId: "x" }))).status).toBe(404);
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "screen" }))).toBe(4004);
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "player", playerId: "x" }))).toBe(4004);
     expect(await sqlOf(code, "SELECT name FROM sqlite_master")).toEqual([]);
     const host = await connect(code, await signFor(code, { code, role: "host" }));
     opened.push(host);
@@ -135,7 +135,7 @@ describe("jetons : cas limites", () => {
   it("jeton joueur expiré refusé à la connexion, même pour un joueur existant", async () => {
     const { code, players } = await game(1);
     const expired = await signFor(code, { code, role: "player", playerId: players[0]!.playerId }, Date.now() - 10_000, 1_000);
-    expect((await rawConnect(code, expired)).status).toBe(401);
+    expect(await closeCodeOf(code, expired)).toBe(4001);
     const justValid = await signFor(code, { code, role: "player", playerId: players[0]!.playerId }, Date.now(), 60_000);
     const client = await connect(code, justValid);
     opened.push(client);

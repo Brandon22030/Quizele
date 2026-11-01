@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ANSWER_TOLERANCE_MS,
+  CLOSE_CODES,
   MAX_MESSAGE_BYTES,
   MAX_PLAYERS,
   PLAYER_TOKEN_TTL_MS,
@@ -8,6 +9,7 @@ import {
   clientMessageSchema,
   pseudoKey,
   pseudoSchema,
+  type Phase,
   type QuestionPayload,
   type RevealPayload,
   type Role,
@@ -16,15 +18,16 @@ import {
 } from "../../shared/protocol";
 import { quizDemo, type QuizDefinition } from "./fixtures/quiz-demo";
 import { isAnswerCorrect, rankEntries } from "./scoring";
+import { closedSocket } from "./reject";
 import { GameStorage, type MetaState, type StoredQuestion } from "./storage";
 import { tokenFromRequest, verifyToken } from "./tokens";
 
 interface SocketAttachment {
   role: Role;
   playerId?: string;
-  // Seau à jetons : état propre à chaque socket, qui survit à l'hibernation.
-  tokens: number;
-  at: number;
+  // Seau à jetons du socket, qui survit à l'hibernation. Absent sur un attachement d'une version antérieure.
+  tokens?: number;
+  at?: number;
 }
 
 export type JoinResult =
@@ -34,9 +37,20 @@ export type JoinResult =
 const REVEAL_RANKING_SIZE = 10;
 const BUCKET_CAPACITY = 30;
 const BUCKET_REFILL_PER_MS = 10 / 1000;
+// Une reconnexion n'est pas gratuite : sans ce coût, se reconnecter en boucle contournerait le seau.
+const CONNECT_COST = 5;
+// Au plus 10 connexions d'affilée par joueur (ou rôle), puis une toutes les 6 s : assez pour un réseau mobile
+// instable avec le délai croissant du client, pas pour une boucle.
+const CONNECT_BURST = 10;
+const CONNECT_REFILL_PER_MS = 1 / 6000;
+const ALIAS_CLAIM_GRACE_MS = 30_000;
 const COUNT_INTERVAL_MS = 250;
 const ALIAS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
+
+const refill = (tokens: number, at: number, now: number, capacity: number, perMs: number) =>
+  Math.min(capacity, tokens + Math.max(0, now - at) * perMs);
+const bucketKey = (attachment: { role: Role; playerId?: string }) => (attachment.playerId ? `p:${attachment.playerId}` : attachment.role);
 
 // L'état utile de la partie vit dans le SQLite : le Durable Object peut hiberner entre deux messages.
 // Les seuls champs d'instance sont des optimisations dont la perte est sans conséquence (drapeau de schéma,
@@ -46,6 +60,8 @@ export class GameSession extends DurableObject<Env> {
   private schemaReady = false;
   private countTimer: ReturnType<typeof setTimeout> | null = null;
   private lastCountAt = 0;
+  // Classement de la révélation en cours, recalculé seulement s'il est perdu (hibernation) ou invalidé.
+  private revealCache: { questionId: string; computed: ReturnType<GameSession["computeReveal"]> } | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -66,12 +82,24 @@ export class GameSession extends DurableObject<Env> {
   // Objet d'alias : traduit le code court en sid. Prototype sans D1, remplacé par D1 en QZ-002-07,
   // qui devra aussi vérifier l'existence de la partie dans D1 avant d'appeler un Durable Object.
   currentSid(): string | null {
-    return this.store.aliasSid();
+    return this.store.aliasHolder()?.sid ?? null;
   }
 
-  async registerSid(sid: string): Promise<void> {
-    this.store.setAliasSid(sid);
+  // Une réservation récente compte comme vivante : la partie de l'hôte qui vient de réserver n'est pas encore créée.
+  recentlyClaimed(sid: string): boolean {
+    const holder = this.store.aliasHolder();
+    return holder !== null && holder.sid === sid && Date.now() - holder.claimedAt < ALIAS_CLAIM_GRACE_MS;
+  }
+
+  async registerSid(sid: string, expected: string | null): Promise<boolean> {
+    if (!this.store.compareAndSetAlias(sid, expected, Date.now())) return false;
     await this.ctx.storage.setAlarm(Date.now() + ALIAS_TTL_MS);
+    return true;
+  }
+
+  // null : partie jamais créée ou purgée.
+  currentPhase(): Phase | null {
+    return this.ready() ? this.store.readMeta().phase : null;
   }
 
   // Prototype : le quiz vient d'une fixture. QZ-002-07 passera le quiz lu dans D1.
@@ -91,9 +119,11 @@ export class GameSession extends DurableObject<Env> {
     if (meta.phase === "finished") return { ok: false, error: "game_finished" };
     if (this.store.playerCount() >= MAX_PLAYERS) return { ok: false, error: "game_full" };
     const playerId = crypto.randomUUID();
-    if (this.store.addPlayer(playerId, pseudo.data, pseudoKey(pseudo.data), Date.now()) === "taken") {
+    // Un pseudo banni par exclusion répond comme un pseudo pris : on ne confirme pas l'exclusion à un tiers.
+    if (this.store.addPlayer(playerId, pseudo.data, pseudoKey(pseudo.data), Date.now()) !== "ok") {
       return { ok: false, error: "pseudo_taken" };
     }
+    this.revealCache = null;
     this.broadcast(["host", "screen"], () => ({
       type: "player_joined",
       player: { id: playerId, pseudo: pseudo.data },
@@ -114,7 +144,7 @@ export class GameSession extends DurableObject<Env> {
       claims = await verifyToken(secret, token, { code });
       if (!claims) return new Response("Jeton invalide", { status: 401 });
       // Seul un jeton hôte, que seul le serveur peut signer, crée la partie.
-      if (claims.role !== "host") return new Response("Partie introuvable", { status: 404 });
+      if (claims.role !== "host") return closedSocket(CLOSE_CODES.gameGone, "Partie introuvable");
       await this.init(claims.code, claims.sid);
     } else {
       const meta = this.store.readMeta();
@@ -122,20 +152,53 @@ export class GameSession extends DurableObject<Env> {
       if (!claims) return new Response("Jeton invalide", { status: 401 });
     }
     if (claims.role === "player" && (!claims.playerId || !this.store.player(claims.playerId))) {
-      return new Response("Joueur inconnu", { status: 401 });
+      if (claims.playerId && this.store.isBanned(claims.playerId)) return closedSocket(CLOSE_CODES.kicked, "Exclu de la partie");
+      return closedSocket(CLOSE_CODES.tokenRejected, "Joueur inconnu");
     }
+
+    const key = bucketKey(claims);
+    const now = Date.now();
+    const stored = this.store.bucket(key);
+    const connectTokens = (stored ? refill(stored.connectTokens, stored.connectAt, now, CONNECT_BURST, CONNECT_REFILL_PER_MS) : CONNECT_BURST) - 1;
+    if (connectTokens < 0) return closedSocket(1008, "Trop de connexions");
+
+    // Le seau repart de l'état le plus bas connu pour cette clé : sockets encore ouverts (zombie) ou état
+    // conservé à la fermeture. Il ne part plein que pour une toute première connexion.
+    const previous = this.ctx.getWebSockets(key);
+    let tokens = stored ? refill(stored.tokens, stored.at, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_MS) : BUCKET_CAPACITY;
+    for (const socket of previous) {
+      const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+      if (attachment) tokens = Math.min(tokens, this.bucketNow(attachment, now));
+    }
+    if (stored || previous.length > 0) tokens = Math.max(0, tokens - CONNECT_COST);
+    this.store.saveBucket(key, { tokens, at: now, connectTokens, connectAt: now });
 
     // Un joueur qui se reconnecte laisse parfois un socket zombie : on le remplace.
     if (claims.playerId) {
-      for (const socket of this.ctx.getWebSockets(`p:${claims.playerId}`)) socket.close(1000, "Remplacé par une nouvelle connexion");
+      for (const socket of previous) socket.close(1000, "Remplacé par une nouvelle connexion");
     }
 
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     // Les étiquettes permettent de cibler un rôle ou un joueur sans désérialiser tous les sockets.
-    this.ctx.acceptWebSocket(server, claims.playerId ? [claims.role, `p:${claims.playerId}`] : [claims.role]);
-    server.serializeAttachment({ role: claims.role, playerId: claims.playerId, tokens: BUCKET_CAPACITY, at: Date.now() } satisfies SocketAttachment);
+    this.ctx.acceptWebSocket(server, claims.playerId ? [claims.role, key] : [claims.role]);
+    server.serializeAttachment({ role: claims.role, playerId: claims.playerId, tokens, at: now } satisfies SocketAttachment);
     return new Response(null, { status: 101, webSocket: client, headers: { "Sec-WebSocket-Protocol": WS_SUBPROTOCOL } });
+  }
+
+  private bucketNow(attachment: SocketAttachment, now: number): number {
+    return refill(attachment.tokens ?? BUCKET_CAPACITY, attachment.at ?? now, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_MS);
+  }
+
+  // Conserve le seau d'un socket qui se ferme, sans jamais le remonter au-dessus de l'état déjà conservé.
+  private persistBucket(attachment: SocketAttachment): void {
+    if (!this.ready()) return;
+    const key = bucketKey(attachment);
+    const now = Date.now();
+    const stored = this.store.bucket(key);
+    if (!stored) return;
+    const tokens = Math.max(0, Math.min(refill(stored.tokens, stored.at, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_MS), this.bucketNow(attachment, now)));
+    this.store.saveBucket(key, { ...stored, tokens, at: now });
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
@@ -146,10 +209,13 @@ export class GameSession extends DurableObject<Env> {
       return ws.close(1009, "Message trop volumineux");
     }
     const now = Date.now();
-    const tokens = Math.min(BUCKET_CAPACITY, attachment.tokens + (now - attachment.at) * BUCKET_REFILL_PER_MS) - 1;
-    if (tokens < 0) return ws.close(1008, "Trop de messages");
+    const tokens = this.bucketNow(attachment, now) - 1;
+    if (tokens < 0) {
+      this.persistBucket({ ...attachment, tokens: 0, at: now });
+      return ws.close(1008, "Trop de messages");
+    }
     ws.serializeAttachment({ ...attachment, tokens, at: now } satisfies SocketAttachment);
-    if (!this.ready()) return ws.close(1001, "Partie terminée");
+    if (!this.ready()) return ws.close(CLOSE_CODES.gameGone, "Partie terminée");
 
     let json: unknown;
     try {
@@ -176,6 +242,8 @@ export class GameSession extends DurableObject<Env> {
   }
 
   webSocketClose(ws: WebSocket, code: number): void {
+    const attachment = ws.deserializeAttachment() as SocketAttachment | null;
+    if (attachment) this.persistBucket(attachment);
     // Les codes 1005, 1006 et 1015 sont réservés : les renvoyer à close() lèverait une erreur.
     try {
       ws.close(code >= 1000 && code < 1005 ? code : 1000, "Fermeture");
@@ -219,7 +287,7 @@ export class GameSession extends DurableObject<Env> {
   private async purge(): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
       try {
-        ws.close(1001, "Partie supprimée");
+        ws.close(CLOSE_CODES.gameGone, "Partie supprimée");
       } catch {
         // Socket déjà fermé.
       }
@@ -228,6 +296,7 @@ export class GameSession extends DurableObject<Env> {
     await this.ctx.storage.deleteAlarm();
     // Sans cette remise à zéro, l'instance vivante croirait encore au schéma supprimé.
     this.schemaReady = false;
+    this.revealCache = null;
   }
 
   private async handleAnswer(ws: WebSocket, attachment: SocketAttachment, questionId: string, optionIds: string[]): Promise<void> {
@@ -293,8 +362,11 @@ export class GameSession extends DurableObject<Env> {
     this.store.writeMeta({ last_host_at: Date.now() });
 
     if (message.type === "kick") {
-      if (!message.playerId || !this.store.removePlayer(message.playerId)) return this.send(ws, { type: "error", code: "unknown_player" });
-      for (const socket of this.ctx.getWebSockets(`p:${message.playerId}`)) socket.close(1008, "Exclu de la partie");
+      // Le classement final est figé : exclure après coup le réécrirait.
+      if (meta.phase === "finished") return this.send(ws, { type: "error", code: "wrong_phase" });
+      if (!message.playerId || !this.store.kickPlayer(message.playerId)) return this.send(ws, { type: "error", code: "unknown_player" });
+      this.revealCache = null;
+      for (const socket of this.ctx.getWebSockets(`p:${message.playerId}`)) socket.close(CLOSE_CODES.kicked, "Exclu de la partie");
       const playerId = message.playerId;
       this.broadcast(["host", "screen"], () => ({ type: "player_left", playerId, count: this.store.playerCount() }));
       if (meta.phase === "question") this.notifyCount();
@@ -316,7 +388,10 @@ export class GameSession extends DurableObject<Env> {
     if (!question) return this.finish();
     const startedAt = Date.now();
     this.store.writeMeta({ phase: "question", idx: index, started_at: startedAt, duration_ms: question.durationMs });
-    // Alarme plutôt que setTimeout : un minuteur en mémoire empêcherait l'hibernation et ne survivrait pas à l'éviction.
+    this.revealCache = null;
+    // Alarme plutôt que setTimeout pour la fin de question : un minuteur en mémoire est perdu si l'objet est évincé
+    // et retarde l'hibernation tant qu'il est armé. Le minuteur court du compteur de réponses (250 ms) reste
+    // acceptable : sa perte ne fait que sauter une mise à jour.
     await this.scheduleAlarm();
     const payload = this.questionPayload(question, index, startedAt, question.durationMs);
     this.broadcast(["host", "screen", "player"], () => ({ type: "question", ...payload }));
@@ -328,6 +403,7 @@ export class GameSession extends DurableObject<Env> {
     this.store.writeMeta({ phase: "revealed" });
     await this.scheduleAlarm();
     const computed = this.computeReveal(meta, question);
+    this.revealCache = { questionId: question.id, computed };
     // Les payloads identiques sont sérialisés une seule fois ; seul `you` diffère d'un joueur à l'autre.
     this.sendAll("host", JSON.stringify({ type: "reveal", ...computed.host }));
     this.sendAll("screen", JSON.stringify({ type: "reveal", ...computed.viewer }));
@@ -394,7 +470,9 @@ export class GameSession extends DurableObject<Env> {
     if (question) {
       snapshot.question = this.questionPayload(question, meta.index, meta.startedAt, meta.durationMs);
       if (meta.phase === "revealed") {
-        const computed = this.computeReveal(meta, question);
+        const cached = this.revealCache?.questionId === question.id ? this.revealCache.computed : null;
+        const computed = cached ?? this.computeReveal(meta, question);
+        this.revealCache = { questionId: question.id, computed };
         const base = attachment.role === "host" ? computed.host : computed.viewer;
         const you = attachment.role === "player" && attachment.playerId ? computed.you(attachment.playerId) : undefined;
         snapshot.reveal = you ? { ...base, you } : base;

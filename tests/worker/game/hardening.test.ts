@@ -3,7 +3,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLAYER_TOKEN_TTL_MS, WS_SUBPROTOCOL } from "../../../src/shared/protocol";
 import {
-  aliasStubFor, connect, hostToken, join, newCode, rawConnect, reuseCode, setup, signFor, stubFor, withoutCorrection,
+  aliasStubFor, closeCodeOf, connect, hostToken, join, newCode, reuseCode, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -21,12 +21,23 @@ async function game(playerCount: number, quiz?: Parameters<typeof setup>[1]) {
 const sqlOf = <T>(code: string, query: string): Promise<T[]> =>
   runInDurableObject(stubFor(code), (_i, state) => state.storage.sql.exec(query).toArray() as T[]);
 
+async function finishGame(host: Client): Promise<void> {
+  host.send({ type: "start" });
+  for (const q of ["q1", "q2", "q3"]) {
+    await host.waitFor("question", (m) => m.questionId === q);
+    host.send({ type: "reveal" });
+    await host.waitFor("reveal", (m) => m.questionId === q);
+    host.send({ type: "next" });
+  }
+  await host.waitFor("finished");
+}
+
 const closeOf = (client: Client) => new Promise<CloseEvent>((resolve) => client.ws.addEventListener("close", resolve));
 
 describe("aucune écriture pour un code inconnu", () => {
   it("un WebSocket écran ou joueur sur un code inconnu ne crée ni tables ni alarme, ni dans la partie ni dans l'alias", async () => {
     const code = newCode();
-    expect((await rawConnect(code, await signFor(code, { code, role: "screen" }))).status).toBe(404);
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "screen" }))).toBe(4004);
     expect((await join(code, "Awa")).status).toBe(404);
     for (const stub of [stubFor(code), aliasStubFor(code)]) {
       expect(await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("SELECT name FROM sqlite_master").toArray())).toEqual([]);
@@ -45,14 +56,16 @@ describe("identité de partie (sid)", () => {
   it("un jeton d'une ancienne partie au même code est refusé, la nouvelle partie reste isolée", async () => {
     const old = await game(1);
     const oldToken = old.players[0]!.token;
+    // Le code n'est repris qu'une fois l'ancienne partie terminée (voir la course entre deux hôtes).
+    await finishGame(old.host);
     const sid = reuseCode(old.code);
     const host = await connect(old.code, await hostToken(old.code));
     opened.push(host);
     expect(await stubFor(old.code).currentSid()).toBeNull();
     expect(await aliasStubFor(old.code).currentSid()).toBe(sid);
 
-    expect((await rawConnect(old.code, oldToken)).status).toBe(401);
-    expect((await rawConnect(old.code, await signFor(old.code, { code: old.code, role: "screen", sid: "autre" }))).status).toBe(401);
+    expect(await closeCodeOf(old.code, oldToken)).toBe(4004);
+    expect(await closeCodeOf(old.code, await signFor(old.code, { code: old.code, role: "screen", sid: "autre" }))).toBe(4004);
     // Le pseudo de l'ancienne partie est libre dans la nouvelle : les états ne se mélangent pas.
     expect((await join(old.code, "Joueur 0")).status).toBe(201);
     expect(await sqlOf(old.code, "SELECT COUNT(*) AS n FROM players")).toEqual([{ n: 1 }]);
@@ -160,16 +173,18 @@ describe("étiquettes d'hibernation", () => {
 });
 
 describe("exclusion d'un joueur (kick)", () => {
-  it("ferme ses sockets, invalide son jeton, libère son pseudo et prévient l'hôte", async () => {
+  it("ferme ses sockets, invalide son jeton, bannit son pseudo et prévient l'hôte", async () => {
     const { code, host, players } = await game(2);
     const [a, b] = players as [typeof players[0], typeof players[0]];
     const closed = closeOf(a!.client);
     host.send({ type: "kick", playerId: a!.playerId });
-    expect((await closed).code).toBe(1008);
+    expect((await closed).code).toBe(4003);
     expect(await host.waitFor("player_left")).toMatchObject({ playerId: a!.playerId, count: 1 });
-    expect((await rawConnect(code, a!.token)).status).toBe(401);
+    expect(await closeCodeOf(code, a!.token)).toBe(4003);
     expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM players")).toEqual([{ n: 1 }]);
-    expect((await join(code, "Joueur 0")).status).toBe(201);
+    // Décision produit : le pseudo exclu reste banni dans cette partie, un autre pseudo est accepté.
+    expect((await join(code, "Joueur 0")).status).toBe(409);
+    expect((await join(code, "Autre pseudo")).status).toBe(201);
 
     b!.client.send({ type: "kick", playerId: b!.playerId });
     await b!.client.waitFor("error", (m) => m.code === "forbidden");

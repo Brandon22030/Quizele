@@ -84,6 +84,16 @@ export async function rawConnect(code: string, token: string | null): Promise<Re
   return exports.default.fetch(`${ORIGIN}/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": protocols } });
 }
 
+// Refus applicatif : le serveur accepte le socket puis le referme aussitôt avec un code 4xxx (ou 1008).
+export async function closeCodeOf(code: string, token: string): Promise<number> {
+  const response = await rawConnect(code, token);
+  expect(response.status).toBe(101);
+  const ws = response.webSocket!;
+  const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener("close", resolve));
+  ws.accept();
+  return (await closed).code;
+}
+
 export async function connect(code: string, token: string): Promise<Client> {
   const response = await rawConnect(code, token);
   expect(response.status).toBe(101);
