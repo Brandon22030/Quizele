@@ -99,11 +99,20 @@ async function attendrePolices(t: Jetons, textes: string): Promise<void> {
 function versPng(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Génération du PNG impossible"))), "image/png");
-  }).finally(() => {
-    // Safari iOS plafonne la mémoire totale des canvas : on libère le tampon sans attendre le ramasse-miettes.
+  });
+}
+
+async function dessinerPng(dessiner: (canvas: HTMLCanvasElement) => void): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  try {
+    dessiner(canvas);
+    return await versPng(canvas);
+  } finally {
+    // Safari iOS plafonne la mémoire totale des canvas : on libère le tampon sans attendre le ramasse-miettes,
+    // y compris quand le dessin a levé avant l'encodage.
     canvas.width = 0;
     canvas.height = 0;
-  });
+  }
 }
 
 function titreApp(s: Scene, y: number): number {
@@ -227,83 +236,83 @@ export async function renderResultImage(entree: ResultShareData, format: ShareFo
   const data = { ...entree, quizTitle: nettoyer(entree.quizTitle), pseudo: nettoyer(entree.pseudo), top: nettoyerTop(entree.top) };
   const t = lireJetons();
   await attendrePolices(t, `${NOM_APP} ${data.quizTitle} ${data.pseudo} ${data.top.map((e) => e.pseudo).join(" ")} 0123456789/ Rang :bonnes réponses`);
-  const canvas = document.createElement("canvas");
-  const s = scene(canvas, format, t);
-  const { ctx } = s;
-  const marge = t.espaces.six;
-  fond(ctx, t, s.l, s.h);
+  return dessinerPng((canvas) => {
+    const s = scene(canvas, format, t);
+    const { ctx } = s;
+    const marge = t.espaces.six;
+    fond(ctx, t, s.l, s.h);
 
-  titreApp(s, marge);
-  const hautPilule = marge + t.tailles.xxl + t.espaces.quatre;
-  const hPilule = pilulesTitre(s, data.quizTitle, hautPilule);
-  // Le paysage est bas : le score descend d'un cran dans l'échelle typographique pour que la colonne tienne.
-  const tailleGros = format === "portrait" ? t.tailles.cinq : t.tailles.quatre;
-  const tailleReste = format === "portrait" ? t.tailles.quatre : t.tailles.xxxl;
-  const centreScore = hautPilule + hPilule + t.espaces.quatre + tailleGros * DEMI_HAUTEUR_SCORE;
-  scoreLigne(s, data.score, data.total, centreScore, tailleGros, tailleReste);
-  const yLabel = centreScore + tailleGros * DEMI_HAUTEUR_SCORE + t.espaces.trois;
-  etiquette(s, "bonnes réponses", yLabel + t.tailles.lg / 2, t.tailles.lg);
-  let yPilules = yLabel + t.tailles.lg + t.espaces.trois;
-  yPilules += pilule(ctx, t, `Rang : ${data.rank} / ${data.playerCount}`, s.colonne.cx, yPilules, {
-    fond: t.couleurs.jaune,
-    encre: t.couleurs.foret,
-    taille: t.tailles.sm,
-    famille: t.polices.affiche,
-    largeurMax: s.colonne.largeur,
+    titreApp(s, marge);
+    const hautPilule = marge + t.tailles.xxl + t.espaces.quatre;
+    const hPilule = pilulesTitre(s, data.quizTitle, hautPilule);
+    // Le paysage est bas : le score descend d'un cran dans l'échelle typographique pour que la colonne tienne.
+    const tailleGros = format === "portrait" ? t.tailles.cinq : t.tailles.quatre;
+    const tailleReste = format === "portrait" ? t.tailles.quatre : t.tailles.xxxl;
+    const centreScore = hautPilule + hPilule + t.espaces.quatre + tailleGros * DEMI_HAUTEUR_SCORE;
+    scoreLigne(s, data.score, data.total, centreScore, tailleGros, tailleReste);
+    const yLabel = centreScore + tailleGros * DEMI_HAUTEUR_SCORE + t.espaces.trois;
+    etiquette(s, "bonnes réponses", yLabel + t.tailles.lg / 2, t.tailles.lg);
+    let yPilules = yLabel + t.tailles.lg + t.espaces.trois;
+    yPilules += pilule(ctx, t, `Rang : ${data.rank} / ${data.playerCount}`, s.colonne.cx, yPilules, {
+      fond: t.couleurs.jaune,
+      encre: t.couleurs.foret,
+      taille: t.tailles.sm,
+      famille: t.polices.affiche,
+      largeurMax: s.colonne.largeur,
+    });
+    yPilules += t.espaces.deux;
+    const hPseudo = pilule(ctx, t, data.pseudo, s.colonne.cx, yPilules, {
+      fond: t.couleurs.creme,
+      encre: t.couleurs.foret,
+      taille: t.tailles.sm,
+      famille: t.polices.texte,
+      graisse: 800,
+      largeurMax: s.colonne.largeur,
+    });
+    if (format === "portrait") {
+      const haut = yPilules + hPseudo + t.espaces.quatre;
+      preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
+    }
+    const moi = data.top[data.rank - 1]?.pseudo === data.pseudo ? data.rank - 1 : -1;
+    feuilleClassement(s, data.top, data.total, moi);
   });
-  yPilules += t.espaces.deux;
-  const hPseudo = pilule(ctx, t, data.pseudo, s.colonne.cx, yPilules, {
-    fond: t.couleurs.creme,
-    encre: t.couleurs.foret,
-    taille: t.tailles.sm,
-    famille: t.polices.texte,
-    graisse: 800,
-    largeurMax: s.colonne.largeur,
-  });
-  if (format === "portrait") {
-    const haut = yPilules + hPseudo + t.espaces.quatre;
-    preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
-  }
-  const moi = data.top[data.rank - 1]?.pseudo === data.pseudo ? data.rank - 1 : -1;
-  feuilleClassement(s, data.top, data.total, moi);
-  return versPng(canvas);
 }
 
 export async function renderLeaderboardImage(entree: LeaderboardShareData, format: ShareFormat = "portrait"): Promise<Blob> {
   const data = { ...entree, quizTitle: nettoyer(entree.quizTitle), top: nettoyerTop(entree.top) };
   const t = lireJetons();
   await attendrePolices(t, `${NOM_APP} ${data.quizTitle} ${data.top.map((e) => e.pseudo).join(" ")} 0123456789/ TOP 5 Classement joueurs`);
-  const canvas = document.createElement("canvas");
-  const s = scene(canvas, format, t);
-  const { ctx } = s;
-  const marge = t.espaces.six;
-  fond(ctx, t, s.l, s.h);
+  return dessinerPng((canvas) => {
+    const s = scene(canvas, format, t);
+    const { ctx } = s;
+    const marge = t.espaces.six;
+    fond(ctx, t, s.l, s.h);
 
-  titreApp(s, marge);
-  const hautPilule = marge + t.tailles.xxl + t.espaces.quatre;
-  const hPilule = pilulesTitre(s, data.quizTitle, hautPilule);
-  const rayon = t.tailles.cinq * RAYON_ETOILE;
-  const centreEtoile = hautPilule + hPilule + t.espaces.quatre + rayon;
-  etoile(ctx, t, s.colonne.cx, centreEtoile, rayon);
-  ctx.font = police(t.polices.badge, t.tailles.xxl);
-  ctx.fillStyle = t.couleurs.foret;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("TOP 5", s.colonne.cx, centreEtoile + t.tailles.xxl * RECENTRAGE_BADGE);
-  const yLabel = centreEtoile + rayon + t.espaces.trois;
-  etiquette(s, "Classement final", yLabel + t.tailles.xl / 2, t.tailles.xl);
-  const yPilule = yLabel + t.tailles.xl + t.espaces.trois;
-  const hJoueurs = pilule(ctx, t, nbJoueurs(data.playerCount), s.colonne.cx, yPilule, {
-    fond: t.couleurs.creme,
-    encre: t.couleurs.foret,
-    taille: t.tailles.sm,
-    famille: t.polices.affiche,
-    largeurMax: s.colonne.largeur,
+    titreApp(s, marge);
+    const hautPilule = marge + t.tailles.xxl + t.espaces.quatre;
+    const hPilule = pilulesTitre(s, data.quizTitle, hautPilule);
+    const rayon = t.tailles.cinq * RAYON_ETOILE;
+    const centreEtoile = hautPilule + hPilule + t.espaces.quatre + rayon;
+    etoile(ctx, t, s.colonne.cx, centreEtoile, rayon);
+    ctx.font = police(t.polices.badge, t.tailles.xxl);
+    ctx.fillStyle = t.couleurs.foret;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("TOP 5", s.colonne.cx, centreEtoile + t.tailles.xxl * RECENTRAGE_BADGE);
+    const yLabel = centreEtoile + rayon + t.espaces.trois;
+    etiquette(s, "Classement final", yLabel + t.tailles.xl / 2, t.tailles.xl);
+    const yPilule = yLabel + t.tailles.xl + t.espaces.trois;
+    const hJoueurs = pilule(ctx, t, nbJoueurs(data.playerCount), s.colonne.cx, yPilule, {
+      fond: t.couleurs.creme,
+      encre: t.couleurs.foret,
+      taille: t.tailles.sm,
+      famille: t.polices.affiche,
+      largeurMax: s.colonne.largeur,
+    });
+    if (format === "portrait") {
+      const haut = yPilule + hJoueurs + t.espaces.quatre;
+      preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
+    }
+    feuilleClassement(s, data.top, data.total, -1);
   });
-  if (format === "portrait") {
-    const haut = yPilule + hJoueurs + t.espaces.quatre;
-    preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
-  }
-  feuilleClassement(s, data.top, data.total, -1);
-  return versPng(canvas);
 }

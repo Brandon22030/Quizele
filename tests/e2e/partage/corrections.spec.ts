@@ -106,6 +106,43 @@ test("le canvas de rendu est libéré après toBlob", async ({ page }) => {
   for (const t of r.tailles) expect(t).toEqual([0, 0]);
 });
 
+test("le canvas est libéré même quand le dessin lève avant l'encodage", async ({ page }) => {
+  await ouvrir(page);
+  const r = await page.evaluate(
+    async ({ module, donnees }) => {
+      const m = await import(/* @vite-ignore */ module);
+      const canvases: HTMLCanvasElement[] = [];
+      const creer = document.createElement.bind(document);
+      document.createElement = ((nom: string, o?: ElementCreationOptions) => {
+        const e = creer(nom, o);
+        if (nom === "canvas") canvases.push(e as HTMLCanvasElement);
+        return e;
+      }) as typeof document.createElement;
+      const proto = CanvasRenderingContext2D.prototype;
+      const fillText = proto.fillText;
+      let tailleAuMomentDeLErreur: number[] = [];
+      proto.fillText = function (this: CanvasRenderingContext2D) {
+        tailleAuMomentDeLErreur = [this.canvas.width, this.canvas.height];
+        throw new Error("dessin interrompu");
+      };
+      let erreur: string | null = null;
+      try {
+        await m.renderResultImage(donnees, "portrait");
+      } catch (e) {
+        erreur = String(e);
+      } finally {
+        document.createElement = creer;
+        proto.fillText = fillText;
+      }
+      return { erreur, tailleAuMomentDeLErreur, tailles: canvases.map((c) => [c.width, c.height]) };
+    },
+    { module: MODULE, donnees: base },
+  );
+  expect(r.erreur).toContain("dessin interrompu");
+  expect(r.tailleAuMomentDeLErreur).toEqual([1080, 1350]);
+  expect(r.tailles).toEqual([[0, 0]]);
+});
+
 test("titre et pseudos sans caractère de contrôle ni de forçage de direction", async ({ page }) => {
   await ouvrir(page);
   const piege = "Quiz‮dlrow‬\u0007 de\nla⁦ foi⁩";
