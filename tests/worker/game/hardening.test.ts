@@ -3,7 +3,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { PLAYER_TOKEN_TTL_MS, WS_SUBPROTOCOL } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, reuseCode, sessionRow, setup, signFor, stubFor, withoutCorrection,
+  closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -121,6 +121,11 @@ describe("purge des parties abandonnées", () => {
 
     await runInDurableObject(stub, (_i, state) =>
       state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'last_host_at'", String(Date.now() - PLAYER_TOKEN_TTL_MS - 1000)));
+    await runDurableObjectAlarm(stub);
+    // L'abandon est d'abord clôturé avec son bilan : D1 libère le code et garde le joueur.
+    expect((await sessionRow(sidFor(code)))?.status).toBe("ended");
+    expect((await sqlOf(code, "SELECT COUNT(*) AS n FROM players"))[0]).toEqual({ n: 1 });
+    await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("UPDATE meta SET value = '1' WHERE key = 'finished_at'"));
     await runDurableObjectAlarm(stub);
     expect(await sqlOf(code, "SELECT name FROM sqlite_master WHERE name = 'meta'")).toEqual([]);
     // Même instance : pas d'erreur "no such table", la partie est simplement introuvable.
@@ -274,6 +279,8 @@ describe("regroupement du compteur de réponses", () => {
     // sous machine chargée, au lieu de supposer qu'elles arrivent toutes ensemble.
     const [{ span }] = await sqlOf<{ span: number }>(code, "SELECT MAX(received_at) - MIN(received_at) AS span FROM answers");
     expect(counts.length).toBeLessThanOrEqual(Math.floor(span! / 250) + 2);
+    // Réponses resserrées (moins de 2,5 s d'étalement) : le regroupement doit toujours économiser des diffusions.
+    if (span! < 2_500) expect(counts.length).toBeLessThan(12);
     expect(counts.at(-1)).toMatchObject({ count: 12, total: 12 });
   });
 });

@@ -32,10 +32,11 @@ describe("seau à jetons et reconnexion en boucle", () => {
       processed += client.messages.filter((m) => m.type === "snapshot").length;
       if (outcome?.code === 1008) closedFor1008 += 1;
     }
-    // Capacité 30 + recharge de 10/s sur la durée réelle du test (+ marge) : un seau remis à plein à chaque
-    // reconnexion laisserait passer 150 messages.
+    // Capacité 30 + recharge de 10/s sur la durée réelle du test + une marge pour le coût des reconnexions : un seau
+    // remis à plein à chaque reconnexion laisserait passer 6 x 25 = 150 messages.
     const allowed = 30 + ((Date.now() - startedAt) / 1000) * 10 + 5;
     expect(processed).toBeLessThanOrEqual(allowed);
+    expect(processed).toBeLessThan(150);
     // Ce qui prouve que le seau n'est pas remis à plein, c'est qu'au moins une reconnexion a été refusée (1008) :
     // une borne sur `allowed` dépendrait de la durée du test, donc de la charge de la machine.
     expect(closedFor1008).toBeGreaterThan(0);

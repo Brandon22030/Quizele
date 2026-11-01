@@ -91,7 +91,8 @@ describe("purge à 90 jours", () => {
       env.DB.prepare = originalPrepare;
     }
     expect(batches).toBe(1);
-    expect(calls).toBeLessThanOrEqual(3);
+    // Trois suppressions du batch + la clôture des parties abandonnées depuis plus de 48 h (QZ-002-07).
+    expect(calls).toBeLessThanOrEqual(4);
     expect((await counts())?.sessions).toBe(0);
   });
 });

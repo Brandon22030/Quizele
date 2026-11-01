@@ -103,7 +103,7 @@ async function startServer() {
   if (!existsSync(CONFIG)) throw new Error("dist/server/wrangler.json absent : lancer `npm run build` d'abord.");
   // Base D1 locale prête avant le premier lancement (migrations idempotentes, aucune ressource distante).
   execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG], { stdio: "ignore" });
-  const child = spawn("npx", ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT), "--local"], { stdio: ["ignore", "pipe", "pipe"], detached: false });
+  const child = spawn("npx", ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT), "--local", "--var", "LOCAL_TOOLS:true"], { stdio: ["ignore", "pipe", "pipe"], detached: false });
   let log = "";
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
@@ -142,6 +142,19 @@ const connectTo = async (code, token) => {
 
 const FORBIDDEN = /correct|explanation|reference/i;
 const QUESTIONS = Number(args.questions ?? 3);
+// Contenu neutre envoyé à la route locale : un choix unique, un choix multiple et un vrai/faux en alternance.
+const sampleQuestions = (count) =>
+  Array.from({ length: count }, (_, i) => {
+    const kind = ["single", "multiple", "true_false"][i % 3];
+    const labels = kind === "true_false" ? ["Vrai", "Faux"] : ["Réponse A", "Réponse B", "Réponse C", "Réponse D"];
+    const correct = kind === "multiple" ? [0, 2] : [1];
+    return {
+      kind,
+      prompt: `Question de charge ${i + 1}`,
+      durationSec: 20,
+      options: labels.map((label, j) => ({ label, isCorrect: correct.includes(j) })),
+    };
+  });
 
 // Route locale (404 hors vars locales) : crée un quiz dans D1 puis le lance comme le ferait partie.lancer.
 async function launch(body) {
@@ -152,7 +165,7 @@ async function launch(body) {
 
 async function playGame(index, report, pid) {
   const cpu = () => (pid ? workerdCpu(pid) : 0);
-  const game = await launch({ questions: QUESTIONS });
+  const game = await launch({ questions: sampleQuestions(QUESTIONS) });
   const { code } = game;
   // Multiple : un seul mauvais choix suffit à rendre la réponse fausse.
   const QUIZ = game.quiz.map((q) => ({ id: q.id, good: q.good, bad: [q.bad[0]] }));
@@ -265,7 +278,7 @@ try {
   const cpuBefore = server.pid ? workerdCpu(server.pid) : null;
   // CPU de partie.lancer seul : un quiz est créé une fois, puis relancé plusieurs fois (lecture D1, insertion, RPC du DO).
   if (server.pid && LANCERS > 0) {
-    const { quizId } = await launch({ questions: QUESTIONS });
+    const { quizId } = await launch({ questions: sampleQuestions(QUESTIONS) });
     const before = workerdCpu(server.pid);
     for (let i = 0; i < LANCERS; i += 1) await launch({ quizId });
     report.cpuLaunch = (workerdCpu(server.pid) - before) / LANCERS;

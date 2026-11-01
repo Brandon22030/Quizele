@@ -75,19 +75,25 @@ export async function sessionRow(sid: string) {
 // Envoie des rafales de `resume` bien au-dessus du rythme de recharge du seau, jusqu'à la fermeture du socket. On attend
 // l'événement plutôt qu'un nombre fixe de messages : sous machine chargée le serveur traite plus lentement, et un
 // nombre fixe pourrait rester sous la recharge de 10 jetons par seconde.
+// Le nombre total de messages est borné : un serveur qui ne fermerait jamais ferait échouer le test (résultat null)
+// au lieu de laisser le flot partir sans limite.
+export const FLOOD_MAX_MESSAGES = 3_000;
+
 export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>, timeoutMs = 40_000): Promise<CloseEvent | null> {
   let event: CloseEvent | null = null;
   void closed.then((e) => (event = e));
   const deadline = Date.now() + timeoutMs;
-  while (event === null && Date.now() < deadline) {
+  let sent = 0;
+  while (event === null && sent < FLOOD_MAX_MESSAGES && Date.now() < deadline) {
     try {
       for (let i = 0; i < 30; i += 1) client.send({ type: "resume" });
+      sent += 30;
     } catch {
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return event ?? Promise.race([closed, new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))]);
+  return event ?? Promise.race([closed, new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000))]);
 }
 
 export class Client {
@@ -231,3 +237,32 @@ export async function rewindQuestion(code: string, ms: number): Promise<void> {
 
 export const demoQuiz = quizDemo;
 export const withoutCorrection: QuizDefinition = { ...quizDemo, showCorrectAnswer: false };
+
+// Substitue le binding D1 d'une instance de DO par un proxy qui compte les requêtes et peut faire échouer les batchs.
+export async function spyOnDatabase(code: string) {
+  const trace = { batches: [] as number[], prepared: 0, failBatch: false };
+  await runInDurableObject(stubFor(code), (instance) => {
+    const proxy = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (query: string) => {
+            trace.prepared += 1;
+            return target.prepare(query);
+          };
+        }
+        if (prop === "batch") {
+          return (statements: D1PreparedStatement[]) => {
+            trace.batches.push(statements.length);
+            if (trace.failBatch) return Promise.reject(new Error("D1 indisponible"));
+            return target.batch(statements);
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const holder = instance as unknown as { env: Env };
+    holder.env = Object.create(holder.env, { DB: { value: proxy } });
+  });
+  return trace;
+}

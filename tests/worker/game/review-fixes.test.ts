@@ -99,6 +99,8 @@ describe("fermetures applicatives définitives", () => {
     await runInDurableObject(stubFor(code), (_i, state) =>
       state.storage.sql.exec("UPDATE meta SET value = ? WHERE key = 'last_host_at'", String(Date.now() - PLAYER_TOKEN_TTL_MS - 1000)));
     await runDurableObjectAlarm(stubFor(code));
+    await runInDurableObject(stubFor(code), (_i, state) => state.storage.sql.exec("UPDATE meta SET value = '1' WHERE key = 'finished_at'"));
+    await runDurableObjectAlarm(stubFor(code));
     expect((await closed).code).toBe(4004);
     expect(await closeCodeOf(code, players[0]!.token)).toBe(4004);
   });

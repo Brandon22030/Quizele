@@ -8,8 +8,11 @@ vi.mock("../../src/server/game/launch", () => ({ launchGame: async () => ((state
 vi.mock("../../src/server/game/local", () => ({ LOCAL_USER: { id: "local" }, createLocalGame: async () => ((state.launched += 1), { code: "ABC234" }) }));
 
 const SECRET = "secret-de-test";
+// Environnement local complet : les trois conditions de la route (LOCAL_TOOLS, transport console, localhost) réunies.
+const LOCAL = { LOCAL_TOOLS: "true", MAIL_TRANSPORT: "console", BETTER_AUTH_URL: "http://localhost:4321", PLAYER_TOKEN_SECRET: SECRET };
+const body = { questions: [{ kind: "single", prompt: "Q", durationSec: 20, options: [{ label: "A", isCorrect: true }, { label: "B", isCorrect: false }] }] };
 const request = (headers: Record<string, string> = {}) =>
-  new Request("https://exemple.test/api/parties/local", { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: "{}" });
+  new Request("https://exemple.test/api/parties/local", { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
 
 async function post(headers?: Record<string, string>) {
   const { POST } = await import("../../src/pages/api/parties/local");
@@ -23,26 +26,50 @@ describe("POST /api/parties/local", () => {
 
   it("404 quand MAIL_TRANSPORT n'est pas « console », même avec le bon secret", async () => {
     for (const transport of [undefined, "", "resend", "Console"]) {
-      state.env = { MAIL_TRANSPORT: transport, PLAYER_TOKEN_SECRET: SECRET };
+      state.env = { ...LOCAL, MAIL_TRANSPORT: transport };
+      expect((await post({ "x-local-secret": SECRET })).status).toBe(404);
+    }
+    expect(state.launched).toBe(0);
+  });
+
+  it("404 quand LOCAL_TOOLS n'est pas exactement « true », même avec le bon secret", async () => {
+    for (const flag of [undefined, "", "false", "TRUE", "1"]) {
+      state.env = { ...LOCAL, LOCAL_TOOLS: flag };
+      expect((await post({ "x-local-secret": SECRET })).status).toBe(404);
+    }
+    expect(state.launched).toBe(0);
+  });
+
+  it("404 quand BETTER_AUTH_URL ne vise pas localhost, même avec le bon secret", async () => {
+    for (const url of [undefined, "", "A_REMPLACER", "https://quizdeszeles.workers.dev", "https://localhost.evil.test", "not a url"]) {
+      state.env = { ...LOCAL, BETTER_AUTH_URL: url };
       expect((await post({ "x-local-secret": SECRET })).status).toBe(404);
     }
     expect(state.launched).toBe(0);
   });
 
   it("404 sans secret serveur configuré, même avec un en-tête vide", async () => {
-    state.env = { MAIL_TRANSPORT: "console", PLAYER_TOKEN_SECRET: undefined };
+    state.env = { ...LOCAL, PLAYER_TOKEN_SECRET: undefined };
     expect((await post({ "x-local-secret": "" })).status).toBe(404);
     expect((await post()).status).toBe(404);
     expect(state.launched).toBe(0);
   });
 
   it("404 sans en-tête ou avec un mauvais en-tête, 201 avec le bon", async () => {
-    state.env = { MAIL_TRANSPORT: "console", PLAYER_TOKEN_SECRET: SECRET };
+    state.env = { ...LOCAL };
     expect((await post()).status).toBe(404);
     expect((await post({ "x-local-secret": "autre" })).status).toBe(404);
     expect(state.launched).toBe(0);
     expect((await post({ "x-local-secret": SECRET })).status).toBe(201);
     expect(state.launched).toBe(1);
+  });
+
+  it("400 si ni questions ni quizId ne sont fournis : aucun contenu de démonstration côté serveur", async () => {
+    state.env = { ...LOCAL };
+    const { POST } = await import("../../src/pages/api/parties/local");
+    const empty = new Request("https://exemple.test/api/parties/local", { method: "POST", headers: { "x-local-secret": SECRET }, body: "{}" });
+    expect((await POST({ request: empty } as never)).status).toBe(400);
+    expect(state.launched).toBe(0);
   });
 });
 

@@ -6,7 +6,7 @@ import { getSessionReport } from "../../../src/server/db/results";
 import type { QuizDefinition, QuizQuestion } from "../../../src/server/game/quiz";
 import { shuffleSeeded } from "../../../src/server/game/shuffle";
 import type { ServerMessage } from "../../../src/shared/protocol";
-import { OWNER_ID, addPlayer, newCode, prepareDb, setup, sidFor, stubFor, type Client, type Player } from "./helpers";
+import { OWNER_ID, addPlayer, newCode, prepareDb, setup, sidFor, spyOnDatabase, stubFor, type Client, type Player } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
@@ -302,34 +302,6 @@ async function initError(code: string, quiz: unknown): Promise<string | null> {
 }
 
 // Remplace le binding D1 vu par le Durable Object par une enveloppe qui compte les batchs et peut échouer à la demande.
-async function spyOnDatabase(code: string) {
-  const trace = { batches: [] as number[], prepared: 0, failBatch: false };
-  await runInDurableObject(stubFor(code), (instance) => {
-    const proxy = new Proxy(env.DB, {
-      get(target, prop) {
-        if (prop === "prepare") {
-          return (query: string) => {
-            trace.prepared += 1;
-            return target.prepare(query);
-          };
-        }
-        if (prop === "batch") {
-          return (statements: D1PreparedStatement[]) => {
-            trace.batches.push(statements.length);
-            if (trace.failBatch) return Promise.reject(new Error("D1 indisponible"));
-            return target.batch(statements);
-          };
-        }
-        const value = Reflect.get(target, prop);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
-    });
-    const holder = instance as unknown as { env: Env };
-    holder.env = Object.create(holder.env, { DB: { value: proxy } });
-  });
-  return trace;
-}
-
 describe("écriture de fin de partie dans D1", () => {
   it("un seul batch, sous la limite de requêtes de l'offre gratuite, et aucune écriture pendant le jeu", { timeout: 90_000 }, async () => {
     const { code, host, players } = await game(30, makeQuiz(5));

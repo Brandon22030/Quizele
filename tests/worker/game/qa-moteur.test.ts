@@ -397,8 +397,10 @@ describe("mélange", () => {
 });
 
 describe("route locale de charge", () => {
+  // Les questions viennent de l'appelant depuis que la fixture n'est plus embarquée dans le bundle.
+  const body = JSON.stringify({ questions: [{ kind: "single", prompt: "Q", durationSec: 20, options: [{ label: "A", isCorrect: true }, { label: "B", isCorrect: false }] }] });
   const call = (headers: Record<string, string>, method = "POST") =>
-    exports.default.fetch("https://exemple.test/api/parties/local", { method, headers: { "Content-Type": "application/json", ...headers }, body: method === "POST" ? "{}" : undefined });
+    exports.default.fetch("https://exemple.test/api/parties/local", { method, headers: { "Content-Type": "application/json", ...headers }, body: method === "POST" ? body : undefined });
 
   it("404 sans en-tête, avec un mauvais secret, un secret vide ou une autre casse de valeur", async () => {
     await prepareDb();
@@ -420,6 +422,9 @@ describe("route locale de charge", () => {
   it("le bon secret, en local (MAIL_TRANSPORT=console), crée une partie jouable", async () => {
     await prepareDb();
     expect(env.MAIL_TRANSPORT).toBe("console");
+    // LOCAL_TOOLS n'est pas dans la config de test : la route exige désormais ce drapeau explicite en plus du transport.
+    const flags = env as unknown as Record<string, string | undefined>;
+    flags.LOCAL_TOOLS = "true";
     const response = await call({ "x-local-secret": env.PLAYER_TOKEN_SECRET as string });
     expect(response.status).toBe(201);
     const { code, hostToken: token } = (await response.json()) as { code: string; hostToken: string };
@@ -429,6 +434,7 @@ describe("route locale de charge", () => {
     expect(await host.waitFor("snapshot")).toMatchObject({ role: "host", phase: "lobby" });
     const joined = await addPlayer(code, "Awa");
     opened.push(joined.client);
+    delete flags.LOCAL_TOOLS;
   });
 });
 
