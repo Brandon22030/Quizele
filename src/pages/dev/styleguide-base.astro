@@ -1,0 +1,27 @@
+---
+import Base from "../../layouts/Base.astro";
+import DemoInteractive from "../../components/ui/demo-interactive";
+import { DemoStatiqueForet, DemoStatiqueJaune } from "../../components/ui/demo-statique";
+
+// Guide de style : n'existe qu'en développement.
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404 });
+}
+---
+
+<Base title="Guide de style - composants de base">
+  <main class="flex flex-col">
+    <div class="flex flex-col gap-8 px-4 py-8">
+      <DemoStatiqueJaune />
+      <section class="flex flex-col gap-4">
+        <h2 class="font-affiche text-2xl">Composants interactifs</h2>
+        <DemoInteractive client:load />
+      </section>
+    </div>
+
+    <div data-foret class="flex flex-col gap-6 bg-vert-foret px-4 py-8 text-creme">
+      <DemoStatiqueForet />
+      <DemoInteractive client:load foret />
+    </div>
+  </main>
+</Base>
