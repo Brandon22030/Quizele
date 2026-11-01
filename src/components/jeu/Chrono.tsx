@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { QuestionClock } from "../../shared/clock";
-import { announcementFor, chronoLevel, secondsLeft, startChronoTicker, type ChronoLevel } from "./chrono-state";
+import { chronoLevel, chronoSnapshot, secondsLeft, startChronoTicker, type ChronoLevel } from "./chrono-state";
 import { cn } from "../ui/cn";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
@@ -23,8 +23,12 @@ export function Chrono({ clock, onExpire, className }: Props) {
   const reduced = usePrefersReducedMotion();
   // Durée totale = déjà écoulé + restant, constante pour une horloge donnée.
   const durationMs = clock.remaining() + clock.elapsed();
-  const [remaining, setRemaining] = useState(() => clock.remaining());
-  const [announcement, setAnnouncement] = useState(() => announcementFor(clock.remaining()));
+  const [snap, setSnap] = useState(() => chronoSnapshot(clock));
+  // Nouvelle horloge (question suivante) : l'état est recalculé pendant le rendu, avant tout affichage,
+  // pour ne jamais peindre une frame avec le reste de l'ancienne question. Côté écran, `key={questionId}`
+  // remonte de toute façon le composant ; cette garde protège les usages sans clé.
+  if (snap.clock !== clock) setSnap(chronoSnapshot(clock));
+  const { remaining, announcement } = snap;
   const onExpireRef = useRef(onExpire);
   onExpireRef.current = onExpire;
 
@@ -32,8 +36,7 @@ export function Chrono({ clock, onExpire, className }: Props) {
     () =>
       startChronoTicker(clock, {
         onTick: (left, next) => {
-          setRemaining(left);
-          if (next) setAnnouncement(next);
+          setSnap((prev) => (prev.clock === clock ? { clock, remaining: left, announcement: next ?? prev.announcement } : prev));
         },
         onExpire: () => onExpireRef.current?.(),
       }),

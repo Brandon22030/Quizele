@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Chrono } from "../../../src/components/jeu/Chrono";
-import { announcementFor, chronoLevel, secondsLeft, startChronoTicker } from "../../../src/components/jeu/chrono-state";
+import { announcementFor, chronoLevel, chronoSnapshot, secondsLeft, startChronoTicker } from "../../../src/components/jeu/chrono-state";
 import { createQuestionClock, type ClockSample } from "../../../src/shared/clock";
 
 describe("niveaux du chrono", () => {
@@ -19,6 +19,18 @@ describe("niveaux du chrono", () => {
     expect(secondsLeft(12_001)).toBe(13);
     expect(secondsLeft(999)).toBe(1);
     expect(secondsLeft(-50)).toBe(0);
+  });
+});
+
+describe("changement d'horloge", () => {
+  it("recalcule reste et annonce d'un bloc pour la nouvelle horloge, sans reprendre l'ancienne", () => {
+    const ancienne = createQuestionClock({ startedAt: 0, serverNow: 19_000, durationMs: 20_000 }, () => 19_000);
+    const nouvelle = createQuestionClock({ startedAt: 0, serverNow: 0, durationMs: 20_000 }, () => 0);
+    expect(chronoSnapshot(ancienne)).toMatchObject({ remaining: 1_000, announcement: { text: "1 seconde restante" } });
+    const apres = chronoSnapshot(nouvelle);
+    expect(apres.clock).toBe(nouvelle);
+    expect(apres.remaining).toBe(20_000);
+    expect(apres.announcement.text).toBe("20 secondes restantes");
   });
 });
 

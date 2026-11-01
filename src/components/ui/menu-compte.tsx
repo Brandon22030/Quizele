@@ -51,7 +51,7 @@ export function MenuCompte({ nom, email, deconnexionHref, className }: MenuCompt
         id={panneauId}
         hidden={!ouvert}
         data-papier=""
-        className="absolute top-full right-0 z-40 mt-2 w-64 rounded-md border-trait border-vert-foret bg-creme p-2 text-vert-foret shadow-relief"
+        className="absolute top-full right-0 z-40 mt-2 w-menu rounded-md border-trait border-vert-foret bg-creme p-2 text-vert-foret shadow-relief"
       >
         <div className="px-3 py-2">
           <p className="truncate font-extrabold">{nom}</p>

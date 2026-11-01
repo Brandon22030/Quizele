@@ -73,16 +73,16 @@
   --spacing-4: 16px;
   --spacing-5: 20px;
   --spacing-6: 24px;
-  --spacing-7: 28px;  /* pastille de OptionMode */
+  --spacing-pastille-option: 28px;  /* pastille de OptionMode */
   --spacing-8: 32px;
-  --spacing-9: 36px;  /* pastille de Marque */
+  --spacing-pastille-marque: 36px;  /* pastille de Marque */
   --spacing-10: 40px;
   --spacing-11: 44px; /* cible tactile minimale */
   --spacing-12: 48px;
   --spacing-14: 56px; /* bouton principal */
   --spacing-16: 64px;
   --spacing-20: 80px;
-  --spacing-64: 256px; /* largeur du menu de compte */
+  --spacing-menu: 232px; /* largeur du menu de compte */
   /* Gabarits propres aux écrans de jeu (maquette QZ-001), nommés plutôt que numérotés : ils sortent de la grille de 4 px d'usage courant. */
   --spacing-chrono: 128px;       /* anneau du chrono */
   --spacing-scene: 300px;        /* scène de l'attente et du verdict juste (explosion de 300) */

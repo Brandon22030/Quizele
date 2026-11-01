@@ -13,7 +13,7 @@ export function Marque({ className, href = "/", ...rest }: AnchorHTMLAttributes<
     >
       <span
         aria-hidden="true"
-        className="forme-explosion grid size-9 -rotate-8 place-items-center bg-jaune-soleil font-affiche text-lg text-vert-foret"
+        className="forme-explosion grid size-pastille-marque -rotate-8 place-items-center bg-jaune-soleil font-affiche text-lg text-vert-foret"
       >
         ?
       </span>

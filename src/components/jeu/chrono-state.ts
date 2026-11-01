@@ -30,6 +30,12 @@ export function announcementFor(remainingMs: number): Announcement {
   return { key: 3, text };
 }
 
+// État affiché pour une horloge donnée : recalculé d'un bloc quand l'horloge change (question suivante).
+export function chronoSnapshot(clock: QuestionClock) {
+  const remaining = clock.remaining();
+  return { clock, remaining, announcement: announcementFor(remaining) };
+}
+
 export interface TickerHandlers {
   onTick: (remainingMs: number, announcement: Announcement | null) => void;
   onExpire?: () => void;

@@ -20,7 +20,7 @@ export function OptionMode({ titre, description, className, ...rest }: OptionMod
           "peer-disabled:cursor-not-allowed peer-disabled:border-dashed",
         )}
       >
-        <span aria-hidden="true" className="mt-1 grid size-7 shrink-0 place-items-center rounded-full border-trait border-current">
+        <span aria-hidden="true" className="mt-1 grid size-pastille-option shrink-0 place-items-center rounded-full border-trait border-current">
           <span className="hidden size-3 rounded-full bg-jaune-soleil group-has-checked:block" />
         </span>
         <span className="block">

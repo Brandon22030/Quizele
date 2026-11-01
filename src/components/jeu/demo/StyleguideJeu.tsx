@@ -20,8 +20,8 @@ import {
   ScoreFinal,
   StatutConnexion,
   ValidationMultiple,
-  Verdict,
 } from "../index";
+import { Verdict } from "../Verdict";
 import { Button } from "../../ui/button";
 import { Papier } from "../../ui/papier";
 import { Pilule } from "../../ui/pilule";
@@ -293,9 +293,9 @@ export default function StyleguideJeu() {
         <div className="flex flex-col gap-6 py-4">
           <StatutConnexion status="connecting" />
           <StatutConnexion status="reconnecting" />
-          <StatutConnexion status="kicked" rejoindreHref="/" className="pt-0" />
-          <StatutConnexion status="ended" rejoindreHref="/" className="pt-0" />
-          <StatutConnexion status="rejected" rejoindreHref="/" className="pt-0" />
+          <StatutConnexion status="kicked" rejoindreHref="/" classNameTerminal="pt-0" />
+          <StatutConnexion status="ended" rejoindreHref="/" classNameTerminal="pt-0" />
+          <StatutConnexion status="rejected" rejoindreHref="/" classNameTerminal="pt-0" />
         </div>
       </Cadre>
     </div>

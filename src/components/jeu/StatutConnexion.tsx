@@ -9,7 +9,10 @@ interface Props {
   status: ConnectionStatus;
   // Page de saisie du code, cible de l'action des écrans terminaux.
   rejoindreHref?: string;
+  // Mise en page de la région de statut (pilule de connexion).
   className?: string;
+  // Mise en page de l'écran terminal : séparée pour qu'une marge ne soit pas appliquée deux fois.
+  classNameTerminal?: string;
 }
 
 interface Terminal {
@@ -37,7 +40,7 @@ const terminaux: Record<"kicked" | "ended" | "rejected", Terminal> = {
   },
 };
 
-export function StatutConnexion({ status, rejoindreHref = "/", className }: Props) {
+export function StatutConnexion({ status, rejoindreHref = "/", className, classNameTerminal }: Props) {
   const transitoire = status === "connecting" || status === "reconnecting";
   const terminal = status === "kicked" || status === "ended" || status === "rejected" ? terminaux[status] : null;
 
@@ -53,7 +56,7 @@ export function StatutConnexion({ status, rejoindreHref = "/", className }: Prop
         ) : null}
       </div>
       {terminal ? (
-        <section role="alert" className={cn("px-6 pt-12 text-center", className)}>
+        <section role="alert" className={cn("px-6 pt-12 text-center", classNameTerminal)}>
           <div className="mx-auto w-badge-petit rotate-5">
             <Forme forme="etoile" variante={status === "ended" ? "creme" : "piment"} className="size-full">
               <b className="font-badge text-3xl tracking-wider">{terminal.badge}</b>

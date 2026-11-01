@@ -13,4 +13,5 @@ export { ListeJoueurs, PuceJoueur, PuceReste } from "./PuceJoueur";
 export { Rebond } from "./Rebond";
 export { ScoreFinal } from "./ScoreFinal";
 export { StatutConnexion } from "./StatutConnexion";
-export { Verdict } from "./Verdict";
+// Verdict n'est pas réexporté : il embarque motion. L'écran de correction l'importe directement
+// (`import { Verdict } from "../../components/jeu/Verdict"`) ou via React.lazy, pour garder motion hors du bundle principal.
