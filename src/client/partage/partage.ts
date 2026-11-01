@@ -7,7 +7,6 @@ export interface ShareDeps {
 
 // Messages fixes : le texte brut du navigateur est en anglais et parfois technique, il n'est jamais affiché.
 const MESSAGES = {
-  bloque: "Le partage a été bloqué par le navigateur.",
   echec: "Le partage a échoué. Réessaie.",
   telechargement: "Le téléchargement de l'image a échoué. Réessaie.",
 } as const;
@@ -28,15 +27,6 @@ function errorName(error: unknown): string {
   return error instanceof Error || (typeof error === "object" && error !== null && "name" in error)
     ? String((error as { name: unknown }).name)
     : "";
-}
-
-// NotAllowedError couvre deux situations. Safari iOS la lève quand le geste utilisateur a expiré (génération trop
-// longue entre le clic et share) : le téléchargement reste possible et sert de repli. Chrome la lève avec
-// un message terminé par « Permission denied » quand la politique de permissions interdit Web Share (iframe sans
-// allow="web-share") : c'est un refus délibéré de la page hôte, on le signale au lieu de le contourner.
-function isPolicyDenial(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : "";
-  return /permission denied\.?$/i.test(message.trim());
 }
 
 /** Texte à annoncer dans une région role="status" après un partage ; null quand il n'y a rien à dire (annulation). */
@@ -84,9 +74,9 @@ export async function sharePng(blob: Blob, options: ShareOptions, deps: ShareDep
   } catch (error) {
     const nom = errorName(error);
     if (nom === "AbortError") return { status: "cancelled" };
-    if (nom === "NotAllowedError") {
-      return isPolicyDenial(error) ? { status: "error", message: MESSAGES.bloque } : telecharger(download, blob, options.filename);
-    }
+    // Safari iOS lève NotAllowedError quand le geste utilisateur a expiré ; les autres refus (politique de
+    // permissions d'une iframe) laissent aussi le téléchargement possible : même repli dans tous les cas.
+    if (nom === "NotAllowedError") return telecharger(download, blob, options.filename);
     return { status: "error", message: MESSAGES.echec };
   }
 }

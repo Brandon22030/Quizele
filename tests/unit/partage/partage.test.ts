@@ -73,12 +73,12 @@ describe("sharePng", () => {
     expect(download).toHaveBeenCalledWith(blob, "resultat.png");
   });
 
-  it("Web Share interdit par la politique de permissions : erreur « bloqué », sans téléchargement", async () => {
+  it("Web Share interdit par la politique de permissions (NotAllowedError) : télécharge aussi", async () => {
     const download = vi.fn();
     const share = vi.fn().mockRejectedValue(nomme("NotAllowedError", "Failed to execute 'share' on 'Navigator': Permission denied."));
     const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download });
-    expect(resultat).toEqual({ status: "error", message: "Le partage a été bloqué par le navigateur." });
-    expect(download).not.toHaveBeenCalled();
+    expect(resultat).toEqual({ status: "downloaded" });
+    expect(download).toHaveBeenCalledWith(blob, "resultat.png");
   });
 
   it("repli iOS dont le téléchargement échoue : erreur en français", async () => {
