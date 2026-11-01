@@ -116,6 +116,16 @@
   }
 }
 
+/* L'espace de noms spacing ne génère pas border-trait ni outline-trait : les largeurs de bordure et de contour sont des utilitaires dédiés, alimentés par le jeton --spacing-trait. */
+@utility border-trait {
+  border-style: var(--tw-border-style, solid);
+  border-width: var(--spacing-trait);
+}
+@utility outline-trait {
+  outline-style: var(--tw-outline-style, solid);
+  outline-width: var(--spacing-trait);
+}
+
 /* Formes réutilisables, en variables CSS : clip-path et mask ne passent pas par le thème Tailwind. */
 @layer components {
   :root {
