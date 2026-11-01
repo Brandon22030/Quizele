@@ -2,6 +2,9 @@
 export const PROTECTED_PREFIXES = ["/tableau-de-bord", "/quiz", "/partie"] as const;
 // Pages publiques qui affichent l'utilisateur connecté (en-tête, bouton de connexion).
 const USER_AWARE_PATHS = ["/", "/connexion"];
+// Appels RPC des Astro Actions (ACTION_RPC_ROUTE_PATTERN d'Astro) : les actions de l'espace créateur lisent
+// locals.user, qui resterait nul si la session n'était pas résolue ici.
+const ACTIONS_RPC_PREFIX = "/_actions/";
 const DEFAULT_RETURN_PATH = "/tableau-de-bord";
 const MAX_RETURN_LENGTH = 512;
 
@@ -12,7 +15,7 @@ export function isProtectedPath(pathname: string): boolean {
 // Les joueurs (/j/*, /api/parties/*) sont anonymes et nombreux : résoudre la session y coûterait une requête D1
 // par appel pour rien.
 export function shouldResolveSession(pathname: string): boolean {
-  return isProtectedPath(pathname) || USER_AWARE_PATHS.includes(pathname);
+  return isProtectedPath(pathname) || USER_AWARE_PATHS.includes(pathname) || pathname.startsWith(ACTIONS_RPC_PREFIX);
 }
 
 export function loginRedirectUrl(url: URL): string {
