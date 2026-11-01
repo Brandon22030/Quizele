@@ -34,7 +34,7 @@ export async function createLocalGame(env: Env, definition: QuizDefinition): Pro
       options: question.options.map(({ label, isCorrect }) => ({ label, isCorrect })),
     })),
   });
-  const launched = await launchGame(env, LOCAL_USER, quizId);
+  const launched = await launchGame(env, LOCAL_USER, quizId, { unlimited: true });
   const snapshot = await loadQuizSnapshot(db, LOCAL_USER.id, quizId);
   return {
     ...launched,

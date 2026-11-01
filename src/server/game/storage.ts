@@ -335,13 +335,13 @@ export class GameStorage {
 
   expiredPlayerIds(now: number): string[] {
     return this.sql
-      .exec<{ playerId: string }>("SELECT player_id AS playerId FROM pstate WHERE phase = 'question' AND deadline <= ?", now)
+      .exec<{ playerId: string }>("SELECT player_id AS playerId FROM pstate WHERE phase IN ('question', 'revealed') AND deadline <= ?", now)
       .toArray()
       .map((row) => row.playerId);
   }
 
   nextPlayerDeadline(): number | null {
-    return this.sql.exec<{ at: number | null }>("SELECT MIN(deadline) AS at FROM pstate WHERE phase = 'question'").one().at;
+    return this.sql.exec<{ at: number | null }>("SELECT MIN(deadline) AS at FROM pstate WHERE phase IN ('question', 'revealed')").one().at;
   }
 
   doneCount(): number {

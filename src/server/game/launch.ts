@@ -5,6 +5,7 @@ import { saveSessionResults } from "../db/results";
 import { createGameSession } from "../db/sessions";
 import { findOwnedSession } from "./lookup";
 import { quizDefinitionSchema, toQuizDefinition } from "./quiz";
+import { consumeLaunchQuota } from "./quota";
 import { gameStub } from "./router";
 import { signToken } from "./tokens";
 
@@ -14,7 +15,7 @@ export interface SessionUser {
   email: string;
 }
 
-export type LaunchErrorCode = "UNAUTHORIZED" | "NOT_FOUND" | "BAD_REQUEST" | "INTERNAL_SERVER_ERROR";
+export type LaunchErrorCode = "UNAUTHORIZED" | "NOT_FOUND" | "BAD_REQUEST" | "TOO_MANY_REQUESTS" | "INTERNAL_SERVER_ERROR";
 
 // Erreur métier indépendante d'Astro : l'action la convertit en ActionError, les tests l'inspectent directement.
 export class LaunchError extends Error {
@@ -42,10 +43,11 @@ export interface LaunchResult {
   hostToken: string;
 }
 
-// Budget D1 : lecture du quiz (3 requêtes dans un batch) + création de la partie (1) = 4 requêtes, loin des 50 de
+// Budget D1 : lecture du quiz (3 requêtes dans un batch) + quota (1 batch) + création de la partie (1) = 5 requêtes, loin des 50 de
 // l'offre gratuite. Le Durable Object est initialisé par RPC avec l'instantané complet, correction comprise : il est
 // le seul à la détenir pendant la partie.
-export async function launchGame(env: Env, user: SessionUser | null, quizId: string): Promise<LaunchResult> {
+// `unlimited` : outillage local uniquement (script de charge), jamais passé par l'action.
+export async function launchGame(env: Env, user: SessionUser | null, quizId: string, options: { unlimited?: boolean } = {}): Promise<LaunchResult> {
   const owner = requireUser(user);
   const secret = requireSecret(env);
   const db = getDb(env.DB);
@@ -63,6 +65,9 @@ export async function launchGame(env: Env, user: SessionUser | null, quizId: str
   const definition = toQuizDefinition(snapshot);
   if (!quizDefinitionSchema.safeParse(definition).success) throw new LaunchError("BAD_REQUEST", "Le quiz n'est pas prêt : une question est invalide.");
 
+  if (!options.unlimited && !(await consumeLaunchQuota(env.DB, owner.id))) {
+    throw new LaunchError("TOO_MANY_REQUESTS", "Trop de parties lancées en peu de temps. Réessaie dans une heure.");
+  }
   const { id: sessionId, code } = await createGameSession(db, {
     id: crypto.randomUUID(),
     ownerId: owner.id,

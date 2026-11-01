@@ -56,6 +56,10 @@ const COUNT_INTERVAL_MS = 250;
 // Une écriture finale restée sans réponse au-delà de ce délai est considérée comme perdue (objet évincé en route) :
 // la fin de partie peut alors être retentée.
 const FINISH_LOCK_MS = 30_000;
+// Attente après qu'un joueur a vu sa correction : au-delà, s'il a quitté la page, il est marqué terminé.
+const REVEALED_IDLE_MS = 3 * 60 * 1000;
+// Délai avant de retenter la clôture d'une partie abandonnée quand D1 a échoué.
+const ABANDON_RETRY_MS = 60 * 60 * 1000;
 const encoder = new TextEncoder();
 
 const refill = (tokens: number, at: number, now: number, capacity: number, perMs: number) =>
@@ -279,11 +283,23 @@ export class GameSession extends DurableObject<Env> {
     if (!this.ready()) return;
     const meta = this.store.readMeta();
     const now = Date.now();
-    const abandoned = now >= meta.lastHostAt + PLAYER_TOKEN_TTL_MS;
-    const expiredFinished = meta.phase === "finished" && now >= meta.finishedAt + PLAYER_TOKEN_TTL_MS;
-    if (abandoned || expiredFinished) return this.purge();
+    if (meta.phase === "finished") {
+      if (now >= meta.finishedAt + PLAYER_TOKEN_TTL_MS) return this.purge();
+      return this.scheduleAlarm();
+    }
+    if (now >= meta.lastHostAt + PLAYER_TOKEN_TTL_MS) {
+      // Une partie abandonnée est d'abord clôturée : sans bilan, D1 la garderait « active » et son code resterait bloqué.
+      // Si D1 échoue, l'état est conservé et la clôture est retentée plus tard.
+      if (!(await this.finish())) await this.ctx.storage.setAlarm(now + ABANDON_RETRY_MS);
+      return;
+    }
     if (meta.phase === "question" && now >= meta.startedAt + meta.durationMs + ANSWER_TOLERANCE_MS) return this.reveal(meta);
-    if (meta.phase === "running") for (const playerId of this.store.expiredPlayerIds(now)) this.expireOwnPace(meta, playerId);
+    if (meta.phase === "running") {
+      for (const playerId of this.store.expiredPlayerIds(now)) await this.expireOwnPace(meta, playerId);
+      await this.scheduleAlarm();
+      await this.finishIfAllDone();
+      return;
+    }
     await this.scheduleAlarm();
   }
 
@@ -296,7 +312,8 @@ export class GameSession extends DurableObject<Env> {
       const next = this.store.nextPlayerDeadline();
       if (next !== null) targets.push(next);
     }
-    if (meta.phase === "finished") targets.push(meta.finishedAt + PLAYER_TOKEN_TTL_MS);
+    // Une partie terminée n'attend plus l'hôte : seule la purge à 24 h reste programmée.
+    if (meta.phase === "finished") targets.splice(0, targets.length, meta.finishedAt + PLAYER_TOKEN_TTL_MS);
     await this.ctx.storage.setAlarm(Math.min(...targets));
   }
 
@@ -389,16 +406,31 @@ export class GameSession extends DurableObject<Env> {
   }
 
   // Après sa réponse ou à l'échéance, le joueur voit sa correction (si elle est affichée) puis avance quand il veut.
-  private revealOwnPace(meta: MetaState, state: PlayerState, question: StoredQuestion): void {
-    this.store.savePlayerState({ ...state, phase: "revealed" }, null);
-    void this.scheduleAlarm();
+  private async revealOwnPace(meta: MetaState, state: PlayerState, question: StoredQuestion): Promise<void> {
+    this.store.savePlayerState({ ...state, phase: "revealed" }, Date.now() + REVEALED_IDLE_MS);
+    await this.scheduleAlarm();
     this.sendToPlayer(state.playerId, { type: "reveal", ...this.ownPaceReveal(meta, question, state.playerId) });
   }
 
-  private expireOwnPace(meta: MetaState, playerId: string): void {
+  // Un joueur sans socket ouvert à l'échéance de sa question (onglet fermé, ou jamais connecté) est marqué terminé : il
+  // garde ses points, mais ne bloque plus la fin automatique de la partie.
+  private async expireOwnPace(meta: MetaState, playerId: string): Promise<void> {
     const state = this.store.playerState(playerId);
     const question = state ? this.questionOf(meta, playerId, state.idx) : null;
-    if (state && question) this.revealOwnPace(meta, state, question);
+    if (!state || !question) return;
+    if (this.ctx.getWebSockets(`p:${playerId}`).length === 0) {
+      this.store.savePlayerState({ ...state, phase: "done" }, null);
+      const finished = this.store.doneCount();
+      const total = this.store.playerCount();
+      this.broadcast(["host", "screen"], () => ({ type: "progress", finished, total }));
+      return;
+    }
+    if (state.phase === "revealed") {
+      // Joueur encore connecté mais inactif : on revérifie plus tard, il peut simplement lire sa correction.
+      this.store.savePlayerState(state, Date.now() + REVEALED_IDLE_MS);
+      return;
+    }
+    await this.revealOwnPace(meta, state, question);
   }
 
   private ownPaceReveal(meta: MetaState, question: StoredQuestion, playerId: string): RevealPayload {
