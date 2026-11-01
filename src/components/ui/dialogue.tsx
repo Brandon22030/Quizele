@@ -19,11 +19,28 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
   const ref = useRef<HTMLDialogElement>(null);
   const titreId = useId();
 
+  // Cible du dernier pointerdown : un glissement qui démarre dans le contenu (sélection de texte) et se relâche sur le voile
+  // ne doit pas fermer le dialogue.
+  const departClic = useRef<EventTarget | null>(null);
+
   useEffect(() => {
     const dialogue = ref.current;
     if (!dialogue) return;
     if (open && !dialogue.open) dialogue.showModal();
     if (!open && dialogue.open) dialogue.close();
+  }, [open]);
+
+  // Verrou de défilement : le dialogue modal rend la page inerte mais pas immobile, et sur iOS le fond défile derrière le voile.
+  useEffect(() => {
+    if (!open) return;
+    const { body, documentElement } = document;
+    const precedent = { body: body.style.overflow, html: documentElement.style.overflow };
+    body.style.overflow = "hidden";
+    documentElement.style.overflow = "hidden";
+    return () => {
+      body.style.overflow = precedent.body;
+      documentElement.style.overflow = precedent.html;
+    };
   }, [open]);
 
   return (
@@ -36,8 +53,15 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
         e.preventDefault();
         onClose();
       }}
+      // Fermeture native (par exemple form method="dialog") : on resynchronise l'état parent.
+      onClose={() => {
+        if (open) onClose();
+      }}
+      onPointerDown={(e) => {
+        departClic.current = e.target;
+      }}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        if (e.target === ref.current && departClic.current === ref.current) onClose();
       }}
       className={cn(
         "fixed m-0 w-full max-w-none overflow-y-auto border-trait border-vert-foret bg-creme p-0 text-vert-foret backdrop:bg-vert-nuit/55",

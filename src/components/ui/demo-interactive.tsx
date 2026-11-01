@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BookOpen, Trash2 } from "lucide-react";
 import { Button, IconButton } from "./button";
 import { EtatErreur } from "./etat-erreur";
@@ -90,7 +90,6 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
         {(control) => (
           <Input
             {...control}
-            invalide={Boolean(erreur)}
             value={pseudo}
             maxLength={20}
             placeholder="Ex. Salomon"
@@ -123,14 +122,55 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
         </div>
       </Modal>
 
-      {toast ? (
-        <ZoneToasts>
-          <Toast variante="succes" duree={4000} onClose={() => setToast(false)}>
-            Enregistré.
-          </Toast>
-        </ZoneToasts>
-      ) : null}
+      <ZoneToasts
+        statuts={
+          toast ? (
+            <Toast variante="succes" duree={4000} onClose={() => setToast(false)}>
+              Enregistré.
+            </Toast>
+          ) : null
+        }
+      />
       <IconButton label="Supprimer (exemple)" danger icone={<Trash2 className="size-5" />} className="self-start" />
+    </div>
+  );
+}
+
+/** Cas de revue (?cas=toasts) : fermeture automatique, erreurs persistantes et pause, avec un parent qui se re-rend sans cesse. */
+export function DemoToasts() {
+  const [succes, setSucces] = useState(false);
+  const [erreur, setErreur] = useState(false);
+  const [rendus, setRendus] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setRendus((n) => n + 1), 200);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-3" data-rendus={rendus}>
+      <Button taille="petit" onClick={() => setSucces(true)}>
+        Succès automatique
+      </Button>
+      <Button taille="petit" onClick={() => setErreur(true)}>
+        Erreur
+      </Button>
+      <ZoneToasts
+        statuts={
+          succes ? (
+            // Fonction fléchée neuve à chaque rendu : le minuteur ne doit pas repartir pour autant.
+            <Toast variante="succes" duree={2500} onClose={() => setSucces(false)}>
+              Succès éphémère.
+            </Toast>
+          ) : null
+        }
+        alertes={
+          erreur ? (
+            <Toast variante="erreur" duree={2500} onClose={() => setErreur(false)}>
+              Erreur durable.
+            </Toast>
+          ) : null
+        }
+      />
     </div>
   );
 }

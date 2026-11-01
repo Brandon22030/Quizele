@@ -4,9 +4,13 @@ import { Button, IconButton } from "./button";
 import { EtatErreur } from "./etat-erreur";
 import { EtatVide } from "./etat-vide";
 import { Explosion } from "./explosion";
+import { FormField } from "./form-field";
+import { Input } from "./input";
+import { Interrupteur } from "./interrupteur";
 import { Marque } from "./marque";
 import { Papier } from "./papier";
 import { Pilule } from "./pilule";
+import { Repli } from "./repli";
 import { Squelette } from "./squelette";
 import { TitreAffiche } from "./titre-affiche";
 import { Toast } from "./toast";
@@ -141,9 +145,24 @@ export function DemoStatiqueForet() {
       <Button variante="creme" taille="petit" className="self-start">
         Crème petit
       </Button>
+      <Button disabled className="self-start">
+        Inactif sur forêt
+      </Button>
       <Ticket>
         <p className="text-center font-affiche text-4xl text-jaune-soleil">K7Q</p>
       </Ticket>
     </div>
+  );
+}
+
+/** Cas de revue (?cas=repli) : textes secondaires d'un papier crème ouvert posé sur un fond forêt. */
+export function DemoRepliOuvert() {
+  return (
+    <Repli titre="Réglages avancés" defaultOpen>
+      <FormField label="Nom du quiz" aide="Visible par les joueurs.">
+        {(control) => <Input {...control} />}
+      </FormField>
+      <Interrupteur label="Mélanger" description="Pour éviter de copier sur le voisin." />
+    </Repli>
   );
 }

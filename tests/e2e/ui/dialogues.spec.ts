@@ -144,8 +144,14 @@ test("Feuille : ancrée en bas, pleine largeur ; Modal : centrée", async ({ gui
   expect(Math.abs(m.y + m.height / 2 - vue.height / 2)).toBeLessThan(2);
 });
 
-test("le défilement de la page n'est pas verrouillé par le dialogue (non prévu, constat)", async ({ guide }) => {
+// Changement de comportement voulu (revue QZ-002-04, point 13) : ce test constatait l'absence de verrou de défilement.
+// Le dialogue modal natif rend le fond inerte mais pas immobile, et sur iOS la page défile derrière le voile : le dialogue
+// verrouille désormais le défilement pendant son ouverture et restitue les valeurs d'origine à la fermeture.
+test("le défilement de la page est verrouillé pendant l'ouverture du dialogue et restitué à la fermeture", async ({ guide }) => {
+  const lire = () => guide.evaluate(() => [getComputedStyle(document.body).overflow, getComputedStyle(document.documentElement).overflow]);
+  expect(await lire()).toEqual(["visible", "visible"]);
   await zoneJaune(guide).getByRole("button", { name: "Ouvrir la modale" }).click();
-  const overflow = await guide.evaluate(() => [getComputedStyle(document.body).overflow, getComputedStyle(document.documentElement).overflow]);
-  expect(overflow).toEqual(["visible", "visible"]);
+  expect(await lire()).toEqual(["hidden", "hidden"]);
+  await guide.keyboard.press("Escape");
+  expect(await lire()).toEqual(["visible", "visible"]);
 });

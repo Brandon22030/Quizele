@@ -43,13 +43,14 @@ export function MenuCompte({ nom, email, deconnexionHref, className }: MenuCompt
         aria-expanded={ouvert}
         aria-controls={panneauId}
         onClick={() => setOuvert((v) => !v)}
-        className="grid size-11 place-items-center rounded-full border-trait border-vert-foret bg-vert-foret font-affiche text-lg text-jaune-soleil shadow-relief-sm foret:border-creme foret:focus-visible:outline-jaune-soleil"
+        className="grid size-11 place-items-center rounded-full border-trait border-vert-foret bg-vert-foret font-affiche text-lg text-jaune-soleil shadow-relief-sm foret:border-creme"
       >
         <span aria-hidden="true">{initiale}</span>
       </button>
       <div
         id={panneauId}
         hidden={!ouvert}
+        data-papier=""
         className="absolute top-full right-0 z-40 mt-2 w-64 rounded-md border-trait border-vert-foret bg-creme p-2 text-vert-foret shadow-relief"
       >
         <div className="px-3 py-2">
@@ -57,13 +58,16 @@ export function MenuCompte({ nom, email, deconnexionHref, className }: MenuCompt
           <p className="truncate text-sm font-semibold text-vert-mousse">{email}</p>
         </div>
         <hr className="my-1 border-trait border-x-0 border-b-0 border-dashed border-vert-foret" />
-        <a
-          href={deconnexionHref}
-          className="flex min-h-11 items-center gap-3 rounded-sm px-3 font-bold hover:bg-jaune-soleil"
-        >
-          <LogOut aria-hidden="true" className="size-5" />
-          Se déconnecter
-        </a>
+        {/* POST : une déconnexion modifie l'état serveur, un lien GET serait déclenchable par préchargement ou par un tiers. */}
+        <form method="post" action={deconnexionHref}>
+          <button
+            type="submit"
+            className="flex min-h-11 w-full items-center gap-3 rounded-sm px-3 text-left font-bold hover:bg-jaune-soleil"
+          >
+            <LogOut aria-hidden="true" className="size-5" />
+            Se déconnecter
+          </button>
+        </form>
       </div>
     </div>
   );

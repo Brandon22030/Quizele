@@ -15,6 +15,7 @@ export function EtatErreur({ titre, children, onRetry, libelleRetry = "Réessaye
   return (
     <div
       role="alert"
+      data-papier=""
       className={cn(
         "flex flex-col items-start gap-3 rounded-md border-trait border-piment bg-creme p-4 text-vert-foret shadow-relief-sm",
         className,

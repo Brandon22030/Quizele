@@ -242,7 +242,8 @@ test.describe("MenuCompte", () => {
   test("aria-expanded, Échap ferme et rend le focus, clic dehors ferme", async ({ guide }) => {
     const z = zoneJaune(guide);
     const bouton = z.getByRole("button", { name: /Menu du compte/ });
-    const lien = z.getByRole("link", { name: "Se déconnecter" });
+    // La déconnexion est un formulaire POST (revue QZ-002-04, point 9) : le contrôle est un bouton, plus un lien.
+    const lien = z.getByRole("button", { name: "Se déconnecter" });
     await expect(bouton).toHaveAttribute("aria-expanded", "false");
     await expect(lien).toBeHidden();
     await bouton.click();

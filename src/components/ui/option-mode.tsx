@@ -14,7 +14,7 @@ export function OptionMode({ titre, description, className, ...rest }: OptionMod
       <span
         className={cn(
           "flex items-start gap-3 rounded-md border-trait border-vert-foret bg-creme p-4 text-vert-foret",
-          "peer-checked:bg-vert-foret peer-checked:text-creme peer-checked:shadow-relief-vif",
+          "peer-checked:bg-vert-foret peer-checked:text-creme peer-checked:shadow-relief-vif foret:peer-checked:border-creme",
           "peer-focus-visible:outline-trait peer-focus-visible:outline-offset-2 peer-focus-visible:outline-vert-foret",
           "foret:peer-focus-visible:outline-jaune-soleil",
           "peer-disabled:cursor-not-allowed peer-disabled:border-dashed",

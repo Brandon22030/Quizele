@@ -104,7 +104,8 @@ for (const reduit of [false, true]) {
 
     test("animations du toast et de la transition des boutons coupées en mouvement réduit", async ({ guide }) => {
       await zoneJaune(guide).getByRole("button", { name: "Afficher un message" }).click();
-      const toast = guide.getByRole("status").filter({ hasText: "Enregistré." });
+      // Le rôle status appartient à la région : on cible le toast lui-même, qui porte l'animation.
+      const toast = guide.getByText("Enregistré.").locator("..");
       await expect(toast).toBeVisible();
       const etat = await toast.evaluate((el) => ({ anim: getComputedStyle(el).animationName }));
       if (reduit) expect(etat.anim).toBe("none");

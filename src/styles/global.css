@@ -145,6 +145,27 @@
   .forme-explosion {
     clip-path: var(--forme-explosion);
   }
+  /* Ticket : encoches de perforation découpées par un masque (le fond de page reste visible), ombre vive en filtre
+     car un box-shadow serait coupé par le masque. Rayon de l'encoche = --spacing-3. */
+  .ticket-perfore {
+    -webkit-mask:
+      radial-gradient(circle var(--spacing-3) at 0 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--spacing-3) at 100% 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) right / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle var(--spacing-3) at 0 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--spacing-3) at 100% 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) right / 51% 100% no-repeat;
+  }
+  .ticket-ombre {
+    filter: drop-shadow(calc(var(--spacing-1) * -1.5) calc(var(--spacing-1) * 1.5) 0 var(--color-vert-vif));
+  }
+  /* Le dégradé du squelette fait 300 % de large pour que animate-brille le fasse défiler d'un bord à l'autre. */
+  .squelette-brillance {
+    background-size: 300% 100%;
+  }
+  /* Safari masque le triangle natif de <summary> uniquement par ce pseudo-élément. */
+  .resume-sans-marqueur::-webkit-details-marker {
+    display: none;
+  }
   .bord-dechire {
     mask-image: var(--masque-dechire);
     mask-size: 100% 100%;
@@ -169,12 +190,13 @@
     line-height: var(--text-base--line-height);
   }
 
-  /* Anneau de focus : vert forêt sur jaune, jaune sur fond forêt. */
+  /* Anneau de focus : vert forêt sur jaune, jaune sur fond forêt. Le papier crème (data-papier) interrompt le thème forêt,
+     comme la variante foret (zone ou page entière) : sans cela le focus serait jaune sur crème (environ 1,1:1). */
   :focus-visible {
     outline: var(--spacing-trait) solid var(--color-vert-foret);
     outline-offset: 2px;
   }
-  html[data-theme="foret"] :focus-visible {
+  :where([data-theme="foret"]) :focus-visible:not(:where([data-papier] *)) {
     outline-color: var(--color-jaune-soleil);
   }
 }

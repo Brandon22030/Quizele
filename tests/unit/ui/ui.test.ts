@@ -88,7 +88,7 @@ describe("FormField", () => {
   it("n'ajoute ni description ni invalidité sans aide ni erreur", () => {
     const html = champ({});
     expect(html).not.toContain("aria-describedby");
-    expect(html).not.toContain("aria-invalid");
+    expect(html).not.toContain("aria-invalid=");
   });
 });
 
@@ -175,24 +175,25 @@ describe("OptionMode, Repli, Squelette, EtatErreur, Toast, MenuCompte", () => {
     expect(sans).not.toContain("Réessayer");
     expect(rendre(h(EtatErreur, { onRetry: () => {} }, "Oups"))).toContain("Réessayer");
   });
-  it("Toast utilise alert pour une erreur et status sinon", () => {
-    expect(rendre(h(Toast, { variante: "erreur" }, "x"))).toContain('role="alert"');
-    expect(rendre(h(Toast, { variante: "succes" }, "x"))).toContain('role="status"');
+  it("Toast ne porte aucun rôle : l'annonce appartient aux régions de ZoneToasts", () => {
+    for (const variante of ["erreur", "succes", "info"]) expect(rendre(h(Toast, { variante }, "x"))).not.toContain("role=");
   });
   it("MenuCompte cache le panneau et affiche nom, e-mail et lien de déconnexion", () => {
     const html = rendre(h(MenuCompte, { nom: "Marie", email: "m@exemple.fr", deconnexionHref: "/deconnexion" }));
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("hidden");
     expect(html).toContain("m@exemple.fr");
-    expect(html).toContain('href="/deconnexion"');
+    expect(html).toContain('method="post"');
+    expect(html).toContain('action="/deconnexion"');
     expect(html).toContain("Se déconnecter");
+    expect(html).not.toMatch(/<a /);
   });
 });
 
 describe("thème forêt", () => {
   it("les composants utilisent la variante foret (data-theme) et plus data-foret", () => {
     const html = rendre(h(Button, { variante: "soleil" }, "x"));
-    expect(html).toContain("foret:focus-visible:outline-jaune-soleil");
+    expect(html).toContain("foret:border-vert-nuit");
     expect(html).not.toContain("data-foret");
   });
   it("les dialogues marquent leur papier crème pour interrompre le thème forêt", () => {

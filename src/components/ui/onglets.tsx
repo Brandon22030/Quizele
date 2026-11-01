@@ -79,7 +79,6 @@ export function Onglets({ onglets, label, valeur, defaultValeur, onChange, child
               className={cn(
                 "grid min-h-11 flex-1 place-items-center rounded-pill px-3 font-extrabold",
                 selectionne ? "bg-vert-foret text-jaune-soleil" : "text-vert-foret",
-                "foret:focus-visible:outline-jaune-soleil",
               )}
             >
               {onglet.label}

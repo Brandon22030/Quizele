@@ -7,7 +7,6 @@ export function Marque({ className, href = "/", ...rest }: AnchorHTMLAttributes<
       href={href}
       className={cn(
         "inline-flex min-h-11 items-center gap-2 rounded-pill bg-vert-foret py-1 pr-3 pl-1 text-creme no-underline",
-        "foret:focus-visible:outline-jaune-soleil",
         className,
       )}
       {...rest}

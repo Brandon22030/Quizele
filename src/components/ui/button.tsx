@@ -6,10 +6,9 @@ export type ButtonVariant = "primaire" | "soleil" | "creme";
 export type ButtonSize = "normal" | "petit";
 
 const base =
-  "inline-flex items-center justify-center gap-2 border-trait border-vert-foret font-affiche tracking-wide select-none " +
+  "inline-flex items-center justify-center gap-2 border-trait border-vert-foret font-affiche tracking-wide whitespace-nowrap no-underline select-none " +
   "transition-transform hover:-translate-y-px hover:translate-x-px " +
-  "active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui " +
-  "foret:focus-visible:outline-jaune-soleil";
+  "active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui";
 
 const variants: Record<ButtonVariant, string> = {
   primaire: "bg-vert-foret text-jaune-soleil shadow-relief-vif",
@@ -22,22 +21,27 @@ const sizes: Record<ButtonSize, string> = {
   petit: "min-h-11 rounded-sm px-4 text-base shadow-relief-sm",
 };
 
-// Un état désactivé ne baisse pas l'opacité du texte (contraste AA) : contour pointillé et relief retiré.
+// Un état désactivé ne baisse pas l'opacité du texte (contraste AA) : contour pointillé, fond crème (lisible sur jaune comme
+// sur forêt) et relief retiré.
 const disabledClasses =
-  "cursor-not-allowed border-dashed bg-transparent text-vert-mousse shadow-none hover:translate-x-0 hover:translate-y-0 " +
-  "active:translate-x-0 active:translate-y-0 active:shadow-none foret:text-creme";
+  "cursor-not-allowed border-dashed bg-creme text-vert-mousse shadow-none hover:translate-x-0 hover:translate-y-0 " +
+  "active:translate-x-0 active:translate-y-0 active:shadow-none foret:border-creme";
 
 interface CommonProps {
   variante?: ButtonVariant;
   taille?: ButtonSize;
   bloc?: boolean;
-  chargement?: boolean;
-  libelleChargement?: string;
   children: ReactNode;
 }
 
-type ButtonProps = CommonProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & { href?: undefined };
-type LinkProps = CommonProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "children"> & { href: string };
+interface LoadingProps {
+  chargement?: boolean;
+  libelleChargement?: string;
+}
+
+type ButtonProps = CommonProps & LoadingProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & { href?: undefined };
+// Un lien navigue : il n'a pas d'état de chargement (rien à bloquer, le navigateur affiche déjà la navigation).
+type LinkProps = CommonProps & Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "children"> & { href: string; chargement?: never; libelleChargement?: never };
 
 export function buttonClasses({
   variante = "primaire",
@@ -70,7 +74,7 @@ export function Button(props: ButtonProps | LinkProps) {
   );
 
   if (rest.href !== undefined) {
-    const { href, ...lien } = rest as Omit<LinkProps, keyof CommonProps>;
+    const { href, ...lien } = rest as Omit<LinkProps, keyof CommonProps | keyof LoadingProps>;
     return (
       <a href={href} className={buttonClasses({ variante, taille, bloc, className })} {...lien}>
         {contenu}
@@ -78,7 +82,7 @@ export function Button(props: ButtonProps | LinkProps) {
     );
   }
 
-  const { disabled, type = "button", ...bouton } = rest as Omit<ButtonProps, keyof CommonProps>;
+  const { disabled, type = "button", ...bouton } = rest as Omit<ButtonProps, keyof CommonProps | keyof LoadingProps>;
   const inactif = Boolean(disabled);
   return (
     <button
@@ -112,10 +116,10 @@ export function IconButton({ label, icone, variante = "creme", danger = false, c
       className={cn(
         "grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret shadow-relief-sm",
         "transition-transform active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui",
-        "foret:focus-visible:outline-jaune-soleil foret:border-vert-nuit",
+        "foret:border-vert-nuit",
         variante === "soleil" ? "bg-jaune-soleil" : "bg-creme",
         danger ? "text-piment" : "text-vert-foret",
-        "disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-vert-mousse disabled:shadow-none",
+        "disabled:cursor-not-allowed disabled:border-dashed disabled:bg-creme disabled:text-vert-mousse disabled:shadow-none foret:disabled:border-creme",
         className,
       )}
       {...rest}
