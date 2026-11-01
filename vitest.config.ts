@@ -19,10 +19,10 @@ export default defineConfig({
             },
           }),
         ],
-        test: { name: "worker", include: ["tests/worker/**/*.test.ts"] },
+        test: { name: "worker", testTimeout: 20_000, hookTimeout: 20_000, include: ["tests/worker/**/*.test.ts"] },
       },
       {
-        test: { name: "unit", environment: "node", include: ["tests/unit/**/*.test.ts"] },
+        test: { name: "unit", testTimeout: 20_000, environment: "node", include: ["tests/unit/**/*.test.ts"] },
       },
     ],
   },

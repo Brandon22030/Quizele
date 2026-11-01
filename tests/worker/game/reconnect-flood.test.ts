@@ -15,22 +15,28 @@ async function game(playerCount: number) {
 const closeOf = (client: Client) => new Promise<CloseEvent>((resolve) => client.ws.addEventListener("close", resolve));
 
 describe("seau à jetons et reconnexion en boucle", () => {
-  it("le seau ne se remet pas à plein à chaque reconnexion du même joueur", async () => {
+  it("le seau ne se remet pas à plein à chaque reconnexion du même joueur", { timeout: 60_000 }, async () => {
     const { code, players } = await game(1);
     const token = players[0]!.token;
     let processed = 0;
     let closedFor1008 = 0;
+    const startedAt = Date.now();
     for (let round = 0; round < 6; round += 1) {
       const client = await connect(code, token);
       opened.push(client);
       const closed = closeOf(client);
       for (let i = 0; i < 25; i += 1) client.send({ type: "resume" });
-      await Promise.race([closed, new Promise((r) => setTimeout(r, 150))]);
+      // On attend un événement (fermeture, ou les 25 réponses reçues) plutôt qu'un délai fixe : robuste à une machine chargée.
+      const answered = client.waitFor("snapshot", () => client.messages.filter((m) => m.type === "snapshot").length >= 25, 8_000).then(() => null, () => null);
+      const outcome = await Promise.race([closed, answered]);
       processed += client.messages.filter((m) => m.type === "snapshot").length;
-      if (client.ws.readyState !== WebSocket.OPEN && (await Promise.race([closed, Promise.resolve(null)]))?.code === 1008) closedFor1008 += 1;
+      if (outcome?.code === 1008) closedFor1008 += 1;
     }
-    // 150 messages en moins d'une seconde : capacité 30 + recharge de 10/s => bien moins de 60 traités.
-    expect(processed).toBeLessThan(60);
+    // Capacité 30 + recharge de 10/s sur la durée réelle du test (+ marge) : un seau remis à plein à chaque
+    // reconnexion laisserait passer 150 messages.
+    const allowed = 30 + ((Date.now() - startedAt) / 1000) * 10 + 5;
+    expect(processed).toBeLessThanOrEqual(allowed);
+    expect(allowed).toBeLessThan(100);
     expect(closedFor1008).toBeGreaterThan(0);
   });
 

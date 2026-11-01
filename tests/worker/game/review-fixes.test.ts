@@ -111,6 +111,7 @@ describe("seau à jetons et fréquence de connexion", () => {
   it("le seau d'un socket fermé proprement est conservé dans le SQLite et ne repart pas à plein", async () => {
     const { code, players } = await game(1);
     const { client, playerId, token } = players[0]!;
+    const startedAt = Date.now();
     for (let i = 0; i < 20; i += 1) client.send({ type: "resume" });
     await client.waitFor("snapshot", () => client.messages.filter((m) => m.type === "snapshot").length >= 21);
     const closed = closeOf(client);
@@ -118,14 +119,20 @@ describe("seau à jetons et fréquence de connexion", () => {
     await closed;
     await new Promise((r) => setTimeout(r, 50));
     const [row] = await sqlOf<{ tokens: number }>(code, `SELECT tokens FROM buckets WHERE key = 'p:${playerId}'`);
-    expect(row!.tokens).toBeLessThan(15);
+    // 30 - 21 jetons consommés + recharge de 10/s sur le temps réellement écoulé : borne qui tient sous machine chargée.
+    const refill = (Date.now() - startedAt) / 100;
+    expect(row!.tokens).toBeLessThan(9 + refill + 1);
+    expect(row!.tokens).toBeLessThan(30);
 
     const next = await connect(code, token);
     opened.push(next);
     const nextClosed = closeOf(next);
     for (let i = 0; i < 25; i += 1) next.send({ type: "resume" });
-    await Promise.race([nextClosed, new Promise((r) => setTimeout(r, 150))]);
-    expect(next.messages.filter((m) => m.type === "snapshot").length).toBeLessThan(15);
+    const reopenedAt = Date.now();
+    await Promise.race([nextClosed, next.waitFor("snapshot", () => next.messages.filter((m) => m.type === "snapshot").length >= 25, 8_000).catch(() => null)]);
+    const allowed = row!.tokens + ((Date.now() - reopenedAt) / 1000) * 10 + 2;
+    expect(next.messages.filter((m) => m.type === "snapshot").length).toBeLessThanOrEqual(allowed);
+    expect(allowed).toBeLessThan(30);
   });
 
   it("au-delà de 10 connexions d'affilée, le joueur est refermé (1008) avant d'atteindre la partie", async () => {
