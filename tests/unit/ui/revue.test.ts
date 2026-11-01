@@ -64,9 +64,9 @@ describe("data-papier sur les surfaces crème", () => {
     expect(rendre(h(Toast, { variante: "info" }, "x"))).toContain('data-papier=""');
     expect(rendre(h(Repli, { titre: "t" }, "x"))).toContain('<div data-papier=""');
   });
-  it("Repli ouvert marque aussi le details (résumé sur crème)", () => {
-    expect(rendre(h(Repli, { titre: "t", defaultOpen: true }, "x"))).toMatch(/^<details[^>]*data-papier=""/);
-    expect(rendre(h(Repli, { titre: "t" }, "x"))).not.toMatch(/^<details[^>]*data-papier/);
+  it("le details porte data-repli dès le rendu serveur (le CSS l'exclut du thème forêt quand il est ouvert, sans JavaScript)", () => {
+    expect(rendre(h(Repli, { titre: "t", defaultOpen: true }, "x"))).toMatch(/^<details open="" data-repli=""/);
+    expect(rendre(h(Repli, { titre: "t" }, "x"))).toMatch(/^<details data-repli=""/);
   });
   it("les toasts de succès et d'erreur ne sont pas marqués (fond vif, pas crème)", () => {
     expect(rendre(h(Toast, { variante: "succes" }, "x"))).not.toContain("data-papier");

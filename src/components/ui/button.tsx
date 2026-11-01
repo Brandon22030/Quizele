@@ -11,7 +11,7 @@ const base =
   "active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui";
 
 const variants: Record<ButtonVariant, string> = {
-  primaire: "bg-vert-foret text-jaune-soleil shadow-relief-vif",
+  primaire: "bg-vert-foret text-jaune-soleil shadow-relief-vif foret:border-creme",
   soleil: "bg-jaune-soleil text-vert-foret shadow-relief foret:border-vert-nuit",
   creme: "bg-creme text-vert-foret shadow-relief foret:border-vert-nuit",
 };

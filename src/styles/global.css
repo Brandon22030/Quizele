@@ -116,9 +116,9 @@
   }
 }
 
-/* Thème forêt piloté par l'attribut data-theme (une seule source de vérité). Le papier crème (data-papier : feuilles et modales)
+/* Thème forêt piloté par l'attribut data-theme (une seule source de vérité). Le papier crème (data-papier : feuilles, modales ; details[open][data-repli] : repli ouvert, sans JavaScript)
    interrompt le thème : son contenu reste vert forêt sur crème même si la page est en forêt. */
-@custom-variant foret (&:where([data-theme=foret], [data-theme=foret] *):not(:where([data-papier] *)));
+@custom-variant foret (&:where([data-theme=foret], [data-theme=foret] *):not(:where([data-papier] *, details[open][data-repli] *)));
 
 /* L'espace de noms spacing ne génère pas border-trait ni outline-trait : les largeurs de bordure et de contour sont des utilitaires dédiés, alimentés par le jeton --spacing-trait. */
 @utility border-trait {
@@ -196,7 +196,7 @@
     outline: var(--spacing-trait) solid var(--color-vert-foret);
     outline-offset: 2px;
   }
-  :where([data-theme="foret"]) :focus-visible:not(:where([data-papier] *)) {
+  :where([data-theme="foret"]) :focus-visible:not(:where([data-papier] *, details[open][data-repli] *)) {
     outline-color: var(--color-jaune-soleil);
   }
 }

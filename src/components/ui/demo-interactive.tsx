@@ -22,6 +22,7 @@ interface DemoInteractiveProps {
 export default function DemoInteractive({ foret = false }: DemoInteractiveProps) {
   const [feuille, setFeuille] = useState(false);
   const [modal, setModal] = useState(false);
+  const [fermetures, setFermetures] = useState(0);
   const [toast, setToast] = useState(false);
   const [mode, setMode] = useState("ensemble");
   const [pseudo, setPseudo] = useState("");
@@ -109,7 +110,14 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
           Terminé
         </Button>
       </Feuille>
-      <Modal open={modal} onClose={() => setModal(false)} titre="Supprimer ce quiz ?">
+      <Modal
+        open={modal}
+        onClose={() => {
+          setFermetures((n) => n + 1);
+          setModal(false);
+        }}
+        titre="Supprimer ce quiz ?"
+      >
         <p className="text-base font-semibold">Cette action est définitive.</p>
         <div className="flex gap-3">
           <Button variante="creme" taille="petit" onClick={() => setModal(false)}>
@@ -122,6 +130,9 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
         </div>
       </Modal>
 
+      <p className="sr-only" data-fermetures={fermetures}>
+        Fermetures de la modale : {fermetures}
+      </p>
       <ZoneToasts
         statuts={
           toast ? (
@@ -140,6 +151,7 @@ export default function DemoInteractive({ foret = false }: DemoInteractiveProps)
 export function DemoToasts() {
   const [succes, setSucces] = useState(false);
   const [erreur, setErreur] = useState(false);
+  const [info, setInfo] = useState(false);
   const [rendus, setRendus] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setRendus((n) => n + 1), 200);
@@ -154,18 +166,28 @@ export function DemoToasts() {
       <Button taille="petit" onClick={() => setErreur(true)}>
         Erreur
       </Button>
+      <Button taille="petit" onClick={() => setInfo(true)}>
+        Information
+      </Button>
       <ZoneToasts
         statuts={
-          succes ? (
-            // Fonction fléchée neuve à chaque rendu : le minuteur ne doit pas repartir pour autant.
-            <Toast variante="succes" duree={2500} onClose={() => setSucces(false)}>
-              Succès éphémère.
-            </Toast>
-          ) : null
+          <>
+            {info ? (
+              <Toast variante="info" onClose={() => setInfo(false)}>
+                Message d'information durable.
+              </Toast>
+            ) : null}
+            {succes ? (
+              // Fonction fléchée neuve à chaque rendu : le minuteur ne doit pas repartir pour autant.
+              <Toast variante="succes" duree={4000} onClose={() => setSucces(false)}>
+                Succès éphémère.
+              </Toast>
+            ) : null}
+          </>
         }
         alertes={
           erreur ? (
-            <Toast variante="erreur" duree={2500} onClose={() => setErreur(false)}>
+            <Toast variante="erreur" duree={4000} onClose={() => setErreur(false)}>
               Erreur durable.
             </Toast>
           ) : null

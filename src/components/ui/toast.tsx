@@ -59,7 +59,8 @@ export function Toast({ variante = "info", children, onClose, duree, className }
           label="Fermer le message"
           icone={<X className="size-5" />}
           onClick={onClose}
-          className="border-vert-foret bg-creme text-vert-foret"
+          // Anneau à l'intérieur du bouton, sur son propre fond crème : dehors il tomberait sur le fond vif du toast (moins de 3:1).
+          className="border-vert-foret bg-creme text-vert-foret focus-visible:-outline-offset-4 focus-visible:outline-vert-foret"
         />
       ) : null}
     </div>

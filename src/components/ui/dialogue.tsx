@@ -23,9 +23,18 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
   // ne doit pas fermer le dialogue.
   const departClic = useRef<EventTarget | null>(null);
 
+  // Échap déclenche cancel puis close : sans ce garde, le parent serait prévenu deux fois d'une seule fermeture.
+  const dejaFerme = useRef(false);
+  function demanderFermeture() {
+    if (dejaFerme.current) return;
+    dejaFerme.current = true;
+    onClose();
+  }
+
   useEffect(() => {
     const dialogue = ref.current;
     if (!dialogue) return;
+    if (open) dejaFerme.current = false;
     if (open && !dialogue.open) dialogue.showModal();
     if (!open && dialogue.open) dialogue.close();
   }, [open]);
@@ -51,17 +60,17 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
       // Échap : on laisse l'état parent décider (le dialogue se ferme via la prop open, jamais en douce).
       onCancel={(e) => {
         e.preventDefault();
-        onClose();
+        demanderFermeture();
       }}
       // Fermeture native (par exemple form method="dialog") : on resynchronise l'état parent.
       onClose={() => {
-        if (open) onClose();
+        if (open) demanderFermeture();
       }}
       onPointerDown={(e) => {
         departClic.current = e.target;
       }}
       onClick={(e) => {
-        if (e.target === ref.current && departClic.current === ref.current) onClose();
+        if (e.target === ref.current && departClic.current === ref.current) demanderFermeture();
       }}
       className={cn(
         "fixed m-0 w-full max-w-none overflow-y-auto border-trait border-vert-foret bg-creme p-0 text-vert-foret backdrop:bg-vert-nuit/55",
@@ -77,7 +86,7 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
           <h2 id={titreId} className="min-w-0 flex-1 font-affiche text-xl leading-tight">
             {titre}
           </h2>
-          <IconButton label="Fermer" icone={<X className="size-5" />} onClick={onClose} />
+          <IconButton label="Fermer" icone={<X className="size-5" />} onClick={demanderFermeture} />
         </div>
         {children}
       </div>

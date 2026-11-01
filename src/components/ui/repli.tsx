@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
 import { cn } from "./cn";
 
@@ -11,14 +11,13 @@ interface RepliProps {
 }
 
 // <details> natif : repli au clavier et annonce « développé / réduit » sans JavaScript.
-// L'état ouvert est suivi pour marquer le papier crème (data-papier) : fermé, le repli est transparent sur le fond de page.
+// Ouvert, le repli est du papier crème : data-repli + [open] le signale au CSS (variante foret, anneau de focus) sans JavaScript,
+// donc aussi sur une page rendue sans hydratation.
 export function Repli({ titre, icone, defaultOpen = false, children, className }: RepliProps) {
-  const [ouvert, setOuvert] = useState(defaultOpen);
   return (
     <details
       open={defaultOpen}
-      onToggle={(e) => setOuvert(e.currentTarget.open)}
-      data-papier={ouvert ? "" : undefined}
+      data-repli=""
       className={cn(
         "group rounded-md border-trait border-dashed border-vert-foret open:border-solid open:bg-creme open:text-vert-foret",
         "foret:border-creme foret:open:border-vert-nuit",

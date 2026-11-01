@@ -142,6 +142,7 @@ export function DemoStatiqueForet() {
       <Button variante="soleil" bloc>
         Soleil sur forêt
       </Button>
+      <Button className="self-start">Primaire sur forêt</Button>
       <Button variante="creme" taille="petit" className="self-start">
         Crème petit
       </Button>

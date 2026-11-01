@@ -94,26 +94,28 @@ test.describe("Toast", () => {
     await page.getByRole("button", { name: "Succès automatique" }).click();
     const toast = page.getByText("Succès éphémère.");
     await expect(toast).toBeVisible();
-    await expect(toast).toBeHidden({ timeout: 5000 });
+    await expect(toast).toBeHidden({ timeout: 8000 });
   });
 
   test("une erreur ne se ferme pas automatiquement", async ({ page }) => {
     await page.getByRole("button", { name: "Erreur", exact: true }).click();
     await expect(page.getByText("Erreur durable.")).toBeVisible();
-    await page.waitForTimeout(3200);
+    await page.waitForTimeout(5000);
     await expect(page.getByText("Erreur durable.")).toBeVisible();
   });
 
   test("le survol suspend la fermeture automatique, la sortie la reprend", async ({ page }) => {
     await page.getByRole("button", { name: "Succès automatique" }).click();
     const toast = page.getByText("Succès éphémère.");
-    // L'élément survolé est la carte du toast ; on vise son bord gauche, hors de la barre d'outils de développement Astro.
-    const carte = (await toast.locator("..").boundingBox())!;
-    await page.mouse.move(carte.x + 6, carte.y + carte.height / 2);
-    await page.waitForTimeout(3200);
+    // La carte joue une animation d'entrée : on attend sa fin pour viser sa position définitive. Le survol est forcé car la barre
+    // d'outils de développement Astro peut recouvrir le bas de l'écran.
+    const carte = toast.locator("..");
+    await carte.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+    await carte.hover({ position: { x: 6, y: 10 }, force: true });
+    await page.waitForTimeout(5000);
     await expect(toast).toBeVisible();
     await page.mouse.move(2, 2);
-    await expect(toast).toBeHidden({ timeout: 5000 });
+    await expect(toast).toBeHidden({ timeout: 8000 });
   });
 
   test("les régions status et alert existent avant tout message, l'erreur est annoncée dans la région alert", async ({ page }) => {
@@ -149,5 +151,113 @@ test.describe("Dialogue", () => {
     await expect(dialogue).toBeHidden();
     await declencheur.click();
     await expect(dialogue).toBeVisible();
+  });
+});
+
+test.describe("Squelette sur fond forêt", () => {
+  test("le dégradé passe en crème en thème forêt et reste vert forêt en thème jaune", async ({ page }) => {
+    const mesurer = async () =>
+      page.evaluate(() => {
+        const el = document.querySelector("[aria-busy] div") as HTMLElement;
+        const sonde = (jeton: string, pct: number) => {
+          const d = document.createElement("div");
+          d.style.backgroundColor = `color-mix(in oklab, var(--color-${jeton}) ${pct}%, transparent)`;
+          document.body.appendChild(d);
+          const c = getComputedStyle(d).backgroundColor;
+          d.remove();
+          return c;
+        };
+        return { image: getComputedStyle(el).backgroundImage, creme: sonde("creme", 25), foret: sonde("vert-foret", 25) };
+      });
+    await ouvrir(page, "theme=foret");
+    const f = await mesurer();
+    expect(f.image).toContain(f.creme);
+    expect(f.image).not.toContain(f.foret);
+    await ouvrir(page, "");
+    const j = await mesurer();
+    expect(j.image).toContain(j.foret);
+    expect(j.image).not.toContain(j.creme);
+  });
+});
+
+test.describe("bouton Fermer des toasts : anneau d'au moins 3:1 sur son propre fond", () => {
+  for (const theme of ["soleil", "foret"]) {
+    for (const [bouton, texte] of [
+      ["Succès automatique", "Succès éphémère."],
+      ["Erreur", "Erreur durable."],
+      ["Information", "Message d'information durable."],
+    ] as const) {
+      test(`${bouton} (thème ${theme})`, async ({ page }) => {
+        await ouvrir(page, `theme=${theme}&cas=toasts`);
+        await page.getByRole("button", { name: bouton, exact: true }).click();
+        await expect(page.getByText(texte)).toBeVisible();
+        const fermer = page.getByRole("button", { name: "Fermer le message" });
+        // Le focus clavier suspend aussi la fermeture automatique du toast de succès.
+        await fermer.focus();
+        await page.keyboard.press("Shift+Tab");
+        await page.keyboard.press("Tab");
+        await expect(fermer).toBeFocused();
+        const etat = await fermer.evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return { anneau: cs.outlineColor, fond: cs.backgroundColor, decalage: parseFloat(cs.outlineOffset), style: cs.outlineStyle };
+        });
+        expect(etat.style).toBe("solid");
+        expect(etat.decalage).toBeLessThan(0);
+        expect(etat.anneau).toBe(await couleurJeton(page, "vert-foret"));
+        expect(contraste(etat.anneau, etat.fond)).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+});
+
+test("le bouton primaire garde un contour crème sur fond forêt", async ({ page }) => {
+  await ouvrir(page, "");
+  const bouton = zoneForet(page).getByRole("button", { name: "Primaire sur forêt" });
+  expect(await bouton.evaluate((el) => getComputedStyle(el).borderTopColor)).toBe(await couleurJeton(page, "creme"));
+  const jaune = page.locator("main > div:not([data-theme])").getByRole("button", { name: "Rejoindre la partie" });
+  expect(await jaune.evaluate((el) => getComputedStyle(el).borderTopColor)).toBe(await couleurJeton(page, "vert-foret"));
+});
+
+test.describe("Dialogue : une fermeture, un seul appel à onClose", () => {
+  test.beforeEach(async ({ page }) => ouvrir(page, ""));
+  const zone = (page: Page) => page.locator("main > div:not([data-theme])");
+  const compte = (page: Page) => zone(page).locator("[data-fermetures]").evaluate((el) => Number(el.getAttribute("data-fermetures")));
+
+  test("Échap (cancel puis close)", async ({ page }) => {
+    await zone(page).getByRole("button", { name: "Ouvrir la modale" }).click();
+    await page.keyboard.press("Escape");
+    await expect(zone(page).getByRole("dialog", { name: "Supprimer ce quiz ?" })).toBeHidden();
+    await page.waitForTimeout(300);
+    expect(await compte(page)).toBe(1);
+  });
+
+  test("bouton Fermer, puis fermeture native sur une seconde ouverture", async ({ page }) => {
+    const ouvrirModale = zone(page).getByRole("button", { name: "Ouvrir la modale" });
+    const dialogue = zone(page).getByRole("dialog", { name: "Supprimer ce quiz ?" });
+    await ouvrirModale.click();
+    await dialogue.getByRole("button", { name: "Fermer" }).click();
+    await expect(dialogue).toBeHidden();
+    await page.waitForTimeout(300);
+    expect(await compte(page)).toBe(1);
+    await ouvrirModale.click();
+    await dialogue.evaluate((d: HTMLDialogElement) => d.close());
+    await expect(dialogue).toBeHidden();
+    await page.waitForTimeout(300);
+    expect(await compte(page)).toBe(2);
+  });
+});
+
+test.describe("Repli sans JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("un Repli ouvert rendu côté serveur garde l'anneau vert forêt sous <html data-theme=foret>", async ({ page }) => {
+    await page.goto(`${URL_GUIDE}?theme=foret&cas=repli`, { waitUntil: "load" });
+    const vertForet = await couleurJeton(page, "vert-foret");
+    const resume = page.locator("summary", { hasText: "Réglages avancés" });
+    await resume.focus();
+    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    await expect(resume).toBeFocused();
+    expect(await anneau(page)).toBe(vertForet);
   });
 });
