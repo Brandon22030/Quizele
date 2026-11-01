@@ -14,5 +14,23 @@ export default defineConfig({
     plugins: [tailwindcss()],
     // Config inline : empêche Vite de charger l'ancien postcss.config.mjs de Next (supprimé en QZ-002-18).
     css: { postcss: { plugins: [] } },
+    // Pré-bundle explicite : sans lui, l'optimisation à froid de Vite recharge la page en cours de route
+    // (« Invalid hook call », import dynamique de button.tsx en échec).
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "motion/react",
+        "clsx",
+        "tailwind-merge",
+        "partysocket",
+        "@base-ui/react",
+        "lucide-react",
+        "qrcode.react",
+      ],
+    },
   },
 });

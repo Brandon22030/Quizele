@@ -1,27 +1,30 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 4322;
-// Serveur de développement : /dev/styleguide-base n'existe qu'en DEV (404 sur le build).
-const portDev = 4323;
+import { PORT_DEV, PORT_PREVIEW, URL_DEV, URL_PREVIEW } from "./tests/e2e/serveurs";
+
+// Jamais de réutilisation : un serveur déjà présent sur le port viendrait d'un autre worktree et testerait du code obsolète.
+const reuseExistingServer = false;
 
 export default defineConfig({
   testDir: "tests/e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   reporter: [["list"]],
-  use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure" },
+  use: { baseURL: URL_PREVIEW, trace: "retain-on-failure" },
   // Serveur local uniquement (wrangler dev sur dist) : aucun appel distant.
   webServer: [
     {
-      command: `npm run build && npm run preview -- --port ${port}`,
-      url: `http://localhost:${port}`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      command: `npm run build && npm run preview -- --port ${PORT_PREVIEW}`,
+      url: URL_PREVIEW,
+      reuseExistingServer,
+      timeout: 180_000,
     },
     {
-      command: `npx astro dev --port ${portDev}`,
-      url: `http://localhost:${portDev}/dev/styleguide-base`,
-      reuseExistingServer: !process.env.CI,
+      // --ignore-lock : reste au premier plan (sans lui astro dev 7 se détache en démon quand il détecte un agent)
+      // et ignore le verrou d'un autre dev server du même dépôt.
+      command: `npx astro dev --port ${PORT_DEV} --ignore-lock`,
+      url: `${URL_DEV}/dev/styleguide-base`,
+      reuseExistingServer,
       timeout: 120_000,
     },
   ],

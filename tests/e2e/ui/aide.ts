@@ -1,6 +1,7 @@
 import { expect, test as base, type Locator, type Page } from "@playwright/test";
+import { URL_DEV } from "../serveurs";
 
-export const URL_GUIDE = "http://localhost:4323/dev/styleguide-base";
+export const URL_GUIDE = `${URL_DEV}/dev/styleguide-base`;
 
 export const test = base.extend<{ guide: Page }>({
   guide: async ({ page }, use) => {

@@ -1,8 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { URL_DEV } from "../serveurs";
 
 // Serveur de développement partagé avec tests/e2e/ui (voir playwright.config.ts) : la planche n'existe qu'en DEV.
-const URL = "http://localhost:4323/dev/styleguide-jeu";
+const URL = `${URL_DEV}/dev/styleguide-jeu`;
 
 async function ouvrir(page: Page) {
   await page.goto(URL);
