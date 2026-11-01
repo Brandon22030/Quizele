@@ -151,9 +151,10 @@ describe("bornes zod égales aux bornes SQL, valeurs limites écrites en base", 
     expect(p("true_false", o(false, true))).toBe(true);
     expect(p("true_false", o(true, false, false))).toBe(false);
     expect(p("single", o(true, true))).toBe(false);
-    expect(p("single", o(false, false))).toBe(false);
+    // Brouillon (décision QZ-002-08, option a) : 0 bonne réponse s'enregistre, quizStatus la signale à compléter.
+    expect(p("single", o(false, false))).toBe(true);
     expect(p("single", o(false, false, true, false))).toBe(true);
-    expect(p("multiple", o(false, false))).toBe(false);
+    expect(p("multiple", o(false, false))).toBe(true);
     expect(p("multiple", o(true, true, true, true))).toBe(true);
     expect(p("single", o(true))).toBe(false);
     expect(p("single", o(true, false, false, false, false))).toBe(false);
@@ -252,9 +253,9 @@ describe("reordonner : ordre obsolète ou en double", () => {
 
 describe("QuizLimitError et plafonds via les handlers", () => {
   it("traduction des deux messages", () => {
-    expect(toQuizFailure(new QuizLimitError("Un quiz compte au plus 50 questions")).message).toBe("Un quiz ne peut pas dépasser 50 questions.");
-    expect(toQuizFailure(new QuizLimitError("Une question compte au plus 4 options")).message).toBe("Une question ne peut pas dépasser 4 options.");
-    expect(toQuizFailure(new QuizLimitError("x")).code).toBe("BAD_REQUEST");
+    expect(toQuizFailure(new QuizLimitError("questions", "Un quiz compte au plus 50 questions")).message).toBe("Un quiz ne peut pas dépasser 50 questions.");
+    expect(toQuizFailure(new QuizLimitError("options", "Une question compte au plus 4 options")).message).toBe("Une question ne peut pas dépasser 4 options.");
+    expect(toQuizFailure(new QuizLimitError("options", "x")).code).toBe("BAD_REQUEST");
   });
 
   it("50 questions acceptées, la 51e donne BAD_REQUEST français sans écrire", async () => {

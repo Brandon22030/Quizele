@@ -1,10 +1,18 @@
 import { z } from "zod";
 
-// Isomorphe : l'éditeur valide côté navigateur avec les mêmes règles que les Actions. Les bornes dupliquent celles de
-// src/server/db/schema.ts (les CHECK de la base), qu'un test de worker garde alignées.
+// Isomorphe : l'éditeur valide côté navigateur avec les mêmes règles que les Actions. Les listes ci-dessous sont la
+// source des CHECK (src/server/db/schema.ts les importe) ; les bornes numériques en sont dupliquées, un test les aligne.
+// Ce module ne doit jamais importer Drizzle : il part dans le bundle client.
 export const QUESTION_TYPES = ["single", "multiple", "true_false"] as const;
 export const QUESTION_DURATIONS = [10, 20, 30, 60] as const;
 export const GAME_MODES = ["together", "own_pace"] as const;
+
+export type QuestionType = (typeof QUESTION_TYPES)[number];
+export type QuestionDuration = (typeof QUESTION_DURATIONS)[number];
+export type GameMode = (typeof GAME_MODES)[number];
+
+// Identifiant réservé au quiz vide : « Partir de zéro » figure parmi les choix de modèle sans être un contenu.
+export const PARTIR_DE_ZERO = "zero";
 
 export const MAX_QUESTIONS = 50;
 export const MIN_OPTIONS = 2;
@@ -43,16 +51,22 @@ export const durationSchema = z
   });
 
 // Les libellés vides sont permis : un brouillon se sauvegarde au fil de la saisie, quizStatus signale ce qui reste à remplir.
-export const optionSchema = z.object({
+// Chaque objet porte son propre message : sans lui, zod répond en anglais (« Invalid input: expected object »). On évite
+// z.config(z.locales.fr()), réglage global qui toucherait aussi protocol.ts et ne donne que des messages techniques.
+export const optionSchema = z.object(
+  {
   label: z
     .string({ error: "Le libellé de la réponse doit être un texte." })
     .trim()
     .max(OPTION_LABEL_MAX, tooLong("Une réponse", OPTION_LABEL_MAX)),
   isCorrect: z.boolean({ error: "Indique si la réponse est juste." }),
-});
+  },
+  { error: "Une réponse est invalide." },
+);
 
 export const questionSchema = z
-  .object({
+  .object(
+    {
     type: questionTypeSchema,
     prompt: z
       .string({ error: "L'énoncé doit être un texte." })
@@ -65,17 +79,21 @@ export const questionSchema = z
       .array(optionSchema, { error: "Les réponses sont invalides." })
       .min(MIN_OPTIONS, `Une question a au moins ${MIN_OPTIONS} réponses.`)
       .max(MAX_OPTIONS, `Une question ne peut pas dépasser ${MAX_OPTIONS} réponses.`),
-  })
+    },
+    { error: "La question est invalide." },
+  )
+  // Brouillon : zéro bonne réponse est accepté pour que l'enregistrement automatique suive la saisie avant que la bonne
+  // réponse soit cochée ; quizStatus la signale à compléter. Seul ce qu'aucune saisie ne peut rendre jouable est refusé.
   .superRefine((question, ctx) => {
     const correct = question.options.filter((o) => o.isCorrect).length;
     if (question.type === "true_false" && question.options.length !== 2) {
       ctx.addIssue({ code: "custom", path: ["options"], message: "Une question vrai ou faux a exactement 2 réponses." });
     }
-    if (question.type === "single" && correct !== 1) {
-      ctx.addIssue({ code: "custom", path: ["options"], message: "Une question à choix unique a exactement 1 bonne réponse." });
+    if (question.type === "single" && correct > 1) {
+      ctx.addIssue({ code: "custom", path: ["options"], message: "Une question à choix unique a une seule bonne réponse." });
     }
-    if (question.type === "multiple" && correct < 1) {
-      ctx.addIssue({ code: "custom", path: ["options"], message: "Une question à choix multiples a au moins 1 bonne réponse." });
+    if (question.type === "true_false" && correct > 1) {
+      ctx.addIssue({ code: "custom", path: ["options"], message: "Une question vrai ou faux a une seule bonne réponse." });
     }
   });
 
@@ -96,34 +114,40 @@ const settingsShape = {
   category: optionalText("La catégorie", CATEGORY_MAX),
 };
 
-export const settingsSchema = z.object(settingsShape).partial();
+export const settingsSchema = z.object(settingsShape, { error: "Les réglages sont invalides." }).partial();
+
+const INVALID_INPUT = "La demande est invalide.";
+const input = <S extends z.ZodRawShape>(shape: S) => z.object(shape, { error: INVALID_INPUT });
 
 // Entrées des Actions : le serveur et les îlots importent les mêmes schémas.
 export const quizActionInputs = {
   // Le titre est facultatif seulement si un modèle fournit le sien : la règle se vérifie ici pour avoir un message de champ.
   creer: z
-    .object({
-      title: titleSchema.optional(),
-      modele: z.string({ error: "Ce modèle n'existe pas." }).min(1, "Ce modèle n'existe pas.").optional(),
-    })
+    .object(
+      {
+        title: titleSchema.optional(),
+        modele: z.string({ error: "Ce modèle n'existe pas." }).min(1, "Ce modèle n'existe pas.").optional(),
+      },
+      { error: INVALID_INPUT },
+    )
     .superRefine((input, ctx) => {
-      if (input.title === undefined && (input.modele === undefined || input.modele === "zero")) {
+      if (input.title === undefined && (input.modele === undefined || input.modele === PARTIR_DE_ZERO)) {
         ctx.addIssue({ code: "custom", path: ["title"], message: "Le titre est obligatoire." });
       }
     }),
-  dupliquer: z.object({ quizId }),
-  supprimer: z.object({ quizId }),
-  majReglages: z.object({ quizId, ...settingsSchema.shape }),
-  ajouterQuestion: z.object({ quizId, question: questionSchema }),
-  majQuestion: z.object({ questionId, question: questionSchema }),
-  supprimerQuestion: z.object({ questionId }),
-  reordonner: z.object({
+  dupliquer: input({ quizId }),
+  supprimer: input({ quizId }),
+  majReglages: input({ quizId, ...settingsSchema.shape }),
+  ajouterQuestion: input({ quizId, question: questionSchema }),
+  majQuestion: input({ questionId, question: questionSchema }),
+  supprimerQuestion: input({ questionId }),
+  reordonner: input({
     quizId,
     questionIds: z
       .array(questionId, { error: "L'ordre des questions est invalide." })
       .max(MAX_QUESTIONS, `Un quiz ne peut pas dépasser ${MAX_QUESTIONS} questions.`),
   }),
-  charger: z.object({ quizId }),
+  charger: input({ quizId }),
 };
 
 export interface QuizStatus {
@@ -136,15 +160,21 @@ export interface QuizStatus {
 
 export interface QuestionForStatus {
   id: string;
+  type: QuestionType;
   prompt: string;
   options: { label: string; isCorrect: boolean }[];
 }
 
-// Même règle que la sous-requête SQL de listQuizzes (src/server/db/quizzes.ts) : énoncé non vide, au moins deux
-// réponses libellées, au moins une bonne réponse.
-export function isQuestionComplete(question: Pick<QuestionForStatus, "prompt" | "options">): boolean {
-  const labelled = question.options.filter((o) => o.label.trim() !== "").length;
-  return question.prompt.trim() !== "" && labelled >= MIN_OPTIONS && question.options.some((o) => o.isCorrect);
+// Même règle que la sous-requête SQL incompleteCount de listQuizzes (src/server/db/quizzes.ts), qu'un test compare
+// combinaison par combinaison : énoncé non vide, au moins 2 réponses toutes libellées, au moins 1 bonne réponse,
+// exactement 1 pour le choix unique et le vrai/faux, qui a exactement 2 réponses.
+export function isQuestionComplete(question: Pick<QuestionForStatus, "type" | "prompt" | "options">): boolean {
+  const { type, prompt, options } = question;
+  const correct = options.filter((o) => o.isCorrect).length;
+  if (prompt.trim() === "" || options.length < MIN_OPTIONS || options.some((o) => o.label.trim() === "")) return false;
+  if (type === "multiple") return correct >= 1;
+  if (type === "true_false" && options.length !== 2) return false;
+  return correct === 1;
 }
 
 export function statusFromCounts(questionCount: number, incompleteCount: number): Pick<QuizStatus, "ready" | "label"> {

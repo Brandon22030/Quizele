@@ -8,16 +8,23 @@ export const creationEtExode: Modele = {
   category: "Bible",
   mode: "together",
   questions: [
-    choixUnique("Quel est le premier livre de la Bible ?", "La Genèse", ["L'Exode", "Les Psaumes", "Matthieu"], "Genèse 1:1"),
-    choixUnique("Qu'est-ce que Dieu crée le premier jour ?", "La lumière", ["Les étoiles", "Les animaux", "L'homme"], "Genèse 1:3-5"),
+    choixUnique("Quel est le premier livre de la Bible ?", ["L'Exode", "Les Psaumes", "La Genèse", "Matthieu"], 2, "Genèse 1:1"),
+    choixUnique("Qu'est-ce que Dieu crée le premier jour ?", ["Les étoiles", "La lumière", "Les animaux", "L'homme"], 1, "Genèse 1:3-5"),
     vraiFaux("Dieu s'est reposé le septième jour.", true, "Genèse 2:2"),
+    vraiFaux("Dieu a créé l'homme le cinquième jour.", false, "Genèse 1:27-31", "L'homme est créé le sixième jour, après les animaux de la terre."),
     choixMultiple(
       "Lesquelles sont des plaies d'Égypte ?",
-      ["Le sang", "Les grenouilles"],
-      ["La neige", "Le tremblement de terre"],
+      ["La neige", "Le sang", "Le tremblement de terre", "Les grenouilles"],
+      [1, 3],
       "Exode 7 et 8",
       "Les eaux du Nil changées en sang, puis les grenouilles, ouvrent la série des plaies.",
     ),
-    choixUnique("Quelle mer le peuple a-t-il traversée à pied sec avec Moïse ?", "La mer Rouge", ["La mer Morte", "Le lac de Tibériade", "La mer Méditerranée"], "Exode 14:21-22"),
+    vraiFaux("L'Égypte a été frappée de sept plaies.", false, "Exode 7 à 12", "Il y a eu dix plaies, la dernière étant la mort des premiers-nés."),
+    choixUnique(
+      "Quelle mer le peuple a-t-il traversée à pied sec avec Moïse ?",
+      ["La mer Morte", "Le lac de Tibériade", "La mer Méditerranée", "La mer Rouge"],
+      3,
+      "Exode 14:21-22",
+    ),
   ],
 };

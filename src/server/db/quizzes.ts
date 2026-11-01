@@ -79,16 +79,24 @@ async function assertQuestionOwner(db: Db, ownerId: string, questionId: string):
 export class NotFoundError extends Error {}
 
 // Les plafonds bornent le nombre d'instructions par batch sous les 50 requêtes D1 d'une invocation.
-export class QuizLimitError extends Error {}
+// `kind` dit quel plafond est atteint, pour que l'appelant traduise sans analyser le message.
+export class QuizLimitError extends Error {
+  constructor(
+    readonly kind: "questions" | "options",
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 function assertOptionLimit(input: QuestionInput): void {
   if (input.options.length > MAX_OPTIONS_PER_QUESTION) {
-    throw new QuizLimitError(`Une question compte au plus ${MAX_OPTIONS_PER_QUESTION} options`);
+    throw new QuizLimitError("options", `Une question compte au plus ${MAX_OPTIONS_PER_QUESTION} options`);
   }
 }
 
 function assertQuizLimits(input: QuestionInput[]): void {
-  if (input.length > MAX_QUESTIONS_PER_QUIZ) throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
+  if (input.length > MAX_QUESTIONS_PER_QUIZ) throw new QuizLimitError("questions", `Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
   input.forEach(assertOptionLimit);
 }
 
@@ -194,7 +202,7 @@ export async function addQuestion(db: Db, ownerId: string, quizId: string, input
     .where(ownedQuiz(ownerId, quizId))
     .get();
   if (!quiz) throw new NotFoundError("Quiz introuvable");
-  if (quiz.questionCount >= MAX_QUESTIONS_PER_QUIZ) throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
+  if (quiz.questionCount >= MAX_QUESTIONS_PER_QUIZ) throw new QuizLimitError("questions", `Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
   const questionId = crypto.randomUUID();
   // Garde répétée dans l'insertion (plafond, propriété) : deux ajouts simultanés ne dépassent pas 50. Les options sont
   // conditionnées à l'existence de la question, sinon une question refusée ferait échouer le batch sur la clé étrangère.
@@ -210,7 +218,7 @@ export async function addQuestion(db: Db, ownerId: string, quizId: string, input
   if (inserted.meta.changes === 0) {
     const stillOwned = await db.select({ id: quizzes.id }).from(quizzes).where(ownedQuiz(ownerId, quizId)).get();
     if (!stillOwned) throw new NotFoundError("Quiz introuvable");
-    throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
+    throw new QuizLimitError("questions", `Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
   }
   return questionId;
 }
@@ -275,11 +283,18 @@ export async function listQuizzes(db: Db, ownerId: string) {
       title: quizzes.title,
       updatedAt: quizzes.updatedAt,
       questionCount: sql<number>`(SELECT COUNT(*) FROM questions WHERE questions.quiz_id = quizzes.id)`,
-      // Question complète : énoncé non vide, au moins 2 options libellées, au moins une bonne réponse.
-      incompleteCount: sql<number>`(SELECT COUNT(*) FROM questions q WHERE q.quiz_id = quizzes.id AND (
-        TRIM(q.prompt) = ''
-        OR (SELECT COUNT(*) FROM options o WHERE o.question_id = q.id AND TRIM(o.label) <> '') < 2
-        OR (SELECT COUNT(*) FROM options o WHERE o.question_id = q.id AND o.is_correct = 1) < 1
+      // Même règle que isQuestionComplete (src/shared/quiz-schema.ts) : énoncé non vide, au moins 2 options toutes
+      // libellées, au moins 1 bonne réponse, exactement 1 hors choix multiple, exactement 2 options pour vrai/faux.
+      // Sans option, aucun groupe n'existe : la question compte comme incomplète.
+      incompleteCount: sql<number>`(SELECT COUNT(*) FROM questions q WHERE q.quiz_id = quizzes.id AND NOT EXISTS (
+        SELECT 1 FROM options o WHERE o.question_id = q.id
+        GROUP BY o.question_id
+        HAVING TRIM(q.prompt) <> ''
+          AND COUNT(*) >= 2
+          AND SUM(TRIM(o.label) = '') = 0
+          AND SUM(o.is_correct) >= 1
+          AND (q.type = 'multiple' OR SUM(o.is_correct) = 1)
+          AND (q.type <> 'true_false' OR COUNT(*) = 2)
       ))`,
     })
     .from(quizzes)

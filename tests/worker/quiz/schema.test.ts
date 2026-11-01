@@ -51,16 +51,16 @@ describe("questionSchema", () => {
     expect(messages(questionSchema.safeParse(tf(3)))).toContain("Une question vrai ou faux a exactement 2 réponses.");
   });
 
-  it("choix unique : exactement 1 bonne réponse", () => {
-    expect(questionSchema.safeParse(single({ options: opts(false, false) })).success).toBe(false);
+  it("choix unique : au plus 1 bonne réponse, 0 permis en brouillon", () => {
+    expect(questionSchema.safeParse(single({ options: opts(false, false) })).success).toBe(true);
     expect(questionSchema.safeParse(single({ options: opts(true, true) })).success).toBe(false);
     expect(messages(questionSchema.safeParse(single({ options: opts(true, true, false) })))).toContain(
-      "Une question à choix unique a exactement 1 bonne réponse.",
+      "Une question à choix unique a une seule bonne réponse.",
     );
   });
 
-  it("choix multiple : au moins 1 bonne réponse", () => {
-    expect(questionSchema.safeParse(single({ type: "multiple", options: opts(false, false) })).success).toBe(false);
+  it("choix multiple : 0 bonne réponse permis en brouillon", () => {
+    expect(questionSchema.safeParse(single({ type: "multiple", options: opts(false, false) })).success).toBe(true);
     expect(questionSchema.safeParse(single({ type: "multiple", options: opts(true, false) })).success).toBe(true);
     expect(questionSchema.safeParse(single({ type: "multiple", options: opts(true, true, true, true) })).success).toBe(true);
   });
@@ -146,7 +146,7 @@ describe("entrées des actions", () => {
 });
 
 describe("quizStatus", () => {
-  const complete = { id: "a", prompt: "Q ?", options: [{ label: "x", isCorrect: true }, { label: "y", isCorrect: false }] };
+  const complete = { id: "a", type: "single" as const, prompt: "Q ?", options: [{ label: "x", isCorrect: true }, { label: "y", isCorrect: false }] };
 
   it("prêt à jouer quand tout est complet", () => {
     expect(quizStatus([complete, { ...complete, id: "b" }])).toEqual({ ready: true, label: "Prêt à jouer", incompleteCount: 0, incomplete: [] });

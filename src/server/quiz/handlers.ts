@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { PARTIR_DE_ZERO, trouverModele } from "../../contenu/modeles";
-import { TITLE_MAX, quizActionInputs, quizStatus, statusFromCounts, type QuizStatus } from "../../shared/quiz-schema";
+import { trouverModele } from "../../contenu/modeles";
+import { MAX_OPTIONS, MAX_QUESTIONS, PARTIR_DE_ZERO, TITLE_MAX, quizActionInputs, quizStatus, statusFromCounts, type QuizStatus } from "../../shared/quiz-schema";
 import type { Db } from "../db/client";
 import {
   NotFoundError,
@@ -45,9 +45,10 @@ const REORDER_ERROR = "Ordre des questions invalide";
 export function toQuizFailure(error: unknown): QuizFailure {
   if (error instanceof QuizFailure) return error;
   if (error instanceof QuizLimitError) {
-    const message = error.message.includes("options")
-      ? "Une question ne peut pas dépasser 4 options."
-      : "Un quiz ne peut pas dépasser 50 questions.";
+    const message =
+      error.kind === "options"
+        ? `Une question ne peut pas dépasser ${MAX_OPTIONS} options.`
+        : `Un quiz ne peut pas dépasser ${MAX_QUESTIONS} questions.`;
     return new QuizFailure("BAD_REQUEST", message);
   }
   if (error instanceof NotFoundError) {
@@ -58,6 +59,16 @@ export function toQuizFailure(error: unknown): QuizFailure {
     return new QuizFailure("BAD_REQUEST", "L'ordre des questions n'est plus à jour. Recharge la page.");
   }
   return new QuizFailure("INTERNAL_SERVER_ERROR", "Une erreur est survenue. Réessaie dans un instant.");
+}
+
+// Seule trace d'une erreur inattendue, masquée à l'utilisateur. L'entrée n'est pas journalisée : elle porte le contenu du
+// quiz, bonnes réponses comprises.
+export function actionFailure(action: string, error: unknown): QuizFailure {
+  const failure = toQuizFailure(error);
+  if (failure.code === "INTERNAL_SERVER_ERROR") {
+    console.error(`quiz.${action}`, error instanceof Error ? error.message : String(error));
+  }
+  return failure;
 }
 
 type Input<K extends keyof typeof quizActionInputs> = z.output<(typeof quizActionInputs)[K]>;
@@ -85,7 +96,8 @@ export async function dupliquer(db: Db, user: QuizUser | null, input: Input<"dup
   const { id } = requireUser(user);
   const source = await getQuizForEditor(db, id, input.quizId);
   if (!source) throw new NotFoundError("Quiz introuvable");
-  const title = source.title.slice(0, TITLE_MAX - COPY_SUFFIX.length) + COPY_SUFFIX;
+  // Coupe par points de code, comme les CHECK de la base : un emoji n'est jamais tranché en deux.
+  const title = Array.from(source.title).slice(0, TITLE_MAX - COPY_SUFFIX.length).join("") + COPY_SUFFIX;
   return { quizId: await duplicateQuiz(db, id, input.quizId, title) };
 }
 

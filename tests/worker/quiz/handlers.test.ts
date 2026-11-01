@@ -250,7 +250,7 @@ describe("lister et charger", () => {
     const byId = new Map(quizzes.map((q) => [q.id, q]));
     expect(byId.get(draft)!.status).toEqual({ ready: false, label: "Brouillon - 1 à compléter", incompleteCount: 1 });
     expect(byId.get(ready)!.status).toMatchObject({ ready: true, label: "Prêt à jouer" });
-    expect(byId.get(ready)!.questionCount).toBe(5);
+    expect(byId.get(ready)!.questionCount).toBe(trouverModele("creation-et-exode")!.questions.length);
   });
 
   it("charger renvoie is_correct au propriétaire, la liste des incomplètes, et jamais ownerId", async () => {
@@ -272,7 +272,7 @@ describe("lister et charger", () => {
 
 describe("toQuizFailure", () => {
   it("traduit les erreurs de la base et masque les inconnues", () => {
-    expect(toQuizFailure(new QuizLimitError("Une question compte au plus 4 options")).message).toBe("Une question ne peut pas dépasser 4 options.");
+    expect(toQuizFailure(new QuizLimitError("options", "Une question compte au plus 4 options")).message).toBe("Une question ne peut pas dépasser 4 options.");
     expect(toQuizFailure(new NotFoundError("Quiz introuvable")).code).toBe("NOT_FOUND");
     const unknown = toQuizFailure(new Error("SQLITE_CONSTRAINT: secret interne"));
     expect(unknown.code).toBe("INTERNAL_SERVER_ERROR");

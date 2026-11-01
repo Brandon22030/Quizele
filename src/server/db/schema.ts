@@ -1,14 +1,20 @@
 import { relations, sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export const QUESTION_TYPES = ["single", "multiple", "true_false"] as const;
-export const QUESTION_DURATIONS = [10, 20, 30, 60] as const;
-export const GAME_MODES = ["together", "own_pace"] as const;
+import {
+  GAME_MODES,
+  QUESTION_DURATIONS,
+  QUESTION_TYPES,
+  type GameMode,
+  type QuestionDuration,
+  type QuestionType,
+} from "../../shared/quiz-schema";
+
+// Listes définies une seule fois dans shared, que l'éditeur valide côté navigateur sans embarquer Drizzle.
+export { GAME_MODES, QUESTION_DURATIONS, QUESTION_TYPES };
+export type { GameMode, QuestionDuration, QuestionType };
 export const SESSION_STATUSES = ["lobby", "running", "ended"] as const;
 
-export type QuestionType = (typeof QUESTION_TYPES)[number];
-export type QuestionDuration = (typeof QUESTION_DURATIONS)[number];
-export type GameMode = (typeof GAME_MODES)[number];
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 // Plafonds de stockage. L'éditeur (zod, QZ-002-08) doit imposer les mêmes valeurs ou plus strictes : ces CHECK ne
