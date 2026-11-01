@@ -49,5 +49,12 @@ export function useGameSession({ code, getToken, baseUrl }: UseGameSessionOption
     [send],
   );
 
-  return { state, send, answer };
+  // Mode ensemble : réservé à l'hôte. Mode libre : le joueur passe à sa question suivante.
+  const next = useCallback(() => send({ type: "next" }), [send]);
+  const start = useCallback(() => send({ type: "start" }), [send]);
+  const reveal = useCallback(() => send({ type: "reveal" }), [send]);
+  const end = useCallback(() => send({ type: "end" }), [send]);
+  const kick = useCallback((playerId: string) => send({ type: "kick", playerId }), [send]);
+
+  return { state, send, answer, start, reveal, next, end, kick };
 }

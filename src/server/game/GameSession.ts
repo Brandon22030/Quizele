@@ -16,10 +16,14 @@ import {
   type ServerMessage,
   type Snapshot,
 } from "../../shared/protocol";
-import { quizDemo, type QuizDefinition } from "./fixtures/quiz-demo";
+import { getDb } from "../db/client";
+import { markSessionRunning } from "../db/sessions";
+import { saveSessionResults, type QuestionStatResult } from "../db/results";
+import { parseQuizDefinition, type QuizDefinition } from "./quiz";
 import { isAnswerCorrect, rankEntries } from "./scoring";
 import { closedSocket } from "./reject";
-import { GameStorage, type MetaState, type StoredQuestion } from "./storage";
+import { shuffleSeeded } from "./shuffle";
+import { GameStorage, type MetaState, type PlayerState, type StoredOption, type StoredQuestion } from "./storage";
 import { tokenFromRequest, verifyToken } from "./tokens";
 
 interface SocketAttachment {
@@ -37,6 +41,9 @@ export type JoinResult =
   | { ok: false; error: "invalid_pseudo" | "pseudo_taken" | "game_full" | "game_not_found" | "game_finished" };
 
 const REVEAL_RANKING_SIZE = 10;
+// Un joueur reçoit le haut du classement et son propre rang : le bilan complet reste réservé à l'hôte et à l'écran.
+// Diffuser 200 lignes à 200 sockets coûterait plus de CPU que tout le reste de la fin de partie.
+const PLAYER_RANKING_SIZE = 20;
 const BUCKET_CAPACITY = 30;
 const BUCKET_REFILL_PER_MS = 10 / 1000;
 // Une reconnexion n'est pas gratuite : sans ce coût, se reconnecter en boucle contournerait le seau.
@@ -45,9 +52,10 @@ const CONNECT_COST = 5;
 // instable avec le délai croissant du client, pas pour une boucle.
 const CONNECT_BURST = 10;
 const CONNECT_REFILL_PER_MS = 1 / 6000;
-const ALIAS_CLAIM_GRACE_MS = 30_000;
 const COUNT_INTERVAL_MS = 250;
-const ALIAS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// Une écriture finale restée sans réponse au-delà de ce délai est considérée comme perdue (objet évincé en route) :
+// la fin de partie peut alors être retentée.
+const FINISH_LOCK_MS = 30_000;
 const encoder = new TextEncoder();
 
 const refill = (tokens: number, at: number, now: number, capacity: number, perMs: number) =>
@@ -81,35 +89,19 @@ export class GameSession extends DurableObject<Env> {
     return this.schemaReady;
   }
 
-  // Objet d'alias : traduit le code court en sid. Prototype sans D1, remplacé par D1 en QZ-002-07,
-  // qui devra aussi vérifier l'existence de la partie dans D1 avant d'appeler un Durable Object.
-  currentSid(): string | null {
-    return this.store.aliasHolder()?.sid ?? null;
-  }
-
-  // Une réservation récente compte comme vivante : la partie de l'hôte qui vient de réserver n'est pas encore créée.
-  recentlyClaimed(sid: string): boolean {
-    const holder = this.store.aliasHolder();
-    return holder !== null && holder.sid === sid && Date.now() - holder.claimedAt < ALIAS_CLAIM_GRACE_MS;
-  }
-
-  async registerSid(sid: string, expected: string | null): Promise<boolean> {
-    if (!this.store.compareAndSetAlias(sid, expected, Date.now())) return false;
-    await this.ctx.storage.setAlarm(Date.now() + ALIAS_TTL_MS);
-    return true;
-  }
-
   // null : partie jamais créée ou purgée.
   currentPhase(): Phase | null {
     return this.ready() ? this.store.readMeta().phase : null;
   }
 
-  // Prototype : le quiz vient d'une fixture. QZ-002-07 passera le quiz lu dans D1.
-  async init(code: string, sid: string, quiz: QuizDefinition = quizDemo): Promise<void> {
+  // Appelé en RPC par l'action de lancement, avec l'instantané du quiz lu dans D1. Un quiz invalide est rejeté ici,
+  // avant tout stockage. Idempotent : une partie déjà initialisée n'est pas écrasée.
+  async init(code: string, sid: string, input: QuizDefinition): Promise<void> {
     if (this.ready()) return;
+    const quiz = parseQuizDefinition(input);
     this.store.migrate();
     this.schemaReady = true;
-    this.store.loadQuiz(code, sid, quiz, Date.now());
+    this.store.loadQuiz(code, sid, quiz, Date.now(), quiz.seed ?? crypto.randomUUID());
     await this.scheduleAlarm();
   }
 
@@ -126,6 +118,8 @@ export class GameSession extends DurableObject<Env> {
       return { ok: false, error: "pseudo_taken" };
     }
     this.revealCache = null;
+    // Mode libre : un joueur qui arrive en cours de partie commence sa propre série tout de suite.
+    if (meta.phase === "running") this.beginQuestion(meta, playerId, 0, Date.now());
     this.broadcast(["host", "screen"], () => ({
       type: "player_joined",
       player: { id: playerId, pseudo: pseudo.data },
@@ -145,9 +139,8 @@ export class GameSession extends DurableObject<Env> {
     if (!this.ready()) {
       claims = await verifyToken(secret, token, { code });
       if (!claims) return new Response("Jeton invalide", { status: 401 });
-      // Seul un jeton hôte, que seul le serveur peut signer, crée la partie.
-      if (claims.role !== "host") return closedSocket(CLOSE_CODES.gameGone, "Partie introuvable");
-      await this.init(claims.code, claims.sid);
+      // Seule l'action de lancement crée une partie : une connexion ne crée jamais rien.
+      return closedSocket(CLOSE_CODES.gameGone, "Partie introuvable");
     } else {
       claims = await verifyToken(secret, token, { code });
       if (!claims) return new Response("Jeton invalide", { status: 401 });
@@ -250,9 +243,13 @@ export class GameSession extends DurableObject<Env> {
         return this.send(ws, this.buildSnapshot(attachment));
       case "answer":
         return this.handleAnswer(ws, attachment, message.questionId, message.optionIds);
+      case "next":
+        if (attachment.role === "player" && this.store.readMeta().mode === "own_pace") return this.handlePlayerNext(ws, attachment);
+      // Les autres rôles passent par la vérification de l'hôte.
+      // falls through
       case "start":
       case "reveal":
-      case "next":
+      case "end":
       case "kick":
         if (attachment.role !== "host") return this.send(ws, { type: "error", code: "forbidden" });
         return this.handleHostCommand(ws, message);
@@ -279,17 +276,14 @@ export class GameSession extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    if (!this.ready()) {
-      // Objet d'alias arrivé à échéance.
-      await this.ctx.storage.deleteAll();
-      return;
-    }
+    if (!this.ready()) return;
     const meta = this.store.readMeta();
     const now = Date.now();
     const abandoned = now >= meta.lastHostAt + PLAYER_TOKEN_TTL_MS;
     const expiredFinished = meta.phase === "finished" && now >= meta.finishedAt + PLAYER_TOKEN_TTL_MS;
     if (abandoned || expiredFinished) return this.purge();
     if (meta.phase === "question" && now >= meta.startedAt + meta.durationMs + ANSWER_TOLERANCE_MS) return this.reveal(meta);
+    if (meta.phase === "running") for (const playerId of this.store.expiredPlayerIds(now)) this.expireOwnPace(meta, playerId);
     await this.scheduleAlarm();
   }
 
@@ -298,6 +292,10 @@ export class GameSession extends DurableObject<Env> {
     const meta = this.store.readMeta();
     const targets = [meta.lastHostAt + PLAYER_TOKEN_TTL_MS];
     if (meta.phase === "question") targets.push(meta.startedAt + meta.durationMs + ANSWER_TOLERANCE_MS);
+    if (meta.phase === "running") {
+      const next = this.store.nextPlayerDeadline();
+      if (next !== null) targets.push(next);
+    }
     if (meta.phase === "finished") targets.push(meta.finishedAt + PLAYER_TOKEN_TTL_MS);
     await this.ctx.storage.setAlarm(Math.min(...targets));
   }
@@ -327,16 +325,23 @@ export class GameSession extends DurableObject<Env> {
     if (existing) return this.send(ws, { type: "answer_ack", questionId, duplicate: true, late: existing.late });
 
     const meta = this.store.readMeta();
-    if (meta.phase !== "question") return this.send(ws, { type: "error", code: "wrong_phase" });
-    const question = this.store.questionAt(meta.index);
+    const ownPace = meta.mode === "own_pace";
+    // Mode libre : la question du joueur et son heure de départ sont les siennes, pas celles de la partie.
+    const personal = ownPace ? this.store.playerState(playerId) : null;
+    if (ownPace ? meta.phase !== "running" || meta.finishingAt > 0 || personal?.phase !== "question" : meta.phase !== "question") {
+      return this.send(ws, { type: "error", code: "wrong_phase" });
+    }
+    const question = ownPace ? this.questionOf(meta, playerId, personal!.idx) : this.store.questionAt(meta.index);
     if (!question || question.id !== questionId) return this.send(ws, { type: "error", code: "unknown_question" });
 
     const options = this.store.options(question.id);
     const known = new Set(options.map((option) => option.id));
     if (optionIds.some((id) => !known.has(id))) return this.send(ws, { type: "error", code: "invalid_options" });
 
-    const elapsed = Math.max(0, receivedAt - meta.startedAt);
-    const late = elapsed > meta.durationMs + ANSWER_TOLERANCE_MS;
+    const startedAt = personal?.startedAt ?? meta.startedAt;
+    const durationMs = personal?.durationMs ?? meta.durationMs;
+    const elapsed = Math.max(0, receivedAt - startedAt);
+    const late = elapsed > durationMs + ANSWER_TOLERANCE_MS;
     const correctIds = options.filter((option) => option.isCorrect).map((option) => option.id);
     const correct = !late && isAnswerCorrect(question.kind, optionIds, correctIds);
     const inserted = this.store.insertAnswer({
@@ -344,12 +349,96 @@ export class GameSession extends DurableObject<Env> {
       questionId,
       optionIds,
       receivedAt,
-      elapsedMs: Math.min(elapsed, meta.durationMs),
+      elapsedMs: Math.min(elapsed, durationMs),
       correct,
       late,
     });
     this.send(ws, { type: "answer_ack", questionId, duplicate: !inserted, late });
+    if (ownPace) return this.revealOwnPace(meta, personal!, question);
     if (inserted && !late) this.notifyCount();
+  }
+
+  // Ordre propre à chaque joueur en mode libre : mélange déterministe dérivé de la graine de la partie et de son
+  // identifiant, donc recalculable à tout moment sans rien stocker. Sans mélange, c'est l'ordre du quiz.
+  private questionOf(meta: MetaState, playerId: string, idx: number): StoredQuestion | null {
+    const positions = Array.from({ length: this.store.questionCount() }, (_, i) => i);
+    const order = meta.shuffle ? shuffleSeeded(positions, `${meta.seed}:player:${playerId}`) : positions;
+    const position = order[idx];
+    return position === undefined ? null : this.store.questionAt(position);
+  }
+
+  // En mode ensemble, l'ordre des options est déjà figé dans le stockage pour toute la partie.
+  private optionsOf(meta: MetaState, question: StoredQuestion, playerId?: string): StoredOption[] {
+    const options = this.store.options(question.id);
+    if (!playerId || meta.mode !== "own_pace" || !meta.shuffle || question.kind === "true_false") return options;
+    return shuffleSeeded(options, `${meta.seed}:player:${playerId}:${question.id}`);
+  }
+
+  private sendToPlayer(playerId: string, message: ServerMessage): void {
+    const payload = JSON.stringify(message);
+    for (const ws of this.ctx.getWebSockets(`p:${playerId}`)) this.trySend(ws, payload);
+  }
+
+  // Démarre la question `idx` d'un joueur : sa propre horloge commence maintenant.
+  private beginQuestion(meta: MetaState, playerId: string, idx: number, now: number): void {
+    const question = this.questionOf(meta, playerId, idx);
+    if (!question) return;
+    const state: PlayerState = { playerId, idx, phase: "question", startedAt: now, durationMs: question.durationMs };
+    this.store.savePlayerState(state, now + question.durationMs + ANSWER_TOLERANCE_MS);
+    this.sendToPlayer(playerId, { type: "question", ...this.questionPayload(meta, question, idx, now, question.durationMs, playerId) });
+  }
+
+  // Après sa réponse ou à l'échéance, le joueur voit sa correction (si elle est affichée) puis avance quand il veut.
+  private revealOwnPace(meta: MetaState, state: PlayerState, question: StoredQuestion): void {
+    this.store.savePlayerState({ ...state, phase: "revealed" }, null);
+    void this.scheduleAlarm();
+    this.sendToPlayer(state.playerId, { type: "reveal", ...this.ownPaceReveal(meta, question, state.playerId) });
+  }
+
+  private expireOwnPace(meta: MetaState, playerId: string): void {
+    const state = this.store.playerState(playerId);
+    const question = state ? this.questionOf(meta, playerId, state.idx) : null;
+    if (state && question) this.revealOwnPace(meta, state, question);
+  }
+
+  private ownPaceReveal(meta: MetaState, question: StoredQuestion, playerId: string): RevealPayload {
+    if (!meta.showCorrectAnswer) return { questionId: question.id };
+    const reveal: RevealPayload = {
+      questionId: question.id,
+      correctOptionIds: this.store.options(question.id).filter((option) => option.isCorrect).map((option) => option.id),
+      you: { wasCorrect: this.store.answerOf(playerId, question.id)?.correct ?? false, score: this.store.playerScore(playerId) },
+    };
+    if (question.explanation) reveal.explanation = question.explanation;
+    if (question.reference) reveal.reference = question.reference;
+    return reveal;
+  }
+
+  private async handlePlayerNext(ws: WebSocket, attachment: SocketAttachment): Promise<void> {
+    const playerId = attachment.playerId;
+    const meta = this.store.readMeta();
+    const state = playerId ? this.store.playerState(playerId) : null;
+    if (!playerId || !state || meta.phase !== "running" || meta.finishingAt > 0 || state.phase !== "revealed") {
+      return this.send(ws, { type: "error", code: "wrong_phase" });
+    }
+    if (state.idx + 1 < this.store.questionCount()) {
+      this.beginQuestion(meta, playerId, state.idx + 1, Date.now());
+      return this.scheduleAlarm();
+    }
+    this.store.savePlayerState({ ...state, phase: "done" }, null);
+    this.send(ws, this.buildSnapshot(attachment));
+    const finished = this.store.doneCount();
+    const total = this.store.playerCount();
+    this.broadcast(["host", "screen"], () => ({ type: "progress", finished, total }));
+    await this.scheduleAlarm();
+    await this.finishIfAllDone();
+  }
+
+  // Mode libre : la partie se termine d'elle-même quand le dernier joueur a fini.
+  private async finishIfAllDone(): Promise<void> {
+    const meta = this.store.readMeta();
+    if (meta.mode !== "own_pace" || meta.phase !== "running") return;
+    const total = this.store.playerCount();
+    if (total > 0 && this.store.doneCount() >= total) await this.finish();
   }
 
   // Au plus un compteur toutes les 250 ms vers l'hôte : 200 réponses simultanées ne font pas 200 diffusions.
@@ -375,7 +464,7 @@ export class GameSession extends DurableObject<Env> {
     this.broadcast(["host", "screen"], () => ({ type: "answer_count", questionId: question.id, count, total }));
   }
 
-  private async handleHostCommand(ws: WebSocket, message: { type: "start" | "reveal" | "next" | "kick"; playerId?: string }): Promise<void> {
+  private async handleHostCommand(ws: WebSocket, message: { type: "start" | "reveal" | "next" | "end" | "kick"; playerId?: string }): Promise<void> {
     const meta = this.store.readMeta();
     this.store.writeMeta({ last_host_at: Date.now() });
 
@@ -388,22 +477,61 @@ export class GameSession extends DurableObject<Env> {
       const playerId = message.playerId;
       this.broadcast(["host", "screen"], () => ({ type: "player_left", playerId, count: this.store.playerCount() }));
       if (meta.phase === "question") this.notifyCount();
-      return this.scheduleAlarm();
+      await this.scheduleAlarm();
+      return this.finishIfAllDone();
+    }
+
+    if (message.type === "end") {
+      if (meta.phase === "finished") return this.send(ws, { type: "error", code: "wrong_phase" });
+      return this.endGame(ws);
     }
 
     const command = message.type;
     const expected = command === "start" ? "lobby" : command === "reveal" ? "question" : "revealed";
     if (meta.phase !== expected) return this.send(ws, { type: "error", code: "wrong_phase" });
 
-    if (command === "start") return this.startQuestion(0);
+    if (command === "start") return meta.mode === "own_pace" ? this.startOwnPace(meta) : this.startQuestion(0);
     if (command === "reveal") return this.reveal(meta);
     if (meta.index + 1 < this.store.questionCount()) return this.startQuestion(meta.index + 1);
-    await this.finish();
+    await this.endGame(ws);
+  }
+
+  private async endGame(ws: WebSocket): Promise<void> {
+    if (!(await this.finish())) this.send(ws, { type: "error", code: "save_failed" });
+  }
+
+  // Mode libre : tous les joueurs présents partent en même temps, chacun avec son ordre.
+  private async startOwnPace(meta: MetaState): Promise<void> {
+    const now = Date.now();
+    this.store.writeMeta({ phase: "running" });
+    const running = { ...meta, phase: "running" as const };
+    for (const playerId of this.store.playersWithoutState()) this.beginQuestion(running, playerId, 0, now);
+    await this.scheduleAlarm();
+    for (const role of ["host", "screen"] as const) {
+      for (const ws of this.ctx.getWebSockets(role)) {
+        const attachment = ws.deserializeAttachment() as SocketAttachment | null;
+        if (attachment) this.trySend(ws, JSON.stringify(this.buildSnapshot(attachment)));
+      }
+    }
+    await this.markRunning(meta.sid);
+  }
+
+  // Meilleur effort : le statut « en cours » n'est qu'un confort d'affichage pour le tableau de bord. Un échec de D1
+  // ne doit jamais empêcher la partie de commencer.
+  private async markRunning(sid: string): Promise<void> {
+    try {
+      await markSessionRunning(getDb(this.env.DB), sid);
+    } catch {
+      // La partie reste « en attente » dans D1 ; l'écriture finale la passera à « terminée ».
+    }
   }
 
   private async startQuestion(index: number): Promise<void> {
     const question = this.store.questionAt(index);
-    if (!question) return this.finish();
+    if (!question) {
+      await this.finish();
+      return;
+    }
     const startedAt = Date.now();
     this.store.writeMeta({ phase: "question", idx: index, started_at: startedAt, duration_ms: question.durationMs });
     this.revealCache = null;
@@ -411,8 +539,10 @@ export class GameSession extends DurableObject<Env> {
     // et retarde l'hibernation tant qu'il est armé. Le minuteur court du compteur de réponses (250 ms) reste
     // acceptable : sa perte ne fait que sauter une mise à jour.
     await this.scheduleAlarm();
-    const payload = this.questionPayload(question, index, startedAt, question.durationMs);
+    const meta = this.store.readMeta();
+    const payload = this.questionPayload(meta, question, index, startedAt, question.durationMs);
     this.broadcast(["host", "screen", "player"], () => ({ type: "question", ...payload }));
+    if (index === 0) await this.markRunning(meta.sid);
   }
 
   private async reveal(meta: MetaState): Promise<void> {
@@ -433,22 +563,87 @@ export class GameSession extends DurableObject<Env> {
     }
   }
 
-  private async finish(): Promise<void> {
+  // Écrit le classement et les statistiques dans D1 en un seul batch, puis seulement fige la partie. Si D1 échoue, la
+  // partie reste en l'état et l'hôte peut réessayer : mieux vaut une fin retardée qu'un bilan perdu.
+  // Renvoie false si la fin n'a pas eu lieu (écriture en échec ou déjà en cours).
+  private async finish(): Promise<boolean> {
+    const meta = this.store.readMeta();
+    if (meta.phase === "finished") return true;
     const now = Date.now();
-    this.store.writeMeta({ phase: "finished", finished_at: now });
-    await this.scheduleAlarm();
+    // Le verrou couvre l'attente de D1 : pendant ce temps d'autres messages peuvent arriver.
+    if (meta.finishingAt > 0 && now - meta.finishingAt < FINISH_LOCK_MS) return false;
+    this.store.writeMeta({ finishing_at: now });
     const ranking = rankEntries(this.store.ranking());
-    this.broadcast(["host", "screen", "player"], () => ({ type: "finished", ranking }));
+    try {
+      await saveSessionResults(
+        getDb(this.env.DB),
+        meta.sid,
+        ranking.map((entry, index) => ({ pseudo: entry.pseudo, score: entry.score, totalTimeMs: entry.totalMs, rank: index + 1 })),
+        this.buildStats(),
+        new Date(now),
+      );
+    } catch {
+      this.store.writeMeta({ finishing_at: 0 });
+      return false;
+    }
+    this.store.writeMeta({ phase: "finished", finished_at: now, finishing_at: 0 });
+    this.revealCache = null;
+    await this.scheduleAlarm();
+    const full = JSON.stringify({ type: "finished", ranking });
+    this.sendAll("host", full);
+    this.sendAll("screen", full);
+    const base = JSON.stringify({ type: "finished", ranking: ranking.slice(0, PLAYER_RANKING_SIZE) });
+    const rankOf = new Map(ranking.map((entry, index) => [entry.playerId, { entry, rank: index + 1 }]));
+    for (const ws of this.ctx.getWebSockets("player")) {
+      const found = rankOf.get((ws.deserializeAttachment() as SocketAttachment | null)?.playerId ?? "");
+      const you = found && { rank: found.rank, score: found.entry.score, totalMs: found.entry.totalMs };
+      this.trySend(ws, you ? `${base.slice(0, -1)},"you":${JSON.stringify(you)}}` : base);
+    }
+    return true;
   }
 
-  private questionPayload(question: StoredQuestion, index: number, startedAt: number, durationMs: number): QuestionPayload {
+  private buildStats(): QuestionStatResult[] {
+    const totals = new Map(this.store.answerTotals().map((row) => [row.questionId, row]));
+    const picks = new Map(this.store.optionPicks().map((row) => [`${row.questionId}:${row.optionId}`, row.n]));
+    const optionsByQuestion = new Map<string, (StoredOption & { questionId: string })[]>();
+    for (const option of this.store.allOptions()) {
+      const list = optionsByQuestion.get(option.questionId) ?? [];
+      list.push(option);
+      optionsByQuestion.set(option.questionId, list);
+    }
+    return this.store.allQuestions().map((question) => {
+      const options = optionsByQuestion.get(question.id) ?? [];
+      // Clé = libellé : c'est ce que le bilan affiche. Deux options de même libellé s'additionnent.
+      const distribution: Record<string, number> = {};
+      for (const option of options) distribution[option.label] = (distribution[option.label] ?? 0) + (picks.get(`${question.id}:${option.id}`) ?? 0);
+      const total = totals.get(question.id);
+      return {
+        position: question.position,
+        prompt: question.prompt,
+        correctLabels: options.filter((option) => option.isCorrect).map((option) => option.label),
+        reference: question.reference,
+        answerCount: total?.answerCount ?? 0,
+        correctCount: total?.correctCount ?? 0,
+        distribution,
+      };
+    });
+  }
+
+  private questionPayload(
+    meta: MetaState,
+    question: StoredQuestion,
+    index: number,
+    startedAt: number,
+    durationMs: number,
+    playerId?: string,
+  ): QuestionPayload {
     return {
       index,
       total: this.store.questionCount(),
       questionId: question.id,
       kind: question.kind,
       prompt: question.prompt,
-      options: this.store.options(question.id).map(({ id, label }) => ({ id, label })),
+      options: this.optionsOf(meta, question, playerId).map(({ id, label }) => ({ id, label })),
       startedAt,
       durationMs,
       serverNow: Date.now(),
@@ -476,6 +671,9 @@ export class GameSession extends DurableObject<Env> {
 
   private buildSnapshot(attachment: SocketAttachment): Snapshot {
     const meta = this.store.readMeta();
+    const ownPace = meta.mode === "own_pace";
+    const playerId = attachment.role === "player" ? attachment.playerId : undefined;
+    const personal = ownPace && playerId && meta.phase === "running" ? this.store.playerState(playerId) : null;
     const snapshot: Snapshot = {
       type: "snapshot",
       role: attachment.role,
@@ -483,11 +681,22 @@ export class GameSession extends DurableObject<Env> {
       serverNow: Date.now(),
       title: meta.title,
       playerCount: this.store.playerCount(),
+      mode: meta.mode,
     };
-    const question = meta.phase === "question" || meta.phase === "revealed" ? this.store.questionAt(meta.index) : null;
+    if (ownPace && meta.phase === "running") {
+      // Chaque joueur voit sa propre progression ; l'hôte et l'écran voient la partie « en cours ».
+      snapshot.phase = personal ? (personal.phase === "done" ? "waiting" : personal.phase) : playerId ? "lobby" : "running";
+      if (!playerId) snapshot.finishedCount = this.store.doneCount();
+    }
+    const ownQuestion = personal && personal.phase !== "done" ? this.questionOf(meta, personal.playerId, personal.idx) : null;
+    const question = ownQuestion ?? (!ownPace && (meta.phase === "question" || meta.phase === "revealed") ? this.store.questionAt(meta.index) : null);
     if (question) {
-      snapshot.question = this.questionPayload(question, meta.index, meta.startedAt, meta.durationMs);
-      if (meta.phase === "revealed") {
+      snapshot.question = personal
+        ? this.questionPayload(meta, question, personal.idx, personal.startedAt, personal.durationMs, personal.playerId)
+        : this.questionPayload(meta, question, meta.index, meta.startedAt, meta.durationMs);
+      if (personal) {
+        if (personal.phase === "revealed") snapshot.reveal = this.ownPaceReveal(meta, question, personal.playerId);
+      } else if (meta.phase === "revealed") {
         const cached = this.revealCache?.questionId === question.id ? this.revealCache.computed : null;
         const computed = cached ?? this.computeReveal(meta, question);
         this.revealCache = { questionId: question.id, computed };
@@ -498,21 +707,30 @@ export class GameSession extends DurableObject<Env> {
         snapshot.answeredCount = this.store.answeredCount(question.id);
       }
     }
-    if (meta.phase === "finished") snapshot.ranking = rankEntries(this.store.ranking());
+    const ranking = meta.phase === "finished" ? rankEntries(this.store.ranking()) : null;
+    if (ranking) snapshot.ranking = attachment.role === "player" ? ranking.slice(0, PLAYER_RANKING_SIZE) : ranking;
     if (attachment.role !== "player") snapshot.players = this.store.players();
 
     if (attachment.role === "player" && attachment.playerId) {
       const player = this.store.player(attachment.playerId);
       if (player) {
         const answer = question ? this.store.answerOf(player.id, question.id) : null;
-        const entry = this.store.ranking(meta.phase === "question" ? question?.id : "").find((row) => row.playerId === player.id);
+        const position = ranking?.findIndex((row) => row.playerId === player.id) ?? -1;
+        // Ensemble : le score exclut la question en cours, il ne doit pas trahir la justesse de la réponse. Libre : la
+        // correction est montrée dès la réponse, le score cumulé est donc déjà connu du joueur.
+        const score = ranking
+          ? (ranking[position]?.score ?? 0)
+          : ownPace
+            ? this.store.playerScore(player.id)
+            : (this.store.ranking(meta.phase === "question" ? question?.id : "").find((row) => row.playerId === player.id)?.score ?? 0);
         snapshot.me = {
           playerId: player.id,
           pseudo: player.pseudo,
           answered: answer !== null,
           // Sa propre réponse, jamais la correction.
           ...(answer ? { answeredOptionIds: answer.optionIds } : {}),
-          ...(meta.showCorrectAnswer || meta.phase === "finished" ? { score: entry?.score ?? 0 } : {}),
+          ...(meta.showCorrectAnswer || meta.phase === "finished" ? { score } : {}),
+          ...(position >= 0 ? { rank: position + 1 } : {}),
         };
       }
     }

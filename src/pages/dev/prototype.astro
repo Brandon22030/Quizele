@@ -2,7 +2,11 @@
 import { env } from "cloudflare:workers";
 import Base from "../../layouts/Base.astro";
 import Prototype from "../../islands/dev/Prototype";
-import { GAME_CODE_PATTERN, aliasStub, gameStub } from "../../server/game/router";
+import { getDb } from "../../server/db/client";
+import { findActiveSessionByCode } from "../../server/db/sessions";
+import { quizDemo } from "../../server/game/fixtures/quiz-demo";
+import { createLocalGame } from "../../server/game/local";
+import { GAME_CODE_PATTERN } from "../../server/game/router";
 import { signToken } from "../../server/game/tokens";
 
 // Page de démonstration du prototype temps réel : n'existe qu'en développement.
@@ -19,20 +23,22 @@ const secret = env.PLAYER_TOKEN_SECRET;
 if (!secret) {
   throw new Error("PLAYER_TOKEN_SECRET manquant : impossible de signer le jeton hôte de la démo");
 }
-// L'hôte qui recharge la page reprend la partie en cours sous ce code ; un nouveau sid n'est tiré que si aucune
-// partie n'est en cours, sinon le routeur refuserait ce second hôte (409).
-async function hostSid(): Promise<string> {
-  const current = await aliasStub(env, code).currentSid();
-  if (!current) return crypto.randomUUID();
-  const phase = await gameStub(env, current).currentPhase();
-  return phase !== null && phase !== "finished" ? current : crypto.randomUUID();
+// L'hôte qui recharge la page reprend la partie active de ce code ; sinon une partie de démonstration est lancée
+// par le vrai chemin de lancement (D1 + Durable Object). Le code affiché est celui de la partie créée.
+async function hostSession(): Promise<{ sid: string; code: string }> {
+  const active = await findActiveSessionByCode(getDb(env.DB), code);
+  if (active) return { sid: active.id, code };
+  const game = await createLocalGame(env, quizDemo);
+  return { sid: game.sessionId, code: game.code };
 }
-const hostToken = role === "host" ? await signToken(secret, { code, sid: await hostSid(), role: "host" }) : undefined;
+const hosted = role === "host" ? await hostSession() : undefined;
+const hostToken = hosted ? await signToken(secret, { code: hosted.code, sid: hosted.sid, role: "host" }) : undefined;
+const gameCode = hosted?.code ?? code;
 ---
 
 <Base title="Prototype temps réel">
   <main class="flex min-h-dvh flex-col gap-4 p-4">
     <h1 class="font-affiche text-2xl text-vert-foret">Prototype temps réel</h1>
-    <Prototype client:load code={code} role={role} hostToken={hostToken} />
+    <Prototype client:load code={gameCode} role={role} hostToken={hostToken} />
   </main>
 </Base>

@@ -31,9 +31,12 @@ export interface GameSocketOptions {
 const PING_INTERVAL_MS = 20_000;
 // Au-delà, la connexion est considérée comme zombie (réseau mobile coupé sans événement close).
 const SILENCE_LIMIT_MS = 50_000;
-// Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs en
-// ligne sans jamais avoir ouvert le socket (environ 12 s avec le délai croissant), on abandonne.
+// Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs
+// consécutifs en ligne sans jamais avoir ouvert le socket (environ 12 s avec le délai croissant), on abandonne.
 export const MAX_FAILED_ATTEMPTS = 8;
+// Une fois la connexion établie au moins une fois, une coupure est plus probablement un réseau mobile capricieux
+// qu'un jeton refusé : on persévère environ 2 à 3 minutes (délai plafonné à 8 s) avant de conclure.
+export const MAX_FAILED_ATTEMPTS_AFTER_OPEN = 20;
 
 export class GameSocket {
   private readonly socket: ReconnectingWebSocket;
@@ -60,6 +63,7 @@ export class GameSocket {
     );
     this.socket.addEventListener("open", () => {
       this.opened = true;
+      this.failedAttempts = 0;
       this.lastActivity = localNow();
       options.onStatus("open");
       this.send({ type: "resume" });
@@ -72,8 +76,10 @@ export class GameSocket {
         options.onStatus(terminal);
         return;
       }
-      // Hors ligne, l'échec ne dit rien du jeton : seul un échec avec réseau compte.
-      if (!this.opened && globalThis.navigator?.onLine !== false && ++this.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      // Hors ligne, l'échec ne dit rien du jeton : seul un échec avec réseau compte. Le compteur repart de zéro à
+      // chaque ouverture réussie : seuls les échecs consécutifs comptent.
+      const limit = this.opened ? MAX_FAILED_ATTEMPTS_AFTER_OPEN : MAX_FAILED_ATTEMPTS;
+      if (globalThis.navigator?.onLine !== false && ++this.failedAttempts >= limit) {
         this.close();
         options.onStatus("rejected");
         return;

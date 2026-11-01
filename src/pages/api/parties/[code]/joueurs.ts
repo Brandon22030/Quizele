@@ -1,7 +1,9 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import { joinRequestSchema, type JoinResponse } from "../../../../shared/protocol";
-import { GAME_CODE_PATTERN, aliasStub, gameStub } from "../../../../server/game/router";
+import { getDb } from "../../../../server/db/client";
+import { findActiveSessionByCode } from "../../../../server/db/sessions";
+import { GAME_CODE_PATTERN, gameStub } from "../../../../server/game/router";
 import { signToken } from "../../../../server/game/tokens";
 
 const ERROR_STATUS = {
@@ -24,9 +26,10 @@ export const POST: APIRoute = async ({ params, request }) => {
   const secret = env.PLAYER_TOKEN_SECRET;
   if (!secret) return json({ error: "server_misconfigured" }, 500);
 
-  // Lecture seule : un code inconnu ne crée aucun stockage persistant.
-  const sid = await aliasStub(env, code).currentSid();
-  if (sid === null) return json({ error: "game_not_found" }, 404);
+  // D1 d'abord : un code inconnu ou terminé n'atteint aucun Durable Object et ne crée aucun stockage.
+  const session = await findActiveSessionByCode(getDb(env.DB), code);
+  if (!session) return json({ error: "game_not_found" }, 404);
+  const sid = session.id;
   const result = await gameStub(env, sid).join(body.data.pseudo);
   if (!result.ok) return json({ error: result.error }, ERROR_STATUS[result.error]);
 

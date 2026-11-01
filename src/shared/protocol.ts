@@ -7,6 +7,11 @@ export const QUESTION_KINDS = ["single", "multiple", "true_false"] as const;
 export const questionKindSchema = z.enum(QUESTION_KINDS);
 export type QuestionKind = z.infer<typeof questionKindSchema>;
 
+// Mêmes valeurs que la colonne `mode` de D1 : le mode est figé au lancement de la partie.
+export const GAME_MODES = ["together", "own_pace"] as const;
+export const gameModeSchema = z.enum(GAME_MODES);
+export type GameMode = z.infer<typeof gameModeSchema>;
+
 export const PSEUDO_MAX_LENGTH = 20;
 export const MAX_PLAYERS = 200;
 export const MAX_OPTIONS = 8;
@@ -77,11 +82,14 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("start") }),
   z.strictObject({ type: z.literal("reveal") }),
   z.strictObject({ type: z.literal("next") }),
+  z.strictObject({ type: z.literal("end") }),
   z.strictObject({ type: z.literal("kick"), playerId: z.string().min(1).max(64) }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
-export const phaseSchema = z.enum(["lobby", "question", "revealed", "finished"]);
+// `running` : vue de l'hôte et de l'écran en mode libre, où chaque joueur avance à son rythme.
+// `waiting` : un joueur du mode libre a fini ses questions et attend la fin de la partie.
+export const phaseSchema = z.enum(["lobby", "question", "revealed", "running", "waiting", "finished"]);
 export type Phase = z.infer<typeof phaseSchema>;
 
 // Ne contient jamais la correction : seul `reveal` la porte.
@@ -115,7 +123,8 @@ export const revealPayloadSchema = z.object({
   reference: z.string().optional(),
   // Absent pour les joueurs et l'écran quand la correction est masquée : le classement trahirait la réponse.
   ranking: z.array(rankingEntrySchema).optional(),
-  you: z.object({ wasCorrect: z.boolean(), score: z.number().int(), rank: z.number().int() }).optional(),
+  // `rank` est absent en mode libre : les joueurs n'en sont pas à la même question, un rang en cours de route ne veut rien dire.
+  you: z.object({ wasCorrect: z.boolean(), score: z.number().int(), rank: z.number().int().optional() }).optional(),
 });
 export type RevealPayload = z.infer<typeof revealPayloadSchema>;
 
@@ -129,6 +138,9 @@ export const snapshotSchema = z.object({
   serverNow: z.number(),
   title: z.string(),
   playerCount: z.number().int(),
+  mode: gameModeSchema.optional(),
+  // Mode libre, hôte et écran : joueurs ayant fini toutes leurs questions.
+  finishedCount: z.number().int().optional(),
   question: questionPayloadSchema.optional(),
   reveal: revealPayloadSchema.optional(),
   ranking: z.array(rankingEntrySchema).optional(),
@@ -140,6 +152,8 @@ export const snapshotSchema = z.object({
       score: z.number().int().optional(),
       answered: z.boolean(),
       answeredOptionIds: z.array(z.string()).optional(),
+      // Présent seulement une fois la partie finie.
+      rank: z.number().int().optional(),
     })
     .optional(),
   answeredCount: z.number().int().optional(),
@@ -154,13 +168,23 @@ export const errorCodeSchema = z.enum([
   "unknown_question",
   "invalid_options",
   "unknown_player",
+  // L'écriture du bilan dans D1 a échoué : la partie n'est pas terminée, l'hôte peut réessayer.
+  "save_failed",
 ]);
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
   snapshotSchema,
   z.object({ type: z.literal("question") }).extend(questionPayloadSchema.shape),
   z.object({ type: z.literal("reveal") }).extend(revealPayloadSchema.shape),
-  z.object({ type: z.literal("finished"), ranking: z.array(rankingEntrySchema) }),
+  // `you` : résultat du joueur destinataire (jamais envoyé à l'hôte ni à l'écran). Aucune correction : ces données
+  // suffisent à l'image de partage générée dans le navigateur.
+  z.object({
+    type: z.literal("finished"),
+    ranking: z.array(rankingEntrySchema),
+    you: z.object({ rank: z.number().int(), score: z.number().int(), totalMs: z.number().int() }).optional(),
+  }),
+  // Mode libre : nombre de joueurs ayant fini, pour l'hôte et l'écran.
+  z.object({ type: z.literal("progress"), finished: z.number().int(), total: z.number().int() }),
   z.object({
     type: z.literal("answer_ack"),
     questionId: z.string(),

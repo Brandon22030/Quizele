@@ -1,5 +1,6 @@
-import { phaseSchema, type Phase, type QuestionKind, type RankingEntry } from "../../shared/protocol";
-import type { QuizDefinition } from "./fixtures/quiz-demo";
+import { gameModeSchema, phaseSchema, type GameMode, type Phase, type QuestionKind, type RankingEntry } from "../../shared/protocol";
+import type { QuizDefinition } from "./quiz";
+import { shuffleSeeded } from "./shuffle";
 
 // Migrations versionnées : on n'édite jamais une entrée existante, on en ajoute une.
 const MIGRATIONS: string[] = [
@@ -28,6 +29,13 @@ const MIGRATIONS: string[] = [
    CREATE TABLE buckets (
      key TEXT PRIMARY KEY, tokens REAL NOT NULL, at INTEGER NOT NULL, connect_tokens REAL NOT NULL, connect_at INTEGER NOT NULL
    );`,
+  // Mode libre : un état d'avancement par joueur. `deadline` (début + durée + tolérance) n'est renseigné que pendant
+  // une question : l'alarme du Durable Object est programmée sur la plus proche.
+  `CREATE TABLE pstate (
+     player_id TEXT PRIMARY KEY, idx INTEGER NOT NULL, phase TEXT NOT NULL, started_at INTEGER NOT NULL,
+     duration_ms INTEGER NOT NULL, deadline INTEGER
+   );
+   CREATE INDEX pstate_deadline ON pstate(deadline);`,
 ];
 
 export interface BucketState {
@@ -48,9 +56,24 @@ export interface MetaState {
   startedAt: number;
   durationMs: number;
   finishedAt: number;
+  mode: GameMode;
+  shuffle: boolean;
+  seed: string;
+  // Début de l'écriture finale vers D1, 0 si aucune n'est en cours.
+  finishingAt: number;
 }
 
-export interface StoredQuestion {
+export type PlayerPhase = "question" | "revealed" | "done";
+
+export type PlayerState = {
+  playerId: string;
+  idx: number;
+  phase: PlayerPhase;
+  startedAt: number;
+  durationMs: number;
+};
+
+export type StoredQuestion = {
   id: string;
   position: number;
   kind: QuestionKind;
@@ -58,7 +81,7 @@ export interface StoredQuestion {
   durationMs: number;
   reference: string | null;
   explanation: string | null;
-}
+};
 
 export interface StoredOption {
   id: string;
@@ -111,6 +134,10 @@ export class GameStorage {
       startedAt: Number(values.get("started_at") ?? 0),
       durationMs: Number(values.get("duration_ms") ?? 0),
       finishedAt: Number(values.get("finished_at") ?? 0),
+      mode: gameModeSchema.catch("together").parse(values.get("mode")),
+      shuffle: values.get("shuffle") === "1",
+      seed: values.get("seed") ?? "",
+      finishingAt: Number(values.get("finishing_at") ?? 0),
     };
   }
 
@@ -120,21 +147,31 @@ export class GameStorage {
     }
   }
 
-  loadQuiz(code: string, sid: string, quiz: QuizDefinition, now: number): void {
+  // Mode ensemble : le mélange est appliqué une fois pour toutes ici, la position stockée est l'ordre de la partie
+  // (partagé avec la projection). Mode libre : les positions restent celles du quiz, l'ordre est propre à chaque joueur.
+  loadQuiz(code: string, sid: string, quiz: QuizDefinition, now: number, seed: string): void {
+    const mode = quiz.mode ?? "together";
+    const shuffle = quiz.shuffle ?? false;
+    const sharedShuffle = mode === "together" && shuffle;
+    const questions = sharedShuffle ? shuffleSeeded(quiz.questions, `${seed}:questions`) : quiz.questions;
     this.storage.transactionSync(() => {
-      quiz.questions.forEach((question, position) => {
+      questions.forEach((question, position) => {
         this.sql.exec(
           "INSERT INTO questions (id, position, kind, prompt, duration_ms, reference, explanation) VALUES (?, ?, ?, ?, ?, ?, ?)",
           question.id, position, question.kind, question.prompt, question.durationSec * 1000, question.reference ?? null, question.explanation ?? null,
         );
-        question.options.forEach((option, optionPosition) => {
+        const options = sharedShuffle && question.kind !== "true_false" ? shuffleSeeded(question.options, `${seed}:options:${question.id}`) : question.options;
+        options.forEach((option, optionPosition) => {
           this.sql.exec(
             "INSERT INTO options (id, question_id, position, label, is_correct) VALUES (?, ?, ?, ?, ?)",
             option.id, question.id, optionPosition, option.label, option.isCorrect ? 1 : 0,
           );
         });
       });
-      this.writeMeta({ code, sid, title: quiz.title, show_correct: quiz.showCorrectAnswer ? 1 : 0, phase: "lobby", idx: 0, last_host_at: now });
+      this.writeMeta({
+        code, sid, title: quiz.title, show_correct: quiz.showCorrectAnswer ? 1 : 0, phase: "lobby", idx: 0, last_host_at: now,
+        mode, shuffle: shuffle ? 1 : 0, seed,
+      });
     });
   }
 
@@ -179,6 +216,7 @@ export class GameStorage {
       if (!row) return false;
       this.sql.exec("INSERT INTO banned (pseudo_key, player_id) VALUES (?, ?) ON CONFLICT(pseudo_key) DO NOTHING", row.key, id);
       this.sql.exec("DELETE FROM answers WHERE player_id = ?", id);
+      this.sql.exec("DELETE FROM pstate WHERE player_id = ?", id);
       this.sql.exec("DELETE FROM players WHERE id = ?", id);
       return true;
     });
@@ -262,20 +300,93 @@ export class GameStorage {
       .toArray();
   }
 
-  // Table de correspondance code court -> sid, portée par un objet d'alias distinct des parties.
-  // Prototype sans D1 : QZ-002-07 la remplace par game_sessions (code -> sid) dans D1.
-  aliasHolder(): { sid: string; claimedAt: number } | null {
-    if (this.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'alias'").toArray().length === 0) return null;
-    return this.sql.exec<{ sid: string; claimedAt: number }>("SELECT sid, claimed_at AS claimedAt FROM alias").toArray()[0] ?? null;
+  playerState(playerId: string): PlayerState | null {
+    return (
+      this.sql
+        .exec<PlayerState>(
+          "SELECT player_id AS playerId, idx, phase, started_at AS startedAt, duration_ms AS durationMs FROM pstate WHERE player_id = ?",
+          playerId,
+        )
+        .toArray()[0] ?? null
+    );
   }
 
-  // Comparaison-échange : synchrone dans le Durable Object, donc atomique face à un second hôte.
-  compareAndSetAlias(sid: string, expected: string | null, now: number): boolean {
-    if ((this.aliasHolder()?.sid ?? null) !== expected) return false;
-    this.sql.exec("CREATE TABLE IF NOT EXISTS alias (sid TEXT NOT NULL, claimed_at INTEGER NOT NULL)");
-    this.sql.exec("DELETE FROM alias");
-    this.sql.exec("INSERT INTO alias (sid, claimed_at) VALUES (?, ?)", sid, now);
-    return true;
+  hasPlayerState(playerId: string): boolean {
+    return this.sql.exec("SELECT 1 FROM pstate WHERE player_id = ?", playerId).toArray().length > 0;
+  }
+
+  // `deadline` : instant limite de la réponse (tolérance comprise), null quand le joueur n'est pas en question.
+  savePlayerState(state: PlayerState, deadline: number | null): void {
+    this.sql.exec(
+      `INSERT INTO pstate (player_id, idx, phase, started_at, duration_ms, deadline) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(player_id) DO UPDATE SET idx = excluded.idx, phase = excluded.phase, started_at = excluded.started_at,
+         duration_ms = excluded.duration_ms, deadline = excluded.deadline`,
+      state.playerId, state.idx, state.phase, state.startedAt, state.durationMs, deadline,
+    );
+  }
+
+  // Joueurs inscrits mais sans état d'avancement : ceux qui n'ont pas encore commencé.
+  playersWithoutState(): string[] {
+    return this.sql
+      .exec<{ id: string }>("SELECT p.id AS id FROM players p LEFT JOIN pstate s ON s.player_id = p.id WHERE s.player_id IS NULL")
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  expiredPlayerIds(now: number): string[] {
+    return this.sql
+      .exec<{ playerId: string }>("SELECT player_id AS playerId FROM pstate WHERE phase = 'question' AND deadline <= ?", now)
+      .toArray()
+      .map((row) => row.playerId);
+  }
+
+  nextPlayerDeadline(): number | null {
+    return this.sql.exec<{ at: number | null }>("SELECT MIN(deadline) AS at FROM pstate WHERE phase = 'question'").one().at;
+  }
+
+  doneCount(): number {
+    return this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM pstate WHERE phase = 'done'").one().n;
+  }
+
+  playerScore(playerId: string): number {
+    return this.sql.exec<{ n: number }>("SELECT COALESCE(SUM(correct), 0) AS n FROM answers WHERE player_id = ?", playerId).one().n;
+  }
+
+  // Agrégats de fin de partie calculés par SQLite : jamais 200 joueurs x 50 questions de lignes remontées en JavaScript.
+  // Les réponses tardives sont hors compteur, comme pour l'hôte.
+  answerTotals(): { questionId: string; answerCount: number; correctCount: number }[] {
+    return this.sql
+      .exec<{ questionId: string; answerCount: number; correctCount: number }>(
+        `SELECT q.id AS questionId, COUNT(a.player_id) AS answerCount, COALESCE(SUM(a.correct), 0) AS correctCount
+         FROM questions q LEFT JOIN answers a ON a.question_id = q.id AND a.late = 0 GROUP BY q.id`,
+      )
+      .toArray();
+  }
+
+  optionPicks(): { questionId: string; optionId: string; n: number }[] {
+    return this.sql
+      .exec<{ questionId: string; optionId: string; n: number }>(
+        `SELECT a.question_id AS questionId, j.value AS optionId, COUNT(*) AS n
+         FROM answers a, json_each(a.option_ids) j WHERE a.late = 0 GROUP BY a.question_id, j.value`,
+      )
+      .toArray();
+  }
+
+  allQuestions(): StoredQuestion[] {
+    return this.sql
+      .exec<StoredQuestion>(
+        "SELECT id, position, kind, prompt, duration_ms AS durationMs, reference, explanation FROM questions ORDER BY position",
+      )
+      .toArray();
+  }
+
+  allOptions(): (StoredOption & { questionId: string })[] {
+    return this.sql
+      .exec<{ id: string; questionId: string; label: string; isCorrect: number }>(
+        "SELECT id, question_id AS questionId, label, is_correct AS isCorrect FROM options ORDER BY question_id, position",
+      )
+      .toArray()
+      .map((row) => ({ id: row.id, questionId: row.questionId, label: row.label, isCorrect: row.isCorrect === 1 }));
   }
 
   purge(): Promise<void> {

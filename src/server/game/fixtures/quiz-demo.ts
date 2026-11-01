@@ -1,28 +1,6 @@
-import type { QuestionKind } from "../../../shared/protocol";
+import type { QuizDefinition } from "../quiz";
 
-export interface QuizOption {
-  id: string;
-  label: string;
-  isCorrect: boolean;
-}
-
-export interface QuizQuestion {
-  id: string;
-  kind: QuestionKind;
-  prompt: string;
-  durationSec: 10 | 20 | 30 | 60;
-  reference?: string;
-  explanation?: string;
-  options: QuizOption[];
-}
-
-export interface QuizDefinition {
-  title: string;
-  showCorrectAnswer: boolean;
-  questions: QuizQuestion[];
-}
-
-// Quiz de démonstration du prototype : QZ-002-07 le remplace par le quiz lu dans D1.
+// Réservé aux tests et aux pages de développement : la production lit toujours le quiz dans D1.
 export const quizDemo: QuizDefinition = {
   title: "Quiz de démonstration",
   showCorrectAnswer: true,
