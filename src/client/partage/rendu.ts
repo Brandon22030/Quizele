@@ -5,6 +5,33 @@ import type { LeaderboardShareData, ResultShareData, ShareFormat, ShareRankingEn
 
 const NOM_APP = "QUIZDESZELES";
 const MAX_LIGNES = 5;
+// Au-delà, on dessine avec les polices de secours de la pile CSS : une image un peu moins fidèle vaut mieux
+// qu'un bouton de partage qui ne répond jamais (réseau lent, police bloquée).
+const DELAI_POLICES_MS = 5_000;
+
+// Ratios typographiques, rapportés au corps du texte concerné.
+// Corps des lignes du classement rapporté à la hauteur d'une ligne : laisse l'air du filet pointillé.
+const CORPS_LIGNE_CLASSEMENT = 0.7;
+// Demi-hauteur visuelle du gros chiffre du score (Lilita a peu de jambage : un peu plus que la moitié du corps).
+const DEMI_HAUTEUR_SCORE = 0.55;
+// « /total » plus petit, abaissé pour s'aligner sur la ligne de base du gros chiffre.
+const ABAISSEMENT_TOTAL = 0.1;
+// Retrait du pseudo après le rang : place d'un rang à deux chiffres.
+const RETRAIT_PSEUDO = 1.6;
+// Baloo 2 a un œil haut : le pseudo descend légèrement pour paraître aligné avec le rang et le score.
+const RECENTRAGE_PSEUDO = 0.1;
+// Rayon de l'étoile « TOP 5 » rapporté au corps text-5xl, et recentrage de Bangers dans l'étoile.
+const RAYON_ETOILE = 0.65;
+const RECENTRAGE_BADGE = 0.05;
+
+// Caractères de contrôle et de forçage de direction (LRE, RLE, PDF, LRO, RLO, LRI, RLI, FSI, PDI) : un titre ou un
+// pseudo qui en contient pourrait retourner le reste de la ligne dessinée ou y laisser des glyphes de substitution.
+const CONTROLES = /\p{Cc}/gu;
+const DIRECTION = /[\u202A-\u202E\u2066-\u2069]/gu;
+
+function nettoyer(texte: string): string {
+  return texte.replace(CONTROLES, " ").replace(DIRECTION, "");
+}
 
 // Dimensions de sortie en pixels et échelle vers l'unité de conception (390 de large en portrait, comme les maquettes).
 const FORMATS: Record<ShareFormat, { largeur: number; hauteur: number; echelle: number }> = {
@@ -51,19 +78,31 @@ function scene(canvas: HTMLCanvasElement, format: ShareFormat, t: Jetons): Scene
 // (et par sous-ensemble Unicode), `document.fonts.ready` seul ne suffirait pas hors d'une page qui les affiche.
 async function attendrePolices(t: Jetons, textes: string): Promise<void> {
   const p = t.polices;
-  await Promise.all([
+  const chargement = Promise.all([
     document.fonts.load(police(p.affiche, t.tailles.xl), textes),
     document.fonts.load(police(p.badge, t.tailles.xl), textes),
     document.fonts.load(police(p.note, t.tailles.xl), textes),
     document.fonts.load(police(p.texte, t.tailles.sm, 700), textes),
     document.fonts.load(police(p.texte, t.tailles.sm, 800), textes),
-  ]);
-  await document.fonts.ready;
+  ]).then(() => document.fonts.ready);
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  const delai = new Promise<void>((resolve) => {
+    minuterie = setTimeout(resolve, DELAI_POLICES_MS);
+  });
+  try {
+    await Promise.race([chargement, delai]);
+  } finally {
+    clearTimeout(minuterie);
+  }
 }
 
 function versPng(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
+  return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Génération du PNG impossible"))), "image/png");
+  }).finally(() => {
+    // Safari iOS plafonne la mémoire totale des canvas : on libère le tampon sans attendre le ramasse-miettes.
+    canvas.width = 0;
+    canvas.height = 0;
   });
 }
 
@@ -96,7 +135,7 @@ function scoreLigne(s: Scene, score: number, total: number, centreY: number, tai
   const espace = t.espaces.deux;
   const debut = s.colonne.cx - (largeurGros + espace + largeurReste) / 2;
   texteExtrude(ctx, t, gros, debut + largeurGros / 2, centreY, { taille: tailleGros, famille: t.polices.affiche, fill: t.couleurs.creme });
-  texteExtrude(ctx, t, reste, debut + largeurGros + espace + largeurReste / 2, centreY + tailleGros * 0.1, {
+  texteExtrude(ctx, t, reste, debut + largeurGros + espace + largeurReste / 2, centreY + tailleGros * ABAISSEMENT_TOTAL, {
     taille: tailleReste,
     famille: t.polices.affiche,
     fill: t.couleurs.jaune,
@@ -128,7 +167,7 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
     ctx.fillText("Aucun joueur", feuille.x + feuille.largeur / 2, feuille.haut + feuille.hauteur / 2);
     return;
   }
-  const taille = Math.min(t.tailles.lg, ligne * 0.55);
+  const taille = Math.min(t.tailles.lg, ligne * CORPS_LIGNE_CLASSEMENT);
   const fontRang = police(t.polices.affiche, taille);
   const fontNom = police(t.polices.texte, taille, 800);
   const fontScore = police(t.polices.affiche, taille);
@@ -143,8 +182,7 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
       ctx.fillStyle = t.couleurs.jaune;
       ctx.fill();
     } else if (i > 0) {
-      ctx.strokeStyle = t.couleurs.foret;
-      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = t.couleurs.separateur;
       ctx.lineWidth = t.espaces.deux / 4;
       ctx.setLineDash([t.espaces.deux, t.espaces.deux / 2]);
       ctx.beginPath();
@@ -152,7 +190,6 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
       ctx.lineTo(droite, y);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
     }
     ctx.textBaseline = "middle";
     ctx.fillStyle = t.couleurs.foret;
@@ -164,11 +201,11 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
     ctx.textAlign = "right";
     ctx.fillText(texteScore, droite - t.espaces.deux, milieu);
     const largeurScore = ctx.measureText(texteScore).width;
-    const xNom = gauche + t.espaces.deux + taille * 1.6;
+    const xNom = gauche + t.espaces.deux + taille * RETRAIT_PSEUDO;
     const place = droite - t.espaces.deux - largeurScore - t.espaces.deux - xNom;
     ctx.font = fontNom;
     ctx.textAlign = "left";
-    ctx.fillText(fitText(mesure(ctx, fontNom), entree.pseudo, place), xNom, milieu + taille * 0.1);
+    ctx.fillText(fitText(mesure(ctx, fontNom), entree.pseudo, place), xNom, milieu + taille * RECENTRAGE_PSEUDO);
   });
 }
 
@@ -182,7 +219,12 @@ function preparerPortrait(s: Scene, haut: number, hauteur: number): void {
   s.feuille.hauteur = hauteur;
 }
 
-export async function renderResultImage(data: ResultShareData, format: ShareFormat = "portrait"): Promise<Blob> {
+function nettoyerTop(top: ShareRankingEntry[]): ShareRankingEntry[] {
+  return top.slice(0, MAX_LIGNES).map((e) => ({ ...e, pseudo: nettoyer(e.pseudo) }));
+}
+
+export async function renderResultImage(entree: ResultShareData, format: ShareFormat = "portrait"): Promise<Blob> {
+  const data = { ...entree, quizTitle: nettoyer(entree.quizTitle), pseudo: nettoyer(entree.pseudo), top: nettoyerTop(entree.top) };
   const t = lireJetons();
   await attendrePolices(t, `${NOM_APP} ${data.quizTitle} ${data.pseudo} ${data.top.map((e) => e.pseudo).join(" ")} 0123456789/ Rang :bonnes réponses`);
   const canvas = document.createElement("canvas");
@@ -197,9 +239,9 @@ export async function renderResultImage(data: ResultShareData, format: ShareForm
   // Le paysage est bas : le score descend d'un cran dans l'échelle typographique pour que la colonne tienne.
   const tailleGros = format === "portrait" ? t.tailles.cinq : t.tailles.quatre;
   const tailleReste = format === "portrait" ? t.tailles.quatre : t.tailles.xxxl;
-  const centreScore = hautPilule + hPilule + t.espaces.quatre + tailleGros * 0.55;
+  const centreScore = hautPilule + hPilule + t.espaces.quatre + tailleGros * DEMI_HAUTEUR_SCORE;
   scoreLigne(s, data.score, data.total, centreScore, tailleGros, tailleReste);
-  const yLabel = centreScore + tailleGros * 0.55 + t.espaces.trois;
+  const yLabel = centreScore + tailleGros * DEMI_HAUTEUR_SCORE + t.espaces.trois;
   etiquette(s, "bonnes réponses", yLabel + t.tailles.lg / 2, t.tailles.lg);
   let yPilules = yLabel + t.tailles.lg + t.espaces.trois;
   yPilules += pilule(ctx, t, `Rang : ${data.rank} / ${data.playerCount}`, s.colonne.cx, yPilules, {
@@ -227,7 +269,8 @@ export async function renderResultImage(data: ResultShareData, format: ShareForm
   return versPng(canvas);
 }
 
-export async function renderLeaderboardImage(data: LeaderboardShareData, format: ShareFormat = "portrait"): Promise<Blob> {
+export async function renderLeaderboardImage(entree: LeaderboardShareData, format: ShareFormat = "portrait"): Promise<Blob> {
+  const data = { ...entree, quizTitle: nettoyer(entree.quizTitle), top: nettoyerTop(entree.top) };
   const t = lireJetons();
   await attendrePolices(t, `${NOM_APP} ${data.quizTitle} ${data.top.map((e) => e.pseudo).join(" ")} 0123456789/ TOP 5 Classement joueurs`);
   const canvas = document.createElement("canvas");
@@ -239,14 +282,14 @@ export async function renderLeaderboardImage(data: LeaderboardShareData, format:
   titreApp(s, marge);
   const hautPilule = marge + t.tailles.xxl + t.espaces.quatre;
   const hPilule = pilulesTitre(s, data.quizTitle, hautPilule);
-  const rayon = t.tailles.cinq * 0.65;
+  const rayon = t.tailles.cinq * RAYON_ETOILE;
   const centreEtoile = hautPilule + hPilule + t.espaces.quatre + rayon;
   etoile(ctx, t, s.colonne.cx, centreEtoile, rayon);
   ctx.font = police(t.polices.badge, t.tailles.xxl);
   ctx.fillStyle = t.couleurs.foret;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("TOP 5", s.colonne.cx, centreEtoile + t.tailles.xxl * 0.05);
+  ctx.fillText("TOP 5", s.colonne.cx, centreEtoile + t.tailles.xxl * RECENTRAGE_BADGE);
   const yLabel = centreEtoile + rayon + t.espaces.trois;
   etiquette(s, "Classement final", yLabel + t.tailles.xl / 2, t.tailles.xl);
   const yPilule = yLabel + t.tailles.xl + t.espaces.trois;

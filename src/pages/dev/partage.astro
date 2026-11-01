@@ -44,6 +44,8 @@ if (!import.meta.env.DEV) {
   };
   const classement: LeaderboardShareData = { quizTitle: resultat.quizTitle, total: 10, playerCount: 24, top };
 
+  const FORMATS_LISIBLES: Record<ShareFormat, string> = { portrait: "format portrait", paysage: "format paysage" };
+
   const etat = document.getElementById("etat") as HTMLElement;
   const sortie = document.getElementById("sortie") as HTMLElement;
 
@@ -54,13 +56,21 @@ if (!import.meta.env.DEV) {
       const formats: ShareFormat[] = ["portrait", "paysage"];
       for (const format of formats) {
         const images = [
-          { id: `resultat-${format}`, blob: await renderResultImage(resultat, format) },
-          { id: `classement-${format}`, blob: await renderLeaderboardImage(classement, format) },
+          {
+            id: `resultat-${format}`,
+            alt: `Image de résultat, ${FORMATS_LISIBLES[format]} : ${resultat.pseudo}, ${resultat.score} bonnes réponses sur ${resultat.total}, rang ${resultat.rank} sur ${resultat.playerCount}.`,
+            blob: await renderResultImage(resultat, format),
+          },
+          {
+            id: `classement-${format}`,
+            alt: `Image du classement final, ${FORMATS_LISIBLES[format]} : top 5 sur ${classement.playerCount} joueurs, ${top[0]?.pseudo ?? "aucun joueur"} en tête.`,
+            blob: await renderLeaderboardImage(classement, format),
+          },
         ];
-        for (const { id, blob } of images) {
+        for (const { id, alt, blob } of images) {
           const img = document.createElement("img");
           img.id = id;
-          img.alt = id;
+          img.alt = alt;
           img.src = URL.createObjectURL(blob);
           img.className = "w-full border-trait border-vert-foret";
           sortie.appendChild(img);

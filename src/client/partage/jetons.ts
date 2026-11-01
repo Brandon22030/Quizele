@@ -3,7 +3,7 @@
 // toutes lettres pour que Tailwind les détecte), jamais des couleurs écrites ici.
 
 export interface Jetons {
-  couleurs: { jaune: string; creme: string; foret: string; nuit: string; vif: string; mousse: string };
+  couleurs: { jaune: string; creme: string; foret: string; nuit: string; vif: string; mousse: string; separateur: string };
   polices: { affiche: string; badge: string; note: string; texte: string };
   tailles: { sm: number; lg: number; xl: number; xxl: number; xxxl: number; quatre: number; cinq: number; six: number };
   espaces: { deux: number; trois: number; quatre: number; six: number; huit: number };
@@ -16,6 +16,7 @@ const SONDES = {
   nuit: "bg-vert-nuit",
   vif: "bg-vert-vif",
   mousse: "bg-vert-mousse",
+  separateur: "bg-separateur",
   affiche: "font-affiche",
   badge: "font-badge",
   note: "font-note",
@@ -36,6 +37,29 @@ const SONDES = {
 } as const;
 
 type Cle = keyof typeof SONDES;
+
+// Sans la feuille de style (chargement raté, CSS bloqué), les sondes résolvent des valeurs par défaut : fond
+// transparent, police du navigateur, espacements nuls. Dessiner avec ces valeurs donnerait une affiche fausse et,
+// avec un pas de trame nul, une boucle sans fin : on refuse explicitement.
+const ERREUR_JETONS = "Jetons de l'affiche introuvables";
+
+function estTransparente(couleur: string): boolean {
+  const c = couleur.trim().toLowerCase();
+  if (c === "" || c === "transparent") return true;
+  // Valeur calculée : alpha après « / » (syntaxe moderne) ou en quatrième composante (syntaxe à virgules), sinon opaque.
+  const interieur = /\(([^)]*)\)/.exec(c)?.[1] ?? "";
+  const alpha = interieur.includes("/") ? interieur.split("/")[1] : interieur.split(",")[3];
+  return alpha !== undefined && Number.parseFloat(alpha) === 0;
+}
+
+function valider(jetons: Jetons): Jetons {
+  const couleursOk = Object.values(jetons.couleurs).every((c) => !estTransparente(c));
+  const policesOk = Object.values(jetons.polices).every((p) => p.trim() !== "");
+  const mesures = [...Object.values(jetons.tailles), ...Object.values(jetons.espaces)];
+  const mesuresOk = mesures.every((n) => Number.isFinite(n) && n > 0);
+  if (!couleursOk || !policesOk || !mesuresOk) throw new Error(ERREUR_JETONS);
+  return jetons;
+}
 
 export function lireJetons(doc: Document = document): Jetons {
   const conteneur = doc.createElement("div");
@@ -63,6 +87,7 @@ export function lireJetons(doc: Document = document): Jetons {
       nuit: couleur("nuit"),
       vif: couleur("vif"),
       mousse: couleur("mousse"),
+      separateur: couleur("separateur"),
     },
     polices: { affiche: police("affiche"), badge: police("badge"), note: police("note"), texte: police("texte") },
     tailles: {
@@ -78,5 +103,5 @@ export function lireJetons(doc: Document = document): Jetons {
     espaces: { deux: espace("e2"), trois: espace("e3"), quatre: espace("e4"), six: espace("e6"), huit: espace("e8") },
   };
   conteneur.remove();
-  return jetons;
+  return valider(jetons);
 }

@@ -6,6 +6,20 @@ import { fitText } from "./texte";
 
 export type Ctx = CanvasRenderingContext2D;
 
+// Trame : reprise de `.trame-points` (global.css), pas de --spacing-4, point vert forêt à 10 %, rayon de 1,2 px.
+const OPACITE_TRAME = 0.1;
+const RAYON_TRAME = 1.2;
+// Lettrage extrudé : profondeur et contour proportionnels au corps, comme l'ombre « relief » des titres de l'affiche.
+const PROFONDEUR_EXTRUSION = 0.09;
+const CONTOUR_LETTRAGE = 0.14;
+// Rayon intérieur des pointes de l'étoile, rapporté au rayon extérieur : même rapport que --forme-etoile
+// (creux à 40 % du centre, pointes à 49 %).
+const CREUX_ETOILE = 0.82;
+// Pilule : hauteur rapportée au corps, et décalage vertical qui compense le jambage bas des polices arrondies
+// (Baloo, Lilita) pour que le texte paraisse centré.
+const HAUTEUR_PILULE = 1.9;
+const RECENTRAGE_PILULE = 0.06;
+
 export function police(famille: string, taille: number, graisse: number | "" = ""): string {
   return `${graisse} ${taille}px ${famille}`.trim();
 }
@@ -21,13 +35,13 @@ export function fond(ctx: Ctx, t: Jetons, largeur: number, hauteur: number): voi
   ctx.fillStyle = t.couleurs.jaune;
   ctx.fillRect(0, 0, largeur, hauteur);
   // Trame de points de l'affiche : très discrète, elle ne doit pas gêner la lecture.
-  const pas = t.espaces.six;
+  const pas = t.espaces.quatre;
   ctx.fillStyle = t.couleurs.foret;
-  ctx.globalAlpha = 0.08;
+  ctx.globalAlpha = OPACITE_TRAME;
   for (let y = pas / 2; y < hauteur; y += pas) {
     for (let x = pas / 2; x < largeur; x += pas) {
       ctx.beginPath();
-      ctx.arc(x, y, t.espaces.deux / 4, 0, Math.PI * 2);
+      ctx.arc(x, y, RAYON_TRAME, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -43,8 +57,8 @@ interface OptionsTexte {
 
 /** Lettrage extrudé : contour forêt, extrusion vert vif décalée vers le bas à gauche, face pleine par-dessus. */
 export function texteExtrude(ctx: Ctx, t: Jetons, texte: string, x: number, y: number, o: OptionsTexte): void {
-  const profondeur = o.profondeur ?? Math.max(2, Math.round(o.taille * 0.09));
-  const epaisseur = Math.max(2, o.taille * 0.14);
+  const profondeur = o.profondeur ?? Math.max(2, Math.round(o.taille * PROFONDEUR_EXTRUSION));
+  const epaisseur = Math.max(2, o.taille * CONTOUR_LETTRAGE);
   ctx.font = police(o.famille, o.taille);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -63,7 +77,7 @@ export function etoile(ctx: Ctx, t: Jetons, cx: number, cy: number, rayon: numbe
   const pointes = 14;
   const chemin = new Path2D();
   for (let i = 0; i < pointes * 2; i++) {
-    const r = i % 2 === 0 ? rayon : rayon * 0.82;
+    const r = i % 2 === 0 ? rayon : rayon * CREUX_ETOILE;
     const angle = (Math.PI * i) / pointes - Math.PI / 2;
     const px = cx + Math.cos(angle) * r;
     const py = cy + Math.sin(angle) * r;
@@ -93,7 +107,7 @@ interface OptionsPilule {
 export function pilule(ctx: Ctx, t: Jetons, texte: string, cx: number, haut: number, o: OptionsPilule): number {
   const font = police(o.famille, o.taille, o.graisse ?? "");
   const remplissage = t.espaces.quatre;
-  const hauteur = Math.round(o.taille * 1.9);
+  const hauteur = Math.round(o.taille * HAUTEUR_PILULE);
   const propre = fitText(mesure(ctx, font), texte, o.largeurMax - remplissage * 2);
   ctx.font = font;
   const largeur = ctx.measureText(propre).width + remplissage * 2;
@@ -108,11 +122,12 @@ export function pilule(ctx: Ctx, t: Jetons, texte: string, cx: number, haut: num
   ctx.fillStyle = o.encre;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(propre, cx, haut + hauteur / 2 + o.taille * 0.06);
+  ctx.fillText(propre, cx, haut + hauteur / 2 + o.taille * RECENTRAGE_PILULE);
   return hauteur;
 }
 
-// Profil du bord déchiré de la maquette (x sur 120, y sur 12), répété sur la largeur.
+// Profil du bord déchiré : mêmes points que le chemin SVG de --masque-dechire (global.css, viewBox 0 0 120 12),
+// répété sur la largeur. Toute retouche du masque CSS doit être reportée ici, et inversement.
 const DECHIRURE: ReadonlyArray<readonly [number, number]> = [
   [0, 6], [7, 3], [13, 7], [20, 2], [28, 6], [34, 1], [41, 5], [49, 3], [55, 8],
   [62, 2], [70, 5], [77, 1], [84, 6], [91, 3], [98, 7], [105, 2], [113, 5], [120, 6],
