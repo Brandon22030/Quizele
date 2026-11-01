@@ -61,31 +61,59 @@ function tooManyRequests(): Response {
   });
 }
 
+const badRequest = (status: 400 | 415, code: string, message: string) => ({ response: Response.json({ code, message }, { status }) });
+
+// Comparaison volontairement plus large que le routeur : better-call refuse aujourd'hui la barre finale et les
+// doubles barres (404), mais une option comme skipTrailingSlashes ou une mise à jour de rou3 suffirait à ouvrir
+// une variante qui atteindrait l'endpoint sans passer par les quotas. Compter une requête qui finira en 404
+// ne coûte rien ; laisser passer un envoi non compté, si.
+export function isMagicLinkPath(pathname: string): boolean {
+  let path = pathname;
+  try {
+    path = decodeURIComponent(pathname);
+  } catch {
+    // Séquence % mal formée : on compare le chemin brut, que le routeur ne saura pas davantage décoder.
+  }
+  return path.replace(/\/{2,}/g, "/").replace(/\/+$/, "").toLowerCase() === MAGIC_LINK_PATH;
+}
+
+// better-call teste le Content-Type par sous-chaîne : `application/x-www-form-urlencoded, application/json`
+// passerait et serait lu comme un formulaire, sans que ce plugin ait pu compter l'adresse.
+const isJsonContentType = (value: string | null) => (value ?? "").split(";")[0]!.trim().toLowerCase() === "application/json";
+
 async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
-  const body: unknown = await request
-    .clone()
-    .json()
-    // Corps illisible : Better Auth le refusera lui-même, rien n'est compté.
-    .catch(() => null);
-  return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  try {
+    const body: unknown = await request.clone().json();
+    return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 // onRequest passe après la limite par IP de Better Auth mais avant sa validation zod : on valide donc soi-même
 // avant d'écrire quoi que ce soit, puis on compte par adresse, puis globalement.
+// Les quotas sont consommés ici, avant le traitement de Better Auth : une demande qu'il refuse ensuite
+// (origine non autorisée, callbackURL invalide, envoi en échec) a quand même été comptée. C'est voulu :
+// mieux vaut sous-compter les envois réussis que laisser un attaquant sonder sans limite.
 function magicLinkQuotaPlugin(env: AuthEnv): BetterAuthPlugin {
   return {
     id: "magic-link-quota",
     async onRequest(request) {
-      if (request.method !== "POST" || new URL(request.url).pathname !== MAGIC_LINK_PATH) return;
-      const body = await readJsonBody(request);
-      if (!body) return;
-      const email = emailSchema.safeParse(body.email);
-      if (!email.success) {
-        return { response: Response.json({ code: "INVALID_EMAIL", message: "Adresse e-mail invalide." }, { status: 400 }) };
+      if (request.method !== "POST" || !isMagicLinkPath(new URL(request.url).pathname)) return;
+      if (!isJsonContentType(request.headers.get("content-type"))) {
+        return badRequest(415, "UNSUPPORTED_MEDIA_TYPE", "Le corps doit être envoyé en application/json.");
       }
+      const body = await readJsonBody(request);
+      if (!body) return badRequest(400, "INVALID_BODY", "Corps JSON illisible.");
+      const email = emailSchema.safeParse(body.email);
+      if (!email.success) return badRequest(400, "INVALID_EMAIL", "Adresse e-mail invalide.");
       const emailKey = `magic-link:${await hashEmailKey(email.data)}`;
       if (!(await consumeEmailQuota(env.DB, emailKey, MAGIC_LINK_EMAIL_QUOTA))) return { response: tooManyRequests() };
-      if (!(await consumeDailyMailQuota(env.DB, MAGIC_LINK_DAILY_MAX))) return { response: tooManyRequests() };
+      if (!(await consumeDailyMailQuota(env.DB, MAGIC_LINK_DAILY_MAX))) {
+        // Sans l'adresse : seul le fait que le plafond est atteint intéresse l'exploitation.
+        console.warn(`[auth] plafond quotidien de ${MAGIC_LINK_DAILY_MAX} liens magiques atteint.`);
+        return { response: tooManyRequests() };
+      }
       if (body.name === undefined) return;
       // Le nom saisi ici deviendrait le nom affiché du compte créé : il est borné, ou retiré s'il n'est pas du texte.
       const { name, ...rest } = body;

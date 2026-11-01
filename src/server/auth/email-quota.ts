@@ -26,12 +26,21 @@ export async function consumeEmailQuota(
 
 // Une même boîte se cache derrière la casse, des espaces ou un sous-adressage (victime+1@, victime+2@...) :
 // la clé de limite les ramène toutes à une seule. L'envoi, lui, garde l'adresse saisie.
+// Gmail ignore en plus les points de la partie locale et livre googlemail.com dans la même boîte.
+const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+
 export function normalizeEmailKey(email: string): string {
   const compact = email.replace(/\s+/g, "").toLowerCase();
   const at = compact.lastIndexOf("@");
-  const local = compact.slice(0, at);
+  let local = compact.slice(0, at);
+  let domain = compact.slice(at + 1);
   const plus = local.indexOf("+");
-  return `${plus === -1 ? local : local.slice(0, plus)}${compact.slice(at)}`;
+  if (plus !== -1) local = local.slice(0, plus);
+  if (GMAIL_DOMAINS.has(domain)) {
+    local = local.replaceAll(".", "");
+    domain = "gmail.com";
+  }
+  return `${local}@${domain}`;
 }
 
 // Seule l'empreinte est stockée : rate_limit ne doit pas devenir un annuaire d'adresses.
