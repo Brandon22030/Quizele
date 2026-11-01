@@ -9,6 +9,8 @@ const twMerge = extendTailwindMerge({
       "border-w": [{ border: ["trait"] }],
       "outline-w": [{ outline: ["trait"] }],
       shadow: [{ shadow: ["relief-sm", "relief", "relief-lg", "relief-vif", "relief-jaune", "relief-appui"] }],
+      "text-shadow": [{ "text-shadow": ["affiche", "affiche-sm"] }],
+      animate: [{ animate: ["pop", "tremble", "brille", "tourne"] }],
       rounded: [{ rounded: ["pill"] }],
       "font-family": [{ font: ["affiche", "badge", "note", "sans"] }],
     },

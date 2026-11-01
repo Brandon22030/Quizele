@@ -15,7 +15,10 @@ export interface FormeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 /** Socle commun d'Explosion et de BadgeEtoile : contour vert forêt (clip-path extérieur) et remplissage (clip-path intérieur). */
-export function Forme({ forme, variante = "creme", className, children, ...rest }: FormeProps & { forme: "etoile" | "explosion" }) {
+export type FormeKind = "etoile" | "explosion";
+
+/** La taille par défaut (size-20) se surcharge via className : cn() retire le size-* par défaut. */
+export function Forme({ forme, variante = "creme", className, children, ...rest }: FormeProps & { forme: FormeKind }) {
   const clip = forme === "etoile" ? "forme-etoile" : "forme-explosion";
   return (
     <span className={cn("relative grid aspect-square size-20 place-items-center bg-vert-foret", clip, className)} {...rest}>

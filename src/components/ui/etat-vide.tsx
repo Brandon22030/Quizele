@@ -13,7 +13,7 @@ interface EtatVideProps {
 export function EtatVide({ icone, titre, children, action, className }: EtatVideProps) {
   return (
     <section className={cn("flex flex-col items-center gap-4 px-4 py-8 text-center", className)}>
-      <Explosion variante="soleil" className="size-20">
+      <Explosion variante="soleil">
         <span aria-hidden="true" className="grid place-items-center">
           {icone}
         </span>

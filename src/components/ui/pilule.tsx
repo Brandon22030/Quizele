@@ -4,7 +4,7 @@ import { cn } from "./cn";
 export type PiluleVariant = "foret" | "soleil" | "creme";
 
 const variants: Record<PiluleVariant, string> = {
-  foret: "bg-vert-foret text-creme",
+  foret: "bg-vert-foret text-creme foret:border-creme",
   soleil: "bg-jaune-soleil text-vert-foret foret:border-vert-nuit",
   creme: "bg-creme text-vert-foret foret:border-vert-nuit",
 };
@@ -18,7 +18,7 @@ export function Pilule({ variante = "foret", inclinaison, className, ...rest }: 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-pill border-trait border-vert-foret px-4 py-1 text-sm font-extrabold",
+        "inline-flex items-center gap-2 rounded-pill border-trait border-vert-foret px-4 py-1 text-sm leading-snug font-extrabold tabular-nums",
         variants[variante],
         inclinaison === "gauche" && "-rotate-4",
         inclinaison === "droite" && "rotate-3",

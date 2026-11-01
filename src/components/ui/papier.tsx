@@ -13,7 +13,8 @@ export function BordDechire({ cote, className }: BordDechireProps) {
       aria-hidden="true"
       className={cn(
         "bord-dechire absolute inset-x-0 h-3 bg-creme",
-        cote === "haut" ? "-top-3" : "-bottom-3 -scale-y-100",
+        // 1 px de recouvrement : sans lui, le sous-pixel laisse un liseré entre le bord et le corps.
+        cote === "haut" ? "bottom-full translate-y-px" : "top-full -translate-y-px -scale-y-100",
         className,
       )}
     />
@@ -26,7 +27,7 @@ interface PapierProps extends HTMLAttributes<HTMLDivElement> {
 
 export function Papier({ incline = false, className, children, ...rest }: PapierProps) {
   return (
-    <div className={cn("relative my-3 bg-creme p-4 text-vert-foret", incline && "-rotate-1", className)} {...rest}>
+    <div data-papier="" className={cn("relative my-3 bg-creme p-4 text-vert-foret", incline && "-rotate-1", className)} {...rest}>
       <BordDechire cote="haut" />
       {children}
       <BordDechire cote="bas" />
