@@ -1,0 +1,26 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../../layouts/Base.astro";
+import Prototype from "../../islands/dev/Prototype";
+import { GAME_CODE_PATTERN } from "../../server/game/router";
+import { signToken } from "../../server/game/tokens";
+
+// Page de démonstration du prototype temps réel : n'existe qu'en développement.
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404 });
+}
+
+const code = (Astro.url.searchParams.get("code") ?? "DEMO01").toUpperCase();
+const role = Astro.url.searchParams.get("role") === "host" ? "host" : "player";
+if (!GAME_CODE_PATTERN.test(code)) {
+  return new Response("Code de partie invalide", { status: 400 });
+}
+const hostToken = role === "host" ? await signToken(env.PLAYER_TOKEN_SECRET ?? "", { code, role: "host" }) : undefined;
+---
+
+<Base title="Prototype temps réel">
+  <main class="flex min-h-dvh flex-col gap-4 p-4">
+    <h1 class="font-affiche text-2xl text-vert-foret">Prototype temps réel</h1>
+    <Prototype client:load code={code} role={role} hostToken={hostToken} />
+  </main>
+</Base>

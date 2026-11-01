@@ -10,14 +10,14 @@ describe("socle : Worker Astro", () => {
     expect(await res.text()).toMatch(/<html[^>]*\slang="fr"/);
   });
 
-  it("route /ws/<code> vers le routeur temps réel (stub 501) et non vers Astro", async () => {
+  it("route /ws/<code> vers le routeur temps réel (426 sans upgrade) et non vers Astro", async () => {
     const res = await SELF.fetch("https://exemple.test/ws/XXXXXX");
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(426);
   });
 
   it("n'envoie pas /ws sans barre finale vers le routeur", async () => {
     const res = await SELF.fetch("https://exemple.test/ws");
-    expect(res.status).not.toBe(501);
+    expect(res.status).not.toBe(426);
   });
 
   it("renvoie 404 pour une route inconnue", async () => {

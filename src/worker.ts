@@ -1,10 +1,9 @@
 import { handle } from "@astrojs/cloudflare/handler";
-import { DurableObject } from "cloudflare:workers";
 import { runScheduled } from "./server/cron";
+import { GameSession } from "./server/game/GameSession";
 import { routeWebSocket } from "./server/game/router";
 
-// Classe vide : l'état, l'horloge et la correction de la partie arrivent en QZ-002-02.
-export class GameSession extends DurableObject<Env> {}
+export { GameSession };
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
