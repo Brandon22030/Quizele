@@ -76,7 +76,9 @@ CREATE TABLE `questions` (
 	FOREIGN KEY (`quiz_id`) REFERENCES `quizzes`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "questions_type_check" CHECK("type" IN ('single', 'multiple', 'true_false')),
 	CONSTRAINT "questions_duration_check" CHECK("duration_sec" IN (10, 20, 30, 60)),
-	CONSTRAINT "questions_prompt_length_check" CHECK(length("prompt") <= 300)
+	CONSTRAINT "questions_prompt_length_check" CHECK(length("prompt") <= 300),
+	CONSTRAINT "questions_reference_length_check" CHECK(length("reference") <= 500),
+	CONSTRAINT "questions_explanation_length_check" CHECK(length("explanation") <= 500)
 );
 --> statement-breakpoint
 CREATE INDEX `questions_quiz_position_idx` ON `questions` (`quiz_id`,`position`);--> statement-breakpoint
@@ -92,7 +94,9 @@ CREATE TABLE `quizzes` (
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`owner_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
-	CONSTRAINT "quizzes_mode_check" CHECK("mode" IN ('together', 'own_pace'))
+	CONSTRAINT "quizzes_mode_check" CHECK("mode" IN ('together', 'own_pace')),
+	CONSTRAINT "quizzes_title_length_check" CHECK(length("title") <= 120),
+	CONSTRAINT "quizzes_description_length_check" CHECK(length("description") <= 500)
 );
 --> statement-breakpoint
 CREATE INDEX `quizzes_owner_idx` ON `quizzes` (`owner_id`,`updated_at`);--> statement-breakpoint

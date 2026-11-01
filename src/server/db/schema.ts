@@ -17,6 +17,9 @@ export const MAX_QUESTIONS_PER_QUIZ = 50;
 export const MAX_OPTIONS_PER_QUESTION = 4;
 export const PROMPT_MAX_CHARS = 300;
 export const OPTION_LABEL_MAX_CHARS = 200;
+export const QUIZ_TITLE_MAX_CHARS = 120;
+// Description du quiz, référence (verset, source) et explication de la réponse.
+export const LONG_TEXT_MAX_CHARS = 500;
 // Le pseudo est borné à 20 graphèmes par le protocole, mais un graphème emoji compte plusieurs caractères pour
 // length() de SQLite : borner à 20 ici rejetterait des pseudos valides et ferait échouer tout le bilan de fin de partie.
 // 200 = longueur brute maximale acceptée par pseudoSchema avant normalisation.
@@ -122,6 +125,8 @@ export const quizzes = sqliteTable(
   (t) => [
     index("quizzes_owner_idx").on(t.ownerId, t.updatedAt),
     check("quizzes_mode_check", inList("mode", GAME_MODES)),
+    check("quizzes_title_length_check", sql.raw(`length("title") <= ${QUIZ_TITLE_MAX_CHARS}`)),
+    check("quizzes_description_length_check", sql.raw(`length("description") <= ${LONG_TEXT_MAX_CHARS}`)),
   ],
 );
 
@@ -145,6 +150,8 @@ export const questions = sqliteTable(
     check("questions_type_check", inList("type", QUESTION_TYPES)),
     check("questions_duration_check", inList("duration_sec", QUESTION_DURATIONS)),
     check("questions_prompt_length_check", sql.raw(`length("prompt") <= ${PROMPT_MAX_CHARS}`)),
+    check("questions_reference_length_check", sql.raw(`length("reference") <= ${LONG_TEXT_MAX_CHARS}`)),
+    check("questions_explanation_length_check", sql.raw(`length("explanation") <= ${LONG_TEXT_MAX_CHARS}`)),
   ],
 );
 

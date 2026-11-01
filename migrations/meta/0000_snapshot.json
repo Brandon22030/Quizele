@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0d926991-4796-4ac6-b33f-763c8763d9a7",
+  "id": "781bcb12-205d-4190-931f-19800116a3e8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "account": {
@@ -563,6 +563,14 @@
         "questions_prompt_length_check": {
           "name": "questions_prompt_length_check",
           "value": "length(\"prompt\") <= 300"
+        },
+        "questions_reference_length_check": {
+          "name": "questions_reference_length_check",
+          "value": "length(\"reference\") <= 500"
+        },
+        "questions_explanation_length_check": {
+          "name": "questions_explanation_length_check",
+          "value": "length(\"explanation\") <= 500"
         }
       }
     },
@@ -675,6 +683,14 @@
         "quizzes_mode_check": {
           "name": "quizzes_mode_check",
           "value": "\"mode\" IN ('together', 'own_pace')"
+        },
+        "quizzes_title_length_check": {
+          "name": "quizzes_title_length_check",
+          "value": "length(\"title\") <= 120"
+        },
+        "quizzes_description_length_check": {
+          "name": "quizzes_description_length_check",
+          "value": "length(\"description\") <= 500"
         }
       }
     },

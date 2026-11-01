@@ -113,6 +113,17 @@ function insertOptions(db: Db, questionId: string, input: OptionInput[]) {
   return chunkRows(optionRows(questionId, input), OPTION_COLUMNS).map((rows) => db.insert(options).values(rows));
 }
 
+// 4 paramètres par option (id, position, label, is_correct), plus question_id dans la ligne et dans la garde.
+const GUARDED_OPTION_PARAMS = 4;
+
+function insertOptionsIfQuestionExists(db: Db, questionId: string, input: OptionInput[]) {
+  const rows = input.map((o, position) => sql`(${crypto.randomUUID()}, ${position}, ${o.label}, ${o.isCorrect ? 1 : 0})`);
+  return chunkRows(rows, GUARDED_OPTION_PARAMS, 2).map((chunk) =>
+    db.insert(options).select(sql`SELECT column1, ${questionId}, column2, column3, column4 FROM (VALUES ${sql.join(chunk, sql`, `)})
+      WHERE EXISTS (SELECT 1 FROM questions WHERE id = ${questionId})`),
+  );
+}
+
 export async function createQuiz(
   db: Db,
   ownerId: string,
@@ -185,16 +196,22 @@ export async function addQuestion(db: Db, ownerId: string, quizId: string, input
   if (!quiz) throw new NotFoundError("Quiz introuvable");
   if (quiz.questionCount >= MAX_QUESTIONS_PER_QUIZ) throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
   const questionId = crypto.randomUUID();
-  // La garde sur le nombre de questions est répétée dans l'insertion : deux ajouts simultanés ne dépassent pas le plafond.
+  // Garde répétée dans l'insertion (plafond, propriété) : deux ajouts simultanés ne dépassent pas 50. Les options sont
+  // conditionnées à l'existence de la question, sinon une question refusée ferait échouer le batch sur la clé étrangère.
   const [inserted] = await db.batch([
     db.insert(questions).select(sql`SELECT ${questionId}, ${quizId}, next_position, ${input.type}, ${input.prompt}, ${input.durationSec},
         ${input.reference ?? null}, ${input.explanation ?? null}
       FROM (SELECT COALESCE(MAX(position) + 1, 0) AS next_position, COUNT(*) AS question_count FROM questions WHERE quiz_id = ${quizId})
-      WHERE question_count < ${MAX_QUESTIONS_PER_QUIZ}`),
-    ...insertOptions(db, questionId, input.options),
-    db.update(quizzes).set({ updatedAt: new Date() }).where(eq(quizzes.id, quizId)),
+      WHERE question_count < ${MAX_QUESTIONS_PER_QUIZ}
+        AND EXISTS (SELECT 1 FROM quizzes WHERE id = ${quizId} AND owner_id = ${ownerId})`),
+    ...insertOptionsIfQuestionExists(db, questionId, input.options),
+    db.update(quizzes).set({ updatedAt: new Date() }).where(ownedQuiz(ownerId, quizId)),
   ]);
-  if (inserted.meta.changes === 0) throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
+  if (inserted.meta.changes === 0) {
+    const stillOwned = await db.select({ id: quizzes.id }).from(quizzes).where(ownedQuiz(ownerId, quizId)).get();
+    if (!stillOwned) throw new NotFoundError("Quiz introuvable");
+    throw new QuizLimitError(`Un quiz compte au plus ${MAX_QUESTIONS_PER_QUIZ} questions`);
+  }
   return questionId;
 }
 
