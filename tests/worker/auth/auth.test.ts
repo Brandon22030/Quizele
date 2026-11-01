@@ -11,7 +11,7 @@ import { authEnv, authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessi
 
 beforeEach(async () => {
   await freshDb();
-  await env.DB.prepare("DELETE FROM rate_limit").run();
+  await env.DB.batch([env.DB.prepare("DELETE FROM rate_limit"), env.DB.prepare("DELETE FROM mail_quota")]);
 });
 afterEach(() => vi.restoreAllMocks());
 

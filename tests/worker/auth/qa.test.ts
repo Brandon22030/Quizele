@@ -3,11 +3,11 @@ import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAuth } from "../../../src/server/auth/auth";
 import { freshDb } from "../db/helpers";
-import { authEnv, authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
+import { authEnv, authFetch, captureConsoleMail, captureResendMail, ORIGIN, RESEND_ENV, requestMagicLink, sessionCookie } from "./helpers";
 
 beforeEach(async () => {
   await freshDb();
-  await env.DB.prepare("DELETE FROM rate_limit").run();
+  await env.DB.batch([env.DB.prepare("DELETE FROM rate_limit"), env.DB.prepare("DELETE FROM mail_quota")]);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -221,15 +221,15 @@ describe("e-mail : contenu et transport", () => {
   });
 
   it("hors localhost, le lien utilise BETTER_AUTH_URL et non l'hôte de la requête", async () => {
-    const mailSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const mail = captureResendMail();
     const request = new Request("https://autre-hote.example/api/auth/sign-in/magic-link", {
       method: "POST",
       headers: { origin: "https://quiz.example", "content-type": "application/json", "cf-connecting-ip": "203.0.113.5" },
       body: JSON.stringify({ email: "prod@example.test" }),
     });
-    const auth = createAuth(authEnv({ BETTER_AUTH_URL: "https://quiz.example" }), request);
+    const auth = createAuth(authEnv({ BETTER_AUTH_URL: "https://quiz.example", ...RESEND_ENV }), request);
     expect((await auth.handler(request)).status).toBe(200);
-    const text = mailSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    const text = mail.text();
     expect(text).toContain("https://quiz.example/api/auth/magic-link/verify");
     expect(text).not.toContain("autre-hote.example");
   });
@@ -293,12 +293,12 @@ describe("sécurité", () => {
   });
 
   it("le cookie de session est Secure hors localhost", async () => {
-    const overrides = { BETTER_AUTH_URL: "https://quiz.example" };
-    const mailSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const overrides = { BETTER_AUTH_URL: "https://quiz.example", ...RESEND_ENV };
+    const mail = captureResendMail();
     const headers = { origin: "https://quiz.example", "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" };
     const ask = new Request("https://quiz.example/api/auth/sign-in/magic-link", { method: "POST", headers, body: JSON.stringify({ email: "https@example.test" }) });
     expect((await createAuth(authEnv(overrides), ask).handler(ask)).status).toBe(200);
-    const link = String(mailSpy.mock.calls[0]![0]).match(/https?:\/\/\S+/)![0];
+    const link = mail.link();
     const verify = new Request(link, { headers: { "cf-connecting-ip": "203.0.113.10" }, redirect: "manual" });
     const res = await createAuth(authEnv(overrides), verify).handler(verify);
     const header = res.headers.getSetCookie().find((c) => c.includes("session_token"))!;

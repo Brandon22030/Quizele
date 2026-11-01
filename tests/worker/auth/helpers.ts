@@ -43,3 +43,28 @@ export const sessionCookie = (res: Response) => {
   const cookies = res.headers.getSetCookie().filter((c) => c.includes("session_token"));
   return cookies.map((c) => c.split(";")[0]).join("; ");
 };
+
+export const RESEND_ENV = { MAIL_TRANSPORT: "resend", RESEND_API_KEY: "re_factice", MAIL_FROM: "Quizdeszeles <onboarding@resend.dev>" };
+
+// En https le transport console est interdit : on capture alors le lien dans l'appel simulé à l'API Resend.
+export function captureResendMail() {
+  const realFetch = globalThis.fetch;
+  const bodies: string[] = [];
+  const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!url.includes("api.resend.com")) return realFetch(input, init);
+    bodies.push(String((init as RequestInit | undefined)?.body ?? ""));
+    return Response.json({ id: `e${bodies.length}` });
+  });
+  const text = () => bodies.map((b) => (JSON.parse(b) as { text: string }).text).join("\n");
+  return {
+    spy,
+    bodies,
+    text,
+    link: () => {
+      const match = text().match(/https?:\/\/\S+/);
+      if (!match) throw new Error("Aucun lien capturé dans l'appel Resend.");
+      return match[0];
+    },
+  };
+}
