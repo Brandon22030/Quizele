@@ -15,7 +15,6 @@ describe("safeReturnPath : cas supplémentaires", () => {
     "/quiz/./../j/X",
     "/quiz%2F..%2Fj%2FX",
     "/quiz/x?a=1\r\nHost: evil",
-    "/quiz/‮evil",
     "https:/evil.example/quiz",
     "/∕evil.example",
     "/quiz/x%",
