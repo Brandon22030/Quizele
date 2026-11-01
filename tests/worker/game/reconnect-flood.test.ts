@@ -36,7 +36,8 @@ describe("seau à jetons et reconnexion en boucle", () => {
     // reconnexion laisserait passer 150 messages.
     const allowed = 30 + ((Date.now() - startedAt) / 1000) * 10 + 5;
     expect(processed).toBeLessThanOrEqual(allowed);
-    expect(allowed).toBeLessThan(100);
+    // Ce qui prouve que le seau n'est pas remis à plein, c'est qu'au moins une reconnexion a été refusée (1008) :
+    // une borne sur `allowed` dépendrait de la durée du test, donc de la charge de la machine.
     expect(closedFor1008).toBeGreaterThan(0);
   });
 

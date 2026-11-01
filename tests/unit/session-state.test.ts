@@ -102,4 +102,31 @@ describe("session-state : changement de partie", () => {
     expect(state.connection).toBe("open");
     expect(state.phase).toBeNull();
   });
+
+  it("la fin de partie conserve le résultat du joueur et la progression du mode libre", () => {
+    let state = apply(initialSessionState, { type: "progress", finished: 2, total: 5 });
+    expect(state).toMatchObject({ finishedCount: 2, playerCount: 5 });
+    state = apply(state, {
+      type: "finished",
+      ranking: [{ playerId: "p1", pseudo: "Awa", score: 3, totalMs: 4000 }],
+      you: { rank: 1, score: 3, totalMs: 4000 },
+    });
+    expect(state).toMatchObject({ phase: "finished", result: { rank: 1, score: 3, totalMs: 4000 } });
+  });
+
+  it("l'instantané d'une partie finie restitue le rang et le mode", () => {
+    const state = apply(initialSessionState, {
+      type: "snapshot",
+      role: "player",
+      phase: "finished",
+      serverNow: 1,
+      title: "Quiz",
+      playerCount: 1,
+      mode: "own_pace",
+      ranking: [{ playerId: "p1", pseudo: "Awa", score: 2, totalMs: 900 }],
+      me: { playerId: "p1", pseudo: "Awa", score: 2, answered: false, rank: 1 },
+    });
+    expect(state).toMatchObject({ mode: "own_pace", result: { rank: 1, score: 2, totalMs: 900 } });
+  });
 });
+

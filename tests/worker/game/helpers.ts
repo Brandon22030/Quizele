@@ -2,7 +2,10 @@ import { env, exports } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
 import { expect } from "vitest";
 import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
-import { quizDemo, type QuizDefinition } from "../../../src/server/game/fixtures/quiz-demo";
+import { getDb } from "../../../src/server/db/client";
+import { gameSessions, user } from "../../../src/server/db/schema";
+import { quizDemo } from "../../../src/server/game/fixtures/quiz-demo";
+import type { QuizDefinition } from "../../../src/server/game/quiz";
 import { signToken } from "../../../src/server/game/tokens";
 
 const ORIGIN = "https://exemple.test";
@@ -10,6 +13,25 @@ const secret = () => env.PLAYER_TOKEN_SECRET as string;
 
 let counter = 0;
 export const newCode = () => `G${String(++counter).padStart(5, "0")}`;
+
+const migrationFiles = import.meta.glob("../../../migrations/*.sql", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+export const OWNER_ID = "proprietaire-test";
+let prepared: Promise<void> | null = null;
+
+// Applique les migrations D1 une fois par fichier de test et crée le compte animateur. Aucune table n'est vidée :
+// chaque test utilise ses propres codes de partie.
+export function prepareDb(): Promise<void> {
+  prepared ??= (async () => {
+    const statements = Object.keys(migrationFiles)
+      .sort()
+      .flatMap((file) => migrationFiles[file]!.split("--> statement-breakpoint"))
+      .map((statement) => statement.trim())
+      .filter(Boolean);
+    await env.DB.batch(statements.map((statement) => env.DB.prepare(statement)));
+    await getDb(env.DB).insert(user).values({ id: OWNER_ID, name: "Animateur", email: "animateur@example.invalid" });
+  })();
+  return prepared;
+}
 
 // Une partie est identifiée par son sid ; le code court n'est que sa porte d'entrée.
 const sids = new Map<string, string>();
@@ -28,7 +50,45 @@ export const reuseCode = (code: string): string => {
   return sid;
 };
 export const stubFor = (code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(sidFor(code)));
-export const aliasStubFor = (code: string) => env.GAME_SESSION.get(env.GAME_SESSION.idFromName(`alias:${code}`));
+
+// Reproduit ce que fait partie.lancer : une ligne dans D1 (qui porte le code) puis l'initialisation du Durable Object.
+export async function createGame(code: string, quiz: QuizDefinition = quizDemo, sid: string = sidFor(code)): Promise<string> {
+  await prepareDb();
+  await getDb(env.DB).insert(gameSessions).values({
+    id: sid,
+    code,
+    ownerId: OWNER_ID,
+    quizTitle: quiz.title,
+    mode: quiz.mode ?? "together",
+    showCorrectAnswer: quiz.showCorrectAnswer,
+    shuffle: quiz.shuffle ?? false,
+  });
+  await env.GAME_SESSION.get(env.GAME_SESSION.idFromName(sid)).init(code, sid, quiz);
+  return sid;
+}
+
+export async function sessionRow(sid: string) {
+  await prepareDb();
+  return (await env.DB.prepare("SELECT status, ended_at AS endedAt FROM game_sessions WHERE id = ?").bind(sid).first<{ status: string; endedAt: number | null }>()) ?? null;
+}
+
+// Envoie des rafales de `resume` bien au-dessus du rythme de recharge du seau, jusqu'à la fermeture du socket. On attend
+// l'événement plutôt qu'un nombre fixe de messages : sous machine chargée le serveur traite plus lentement, et un
+// nombre fixe pourrait rester sous la recharge de 10 jetons par seconde.
+export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>, timeoutMs = 40_000): Promise<CloseEvent | null> {
+  let event: CloseEvent | null = null;
+  void closed.then((e) => (event = e));
+  const deadline = Date.now() + timeoutMs;
+  while (event === null && Date.now() < deadline) {
+    try {
+      for (let i = 0; i < 30; i += 1) client.send({ type: "resume" });
+    } catch {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return event ?? Promise.race([closed, new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))]);
+}
 
 export class Client {
   readonly messages: ServerMessage[] = [];
@@ -52,7 +112,7 @@ export class Client {
   async waitFor<T extends ServerMessage["type"]>(
     type: T,
     filter: (message: Extract<ServerMessage, { type: T }>) => boolean = () => true,
-    timeoutMs = 4000,
+    timeoutMs = 15_000,
   ): Promise<Extract<ServerMessage, { type: T }>> {
     const find = () => this.messages.find((m): m is Extract<ServerMessage, { type: T }> => m.type === type && filter(m as never));
     const found = find();
@@ -70,6 +130,22 @@ export class Client {
     });
   }
 
+  // Attend que `count` messages de ce type soient arrivés : évite un délai fixe pour « laisser le temps ».
+  async waitForCount(type: ServerMessage["type"], count: number, timeoutMs = 15_000): Promise<ServerMessage[]> {
+    const matching = () => this.messages.filter((m) => m.type === type);
+    if (matching().length >= count) return matching();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Délai dépassé en attendant ${count} "${type}"`)), timeoutMs);
+      const listener = () => {
+        if (matching().length < count) return;
+        clearTimeout(timer);
+        this.listeners = this.listeners.filter((l) => l !== listener);
+        resolve(matching());
+      };
+      this.listeners.push(listener);
+    });
+  }
+
   close(): void {
     try {
       this.ws.close(1000);
@@ -80,6 +156,7 @@ export class Client {
 }
 
 export async function rawConnect(code: string, token: string | null): Promise<Response> {
+  await prepareDb();
   const protocols = token ? `${WS_SUBPROTOCOL}, ${token}` : WS_SUBPROTOCOL;
   return exports.default.fetch(`${ORIGIN}/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": protocols } });
 }
@@ -109,6 +186,7 @@ export const signFor = (_code: string, claims: ClaimsInput, now?: number, ttl?: 
   signToken(secret(), { ...claims, sid: claims.sid ?? sidFor(claims.code) }, now, ttl);
 
 export async function join(code: string, pseudo: string): Promise<Response> {
+  await prepareDb();
   return exports.default.fetch(`${ORIGIN}/api/parties/${code}/joueurs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -135,7 +213,7 @@ export async function addPlayer(code: string, pseudo: string): Promise<Player> {
 
 export async function setup(playerCount: number, quiz?: QuizDefinition) {
   const code = newCode();
-  if (quiz) await stubFor(code).init(code, sidFor(code), quiz);
+  await createGame(code, quiz);
   const host = await connect(code, await hostToken(code));
   host.send({ type: "resume" });
   await host.waitFor("snapshot");

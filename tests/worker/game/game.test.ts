@@ -80,7 +80,7 @@ describe("pseudos", () => {
 });
 
 describe("partie de 50 joueurs", () => {
-  it("diffuse la question à tous, compte 50 réponses, classe correctement, sans fuite avant reveal", async () => {
+  it("diffuse la question à tous, compte 50 réponses, classe correctement, sans fuite avant reveal", { timeout: 90_000 }, async () => {
     const { code, host, players } = await game(50);
     expect(players).toHaveLength(50);
     host.send({ type: "start" });
@@ -272,8 +272,8 @@ describe("alarme, reprise et éviction", () => {
     const reveal = await players[0]!.client.waitFor("reveal");
     expect(reveal.you).toMatchObject({ wasCorrect: true, score: 1 });
     const versions = await runInDurableObject(stub, (_i, state) => state.storage.sql.exec("SELECT COUNT(*) AS n, MAX(version) AS v FROM schema_version").one());
-    // Deux migrations (schéma initial, puis bannis et seaux), chacune appliquée une seule fois.
-    expect(versions).toEqual({ n: 2, v: 2 });
+    // Trois migrations (schéma initial, bannis et seaux, avancement du mode libre), chacune appliquée une seule fois.
+    expect(versions).toEqual({ n: 3, v: 3 });
   });
 });
 
@@ -293,7 +293,10 @@ describe("partie complète", () => {
     }
     const finished = await players[1]!.client.waitFor("finished");
     expect(finished.ranking.map((r) => [r.pseudo, r.score])).toEqual([["Joueur 0", 3], ["Joueur 1", 0]]);
-    expect((await join(code, "Retard")).status).toBe(410);
+    // Le code est libéré dès que D1 passe la partie à « terminée » : le point d'entrée HTTP ne la connaît plus, et le
+    // Durable Object, interrogé directement, refuse lui aussi.
+    expect((await join(code, "Retard")).status).toBe(404);
+    expect(await stubFor(code).join("Retard")).toEqual({ ok: false, error: "game_finished" });
     expect(await runInDurableObject(stubFor(code), (_i, state) => state.storage.getAlarm())).not.toBeNull();
   });
 

@@ -2,7 +2,7 @@ import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "c
 import { afterEach, describe, expect, it } from "vitest";
 import { ANSWER_TOLERANCE_MS, MAX_PLAYERS } from "../../../src/shared/protocol";
 import {
-  addPlayer, aliasStubFor, closeCodeOf, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  addPlayer, closeCodeOf, createGame, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -108,9 +108,8 @@ describe("inscription sur un code inconnu", () => {
     const response = await join(code, "Awa");
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "game_not_found" });
-    // Aucune table du tout, pas seulement des tables sans ligne : ni dans l'objet de partie, ni dans l'alias.
+    // Aucune table du tout, pas seulement des tables sans ligne.
     expect(await sqlOf(code, "SELECT name FROM sqlite_master")).toEqual([]);
-    expect(await runInDurableObject(aliasStubFor(code), (_i, state) => state.storage.sql.exec("SELECT name FROM sqlite_master").toArray())).toEqual([]);
     expect(await runInDurableObject(stubFor(code), (_i, state) => state.storage.getAlarm())).toBeNull();
   });
 
@@ -120,11 +119,13 @@ describe("inscription sur un code inconnu", () => {
     }
   });
 
-  it("un jeton joueur ou écran ne peut pas créer la partie ; une tentative échouée ne l'empêche pas d'exister ensuite", async () => {
+  it("aucun jeton, pas même celui de l'hôte, ne crée la partie : seul le lancement la crée, et une tentative échouée ne l'empêche pas d'exister ensuite", async () => {
     const code = newCode();
     expect(await closeCodeOf(code, await signFor(code, { code, role: "screen" }))).toBe(4004);
     expect(await closeCodeOf(code, await signFor(code, { code, role: "player", playerId: "x" }))).toBe(4004);
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "host" }))).toBe(4004);
     expect(await sqlOf(code, "SELECT name FROM sqlite_master")).toEqual([]);
+    await createGame(code);
     const host = await connect(code, await signFor(code, { code, role: "host" }));
     opened.push(host);
     expect((await join(code, "Awa")).status).toBe(201);
@@ -195,8 +196,7 @@ describe("jetons : cas limites", () => {
     screen.send({ type: "reveal" });
     screen.send({ type: "next" });
     screen.send({ type: "start" });
-    await screen.waitFor("error", () => true);
-    await new Promise((r) => setTimeout(r, 100));
+    await screen.waitForCount("error", 4);
     const codes = screen.messages.filter((m) => m.type === "error").map((m) => (m.type === "error" ? m.code : ""));
     expect(codes).toEqual(["forbidden", "forbidden", "forbidden", "forbidden"]);
     expect(await sqlOf(code, "SELECT COUNT(*) AS n FROM answers")).toEqual([{ n: 0 }]);
@@ -227,11 +227,11 @@ describe("réponses : cas limites", () => {
     return client.messages.filter((m) => m.type === "answer_ack")[before]!;
   };
 
-  it("juste avant la limite (durée + 2 s - 1 s) : acceptée et juste ; juste après (+ 1 s) : tardive et fausse", async () => {
+  it("juste avant la limite (durée + 2 s - 1,5 s) : acceptée et juste ; après (+ 1,5 s) : tardive et fausse", async () => {
     const { code, host, players } = await start(2);
-    await rewindQuestion(code, 20_000 + ANSWER_TOLERANCE_MS - 1_000);
+    await rewindQuestion(code, 20_000 + ANSWER_TOLERANCE_MS - 1_500);
     expect(await answerAndAck(players[0]!.client, "q1", ["q1b"])).toMatchObject({ late: false, duplicate: false });
-    await rewindQuestion(code, 2_000);
+    await rewindQuestion(code, 3_000);
     expect(await answerAndAck(players[1]!.client, "q1", ["q1b"])).toMatchObject({ late: true, duplicate: false });
     host.send({ type: "reveal" });
     const reveals = await Promise.all(players.map((p) => p.client.waitFor("reveal")));

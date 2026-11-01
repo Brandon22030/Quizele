@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GameSocket, MAX_FAILED_ATTEMPTS, terminalStatusFor, type ConnectionStatus } from "../../src/client/realtime/game-socket";
+import { GameSocket, MAX_FAILED_ATTEMPTS, MAX_FAILED_ATTEMPTS_AFTER_OPEN, terminalStatusFor, type ConnectionStatus } from "../../src/client/realtime/game-socket";
 
 class FakeWebSocket extends EventTarget {
   static instances: FakeWebSocket[] = [];
@@ -94,14 +94,18 @@ describe("GameSocket : fermetures définitives", () => {
 });
 
 describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
+  // Avance l'horloge simulée jusqu'à la prochaine tentative, borne comprise en temps simulé : un vi.waitFor serait borné
+  // en temps réel et échouerait sur une machine chargée.
+  async function nextInstance(): Promise<FakeWebSocket> {
+    const before = FakeWebSocket.instances.length;
+    for (let step = 0; step < 40 && FakeWebSocket.instances.length === before; step += 1) await vi.advanceTimersByTimeAsync(500);
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
+    return FakeWebSocket.instances.at(-1)!;
+  }
+
   // Chaque tentative échoue avant ouverture, comme un 401 vu par le navigateur (1006).
   async function failNextAttempt(): Promise<void> {
-    const before = FakeWebSocket.instances.length;
-    await vi.waitFor(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-      expect(FakeWebSocket.instances.length).toBeGreaterThan(before);
-    });
-    FakeWebSocket.instances.at(-1)!.serverClose(1006);
+    (await nextInstance()).serverClose(1006);
   }
 
   it(`passe à "rejected" après ${MAX_FAILED_ATTEMPTS} échecs sans jamais avoir ouvert, puis ne retente plus`, async () => {
@@ -126,5 +130,27 @@ describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
     for (let i = 0; i < MAX_FAILED_ATTEMPTS + 2; i += 1) await failNextAttempt();
     expect(statuses).not.toContain("rejected");
     expect(statuses.at(-1)).toBe("reconnecting");
+  });
+
+  it(`après une ouverture, abandonne à ${MAX_FAILED_ATTEMPTS_AFTER_OPEN} échecs consécutifs et pas avant`, async () => {
+    await firstSocket();
+    FakeWebSocket.instances[0]!.serverClose(1006);
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS_AFTER_OPEN - 2; i += 1) await failNextAttempt();
+    expect(statuses).not.toContain("rejected");
+    await failNextAttempt();
+    expect(statuses.at(-1)).toBe("rejected");
+  });
+
+  it("le compteur repart de zéro à chaque ouverture réussie", async () => {
+    await firstSocket();
+    FakeWebSocket.instances[0]!.serverClose(1006);
+    for (let round = 0; round < 3; round += 1) {
+      for (let i = 0; i < MAX_FAILED_ATTEMPTS_AFTER_OPEN - 2; i += 1) await failNextAttempt();
+      // Une ouverture réussie, aussitôt perdue : les échecs précédents ne comptent plus.
+      const attempt = await nextInstance();
+      attempt.open();
+      attempt.serverClose(1006);
+    }
+    expect(statuses).not.toContain("rejected");
   });
 });

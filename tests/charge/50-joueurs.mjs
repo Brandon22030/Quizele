@@ -1,5 +1,7 @@
-// Test de charge local : 50 joueurs simulés contre `wrangler dev` (bundle dist/server).
-// Usage : npm run build && npm run test:charge   (options : --parties=N, --joueurs=N, --lot=N, --sans-pause)
+// Test de charge local : joueurs simulés contre `wrangler dev` (bundle dist/server), parties créées par le vrai chemin
+// de lancement (D1 local + Durable Object). Mesure aussi le CPU de partie.lancer, d'une diffusion à N sockets et de
+// l'écriture de fin de partie.
+// Usage : npm run build && npm run test:charge   (options : --parties=N, --joueurs=N, --lot=N, --lancers=N, --sans-pause)
 // Aucun appel distant : le serveur écoute sur localhost et le secret est la valeur factice de wrangler.jsonc.
 import { spawn, execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
@@ -10,25 +12,17 @@ const PARTIES = Number(args.parties ?? 3);
 const JOUEURS = Number(args.joueurs ?? 50);
 // Le proxy local de wrangler dev répond 500 quand quelques centaines de POST arrivent ensemble : on inscrit par lots.
 const LOT = Number(args.lot ?? 50);
+const LANCERS = Number(args.lancers ?? 20);
 const PAUSE_HIBERNATION_MS = args["sans-pause"] ? 0 : 12_000;
 const PORT = Number(process.env.CHARGE_PORT ?? 4330);
 const BASE = process.env.CHARGE_URL ?? `http://localhost:${PORT}`;
 const CONFIG = "dist/server/wrangler.json";
 
-const encoder = new TextEncoder();
-const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
-
-async function signToken(secret, claims) {
-  const payload = b64url(encoder.encode(JSON.stringify({ c: claims.code, s: claims.sid, r: claims.role, p: claims.playerId, e: Date.now() + 3_600_000 })));
-  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-  return `${payload}.${b64url(new Uint8Array(signature))}`;
-}
-
 const SUBPROTOCOL = "quizdeszeles.v1";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const stats = (values) => {
   const sorted = [...values].sort((a, b) => a - b);
+  if (sorted.length === 0) return { n: 0, mediane: 0, p95: 0, max: 0 };
   const at = (p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
   return { n: sorted.length, mediane: at(0.5), p95: at(0.95), max: sorted.at(-1) };
 };
@@ -107,6 +101,8 @@ function workerdCpu(rootPid) {
 async function startServer() {
   if (process.env.CHARGE_URL) return { pid: null, stop: () => {} };
   if (!existsSync(CONFIG)) throw new Error("dist/server/wrangler.json absent : lancer `npm run build` d'abord.");
+  // Base D1 locale prête avant le premier lancement (migrations idempotentes, aucune ressource distante).
+  execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG], { stdio: "ignore" });
   const child = spawn("npx", ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT), "--local"], { stdio: ["ignore", "pipe", "pipe"], detached: false });
   let log = "";
   child.stdout.on("data", (d) => (log += d));
@@ -145,16 +141,22 @@ const connectTo = async (code, token) => {
 };
 
 const FORBIDDEN = /correct|explanation|reference/i;
-const QUIZ = [
-  { id: "q1", good: ["q1b"], bad: ["q1a"] },
-  { id: "q2", good: ["q2a", "q2c"], bad: ["q2a"] },
-  { id: "q3", good: ["q3b"], bad: ["q3a"] },
-];
+const QUESTIONS = Number(args.questions ?? 3);
+
+// Route locale (404 hors vars locales) : crée un quiz dans D1 puis le lance comme le ferait partie.lancer.
+async function launch(body) {
+  const res = await fetch(`${BASE}/api/parties/local`, { method: "POST", headers: { "Content-Type": "application/json", "x-local-secret": secret }, body: JSON.stringify(body) });
+  if (res.status !== 201) throw new Error(`lancement refusé (${res.status})`);
+  return res.json();
+}
 
 async function playGame(index, report, pid) {
   const cpu = () => (pid ? workerdCpu(pid) : 0);
-  const code = `L${Date.now().toString(36).slice(-4).toUpperCase()}${index}`.slice(0, 6).padEnd(6, "0");
-  const host = await connectTo(code, await signToken(secret, { code, sid: crypto.randomUUID(), role: "host" }));
+  const game = await launch({ questions: QUESTIONS });
+  const { code } = game;
+  // Multiple : un seul mauvais choix suffit à rendre la réponse fausse.
+  const QUIZ = game.quiz.map((q) => ({ id: q.id, good: q.good, bad: [q.bad[0]] }));
+  const host = await connectTo(code, game.hostToken);
 
   const cpuStart = cpu();
   const t0 = performance.now();
@@ -233,12 +235,19 @@ async function playGame(index, report, pid) {
       }
     }
   }
+  const cpuBeforeFinish = cpu();
   host.send({ type: "next" });
   const finals = await Promise.all(players.map((p) => p.client.waitFor((m) => m.type === "finished")));
-  const ranking = finals[0].message.ranking;
-  // Joueurs pairs : 3 bonnes réponses ; impairs : 0 (la mauvaise réponse du choix multiple est fausse aussi).
-  const expectedTop = ranking.filter((r) => r.score === 3).length;
-  if (ranking.length !== JOUEURS || expectedTop !== JOUEURS / 2) throw new Error(`classement faux : ${expectedTop} joueurs à 3 points`);
+  report.cpuFinish += cpu() - cpuBeforeFinish;
+  report.finishes += 1;
+  // Les joueurs reçoivent le haut du classement ; l'hôte reçoit le classement complet.
+  const hostFinal = await host.waitFor((m) => m.type === "finished");
+  const ranking = hostFinal.message.ranking;
+  if (finals.some((f) => f.message.ranking.length !== Math.min(JOUEURS, 20))) throw new Error("classement joueur de taille inattendue");
+  // Joueurs pairs : toutes les réponses justes ; impairs : aucune.
+  const expectedTop = ranking.filter((r) => r.score === QUIZ.length).length;
+  if (ranking.length !== JOUEURS || expectedTop !== JOUEURS / 2) throw new Error(`classement faux : ${expectedTop} joueurs au maximum`);
+  if (finals.some((f) => !f.message.you)) throw new Error("résultat personnel absent de la fin de partie");
   report.cpuPlay += cpu() - cpuJoined - cpuPause;
   report.cpuPause += cpuPause;
   report.incomingPlay += host.sent + players.reduce((n, p) => n + p.client.sent, 0) - incomingJoined;
@@ -248,18 +257,25 @@ async function playGame(index, report, pid) {
 }
 
 const server = await startServer();
-const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuReveal: 0, reveals: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0, retries500: 0 };
+const report = { joinMs: [], question: [], ack: [], count: [], reveal: [], reconnected: 0, cpuJoin: 0, cpuReveal: 0, reveals: 0, cpuFinish: 0, finishes: 0, cpuLaunch: 0, cpuPlay: 0, cpuPause: 0, incomingPlay: 0, leaks: 0, answers: 0, hibernationPauseMs: 0, retries500: 0 };
 let exitCode = 0;
 try {
   // Les parties successives chauffent le Worker : la première est comptée à part dans la sortie.
   if (server.pid) await sleep(1500);
   const cpuBefore = server.pid ? workerdCpu(server.pid) : null;
+  // CPU de partie.lancer seul : un quiz est créé une fois, puis relancé plusieurs fois (lecture D1, insertion, RPC du DO).
+  if (server.pid && LANCERS > 0) {
+    const { quizId } = await launch({ questions: QUESTIONS });
+    const before = workerdCpu(server.pid);
+    for (let i = 0; i < LANCERS; i += 1) await launch({ quizId });
+    report.cpuLaunch = (workerdCpu(server.pid) - before) / LANCERS;
+  }
   const wallStart = performance.now();
   for (let i = 0; i < PARTIES; i += 1) await playGame(i, report, server.pid);
   const wallMs = performance.now() - wallStart;
   const cpuAfter = server.pid ? workerdCpu(server.pid) : null;
 
-  console.log(`Parties : ${PARTIES} x ${JOUEURS} joueurs, ${QUIZ.length} questions, ${report.answers} réponses comptées, ${report.reconnected} reprises, fuites de correction : ${report.leaks}`);
+  console.log(`Parties : ${PARTIES} x ${JOUEURS} joueurs, ${QUESTIONS} questions, ${report.answers} réponses comptées, ${report.reconnected} reprises, fuites de correction : ${report.leaks}`);
   console.log(`Inscription + connexion de ${JOUEURS} joueurs (lots de ${LOT}, réessais inclus) : ${fmt(stats(report.joinMs))}`);
   console.log(`Inscriptions réessayées après un 500 du proxy local : ${report.retries500} sur ${PARTIES * JOUEURS}`);
   console.log(`Diffusion de la question (hôte -> ${JOUEURS} joueurs) : ${fmt(stats(report.question))}`);
@@ -273,6 +289,8 @@ try {
     console.log(`CPU déroulé (${report.incomingPlay} messages entrants, diffusions, reprises incluses) : ${ms(report.cpuPlay)} ms, soit ${(report.cpuPlay * 1000 / report.incomingPlay).toFixed(2)} ms par message entrant`);
     // Mesure par `ps` (centième de seconde) autour d'une révélation seule : majorant, appel à ps compris dans la fenêtre.
     console.log(`CPU d'une révélation à ${JOUEURS} sockets : ${(report.cpuReveal * 1000 / report.reveals).toFixed(0)} ms en moyenne sur ${report.reveals} révélations`);
+    if (report.cpuLaunch) console.log(`CPU de partie.lancer (${LANCERS} lancements, quiz de ${QUESTIONS} questions) : ${(report.cpuLaunch * 1000).toFixed(1)} ms en moyenne`);
+    console.log(`CPU de l'écriture de fin de partie (${JOUEURS} joueurs, ${QUESTIONS} questions, diffusion de la fin comprise) : ${(report.cpuFinish * 1000 / report.finishes).toFixed(0)} ms en moyenne sur ${report.finishes} parties`);
     if (report.hibernationPauseMs) console.log(`CPU pendant la pause d'inactivité de ${report.hibernationPauseMs / 1000} s (sockets ouverts) : ${ms(report.cpuPause)} ms`);
   }
   if (report.leaks > 0) throw new Error("correction détectée avant révélation");

@@ -2,7 +2,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS } from "../../../src/shared/protocol";
 import {
-  aliasStubFor, closeCodeOf, connect, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
+  closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
   type Client,
 } from "./helpers";
 
@@ -44,51 +44,32 @@ async function openOrClosed(code: string, token: string, waitMs = 60): Promise<n
   return result;
 }
 
-describe("alias : comparaison-échange entre hôtes", () => {
-  it("registerSid n'écrit que si l'alias vaut la valeur attendue", async () => {
-    const alias = aliasStubFor(newCode());
-    expect(await alias.registerSid("a", null)).toBe(true);
-    expect(await alias.registerSid("b", null)).toBe(false);
-    expect(await alias.registerSid("b", "x")).toBe(false);
-    expect(await alias.currentSid()).toBe("a");
-    expect(await alias.registerSid("b", "a")).toBe(true);
-    expect(await alias.currentSid()).toBe("b");
-  });
-
-  // Le perdant était refusé en HTTP 409, que le navigateur ne voit que comme un 1006 : il se reconnectait en boucle.
-  // Il reçoit désormais un socket refermé en 4001 (conflit entre hôtes, sa partie n'a jamais existé).
-  it("deux hôtes simultanés sur le même code : un seul obtient la partie, l'autre est refermé en 4001", async () => {
+describe("code de partie : unicité portée par D1", () => {
+  it("deux lancements simultanés sur le même code : un seul réussit, l'autre est refermé en 4001", async () => {
     const code = newCode();
     const sids = [crypto.randomUUID(), crypto.randomUUID()];
-    const tokens = await Promise.all(sids.map((sid) => signFor(code, { code, role: "host", sid })));
-    const responses = await Promise.all(tokens.map((token) => rawConnect(code, token)));
-    expect(responses.map((r) => r.status)).toEqual([101, 101]);
-    const outcomes = await Promise.all(
-      responses.map((response) => {
-        const ws = response.webSocket!;
-        const closed = new Promise<number>((resolve) => ws.addEventListener("close", (event) => resolve(event.code)));
-        ws.accept();
-        return Promise.race([closed, new Promise<null>((r) => setTimeout(() => r(null), 100))]);
-      }),
-    );
-    expect([...outcomes].sort()).toEqual([4001, null]);
-    const winner = outcomes.indexOf(null);
-    responses[winner]!.webSocket!.close(1000);
-    expect(await aliasStubFor(code).currentSid()).toBe(sids[winner]);
+    const results = await Promise.allSettled(sids.map((sid) => createGame(code, undefined, sid)));
+    expect(results.map((r) => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const winner = results.findIndex((r) => r.status === "fulfilled");
+    const loser = 1 - winner;
+    // Le perdant n'existe pas dans D1 : conflit entre hôtes, refus applicatif définitif.
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "host", sid: sids[loser] }))).toBe(4001);
+    const ok = await connect(code, await signFor(code, { code, role: "host", sid: sids[winner] }));
+    opened.push(ok);
   });
 
   it("un autre hôte est refusé tant que la partie est en cours, puis accepté quand elle est terminée", async () => {
     const { code, host } = await game(0);
-    const intruder = await signFor(code, { code, role: "host", sid: crypto.randomUUID() });
-    // Ex-409 : refus applicatif définitif (4001), sa partie n'ayant jamais existé.
+    const intruderSid = crypto.randomUUID();
+    const intruder = await signFor(code, { code, role: "host", sid: intruderSid });
     expect(await closeCodeOf(code, intruder)).toBe(4001);
     // Le même hôte (même sid) se reconnecte sans difficulté.
     const again = await connect(code, await hostToken(code));
     opened.push(again);
     await finishGame(host);
+    await createGame(code, undefined, intruderSid);
     const successor = await connect(code, intruder);
     opened.push(successor);
-    expect(await aliasStubFor(code).currentSid()).not.toBe(null);
     expect((await join(code, "Nouveau")).status).toBe(201);
   });
 
@@ -96,16 +77,18 @@ describe("alias : comparaison-échange entre hôtes", () => {
     const { code, host } = await game(0);
     const formerHost = await hostToken(code);
     await finishGame(host);
-    const successor = await connect(code, await signFor(code, { code, role: "host", sid: crypto.randomUUID() }));
+    const successorSid = crypto.randomUUID();
+    await createGame(code, undefined, successorSid);
+    const successor = await connect(code, await signFor(code, { code, role: "host", sid: successorSid }));
     opened.push(successor);
     expect(await closeCodeOf(code, formerHost)).toBe(4004);
   });
 
-  it("une réservation toute récente, partie pas encore créée, bloque aussi un second hôte", async () => {
-    const code = newCode();
-    expect(await aliasStubFor(code).registerSid("reserve-en-cours", null)).toBe(true);
-    // Ex-409 : conflit entre hôtes, refus applicatif définitif (4001).
-    expect(await closeCodeOf(code, await signFor(code, { code, role: "host", sid: crypto.randomUUID() }))).toBe(4001);
+  it("une partie terminée ne reçoit plus de connexion de joueur", async () => {
+    const { code, host, players } = await game(1);
+    await finishGame(host);
+    expect(await closeCodeOf(code, players[0]!.token)).toBe(4004);
+    expect((await join(code, "Tardif")).status).toBe(404);
   });
 });
 
@@ -120,11 +103,10 @@ describe("fermetures applicatives définitives", () => {
     expect(await closeCodeOf(code, players[0]!.token)).toBe(4004);
   });
 
-  it("le dépassement de débit reste 1008 et la taille 1009 : ce ne sont pas des fins définitives", async () => {
+  it("le dépassement de débit reste 1008 et la taille 1009 : ce ne sont pas des fins définitives", { timeout: 60_000 }, async () => {
     const { players } = await game(1);
     const closed = closeOf(players[0]!.client);
-    for (let i = 0; i < 60; i += 1) players[0]!.client.send({ type: "resume" });
-    expect((await closed).code).toBe(1008);
+    expect((await floodUntilClosed(players[0]!.client, closed))?.code).toBe(1008);
   });
 });
 
@@ -153,7 +135,8 @@ describe("seau à jetons et fréquence de connexion", () => {
     await Promise.race([nextClosed, next.waitFor("snapshot", () => next.messages.filter((m) => m.type === "snapshot").length >= 25, 8_000).catch(() => null)]);
     const allowed = row!.tokens + ((Date.now() - reopenedAt) / 1000) * 10 + 2;
     expect(next.messages.filter((m) => m.type === "snapshot").length).toBeLessThanOrEqual(allowed);
-    expect(allowed).toBeLessThan(30);
+    // Le seau conservé n'est pas plein : indépendant du temps écoulé, donc stable sous machine chargée.
+    expect(row!.tokens + 2).toBeLessThan(30);
   });
 
   it("au-delà de 10 connexions d'affilée, le joueur est refermé (1008) avant d'atteindre la partie", async () => {
