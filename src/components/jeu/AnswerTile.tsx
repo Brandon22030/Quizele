@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { Check } from "lucide-react";
-import { cx, TRAIT } from "./cx";
+import { cn } from "../ui/cn";
 
 export type AnswerTileState = "repos" | "choisie" | "juste" | "taReponse" | "desactivee";
 
 interface Props {
   letter: string;
+  // Rang de la tuile : l'alternance de couleur de la lettre suit la position, pas la lettre affichée.
+  index?: number;
   label: string;
   state?: AnswerTileState;
   // Sans onSelect, la tuile est une simple restitution (correction) et n'est pas focusable.
@@ -16,7 +18,7 @@ interface Props {
 }
 
 const base =
-  "flex min-h-17 w-full items-center gap-4 rounded-md border-vert-foret py-2 pr-4 pl-2 text-left text-lg leading-snug font-extrabold";
+  "flex min-h-16 w-full items-center gap-4 rounded-md border-trait border-vert-foret py-2 pr-4 pl-2 text-left text-lg leading-snug font-extrabold";
 
 const tuile: Record<AnswerTileState, string> = {
   repos: "bg-creme text-vert-foret shadow-relief",
@@ -32,31 +34,31 @@ const pastille: Partial<Record<AnswerTileState, { texte: string; classes: string
   taReponse: { texte: "Ta réponse", classes: "bg-piment text-creme", coche: false },
 };
 
-// Alternance de la couleur de la lettre comme dans la maquette : B et D sont jaunes au repos.
+// Alternance de la couleur de la lettre comme dans la maquette : les tuiles en 2e et 4e position (B, D) sont jaunes au repos.
 function lettreClasses(state: AnswerTileState, jaune: boolean): string {
   if (state === "choisie") return "bg-jaune-soleil text-vert-foret";
   if (state === "juste") return "bg-vert-nuit text-vert-eclat";
-  if (state === "taReponse" || state === "desactivee") return cx("border-dashed border-vert-foret bg-creme text-vert-foret", TRAIT);
-  return jaune ? cx("border-vert-foret bg-jaune-soleil text-vert-foret", TRAIT) : "bg-vert-foret text-jaune-soleil";
+  if (state === "taReponse" || state === "desactivee") return "border-trait border-dashed border-vert-foret bg-creme text-vert-foret";
+  return jaune ? "border-trait border-vert-foret bg-jaune-soleil text-vert-foret" : "bg-vert-foret text-jaune-soleil";
 }
 
-export function AnswerTile({ letter, label, state = "repos", onSelect, badge, className }: Props) {
-  const jaune = (letter.toUpperCase().charCodeAt(0) - 65) % 2 === 1;
+export function AnswerTile({ letter, index = 0, label, state = "repos", onSelect, badge, className }: Props) {
+  const jaune = index % 2 === 1;
   const interactive = Boolean(onSelect) && (state === "repos" || state === "choisie" || state === "desactivee");
   const infoPastille = pastille[state];
   const contenu: ReactNode = (
     <>
       <span
         aria-hidden="true"
-        className={cx("grid size-12 flex-none place-items-center rounded-sm font-affiche text-xl", lettreClasses(state, jaune))}
+        className={cn("grid size-12 flex-none place-items-center rounded-sm font-affiche text-xl", lettreClasses(state, jaune))}
       >
         {letter}
       </span>
       <span className="min-w-0 flex-1 break-words">{label}</span>
       {infoPastille ? (
         <span
-          className={cx(
-            "ml-auto inline-flex flex-none items-center gap-1 rounded-pill px-2 py-0.5 text-xs font-extrabold",
+          className={cn(
+            "ml-auto inline-flex flex-none items-center gap-1 rounded-pill px-2 py-1 text-xs font-extrabold",
             infoPastille.classes,
           )}
         >
@@ -66,7 +68,7 @@ export function AnswerTile({ letter, label, state = "repos", onSelect, badge, cl
       ) : null}
     </>
   );
-  const classes = cx(base, TRAIT, tuile[state], className);
+  const classes = cn(base, tuile[state], className);
 
   if (!interactive) {
     return <div className={classes}>{contenu}</div>;
@@ -77,7 +79,7 @@ export function AnswerTile({ letter, label, state = "repos", onSelect, badge, cl
       aria-pressed={state === "choisie"}
       disabled={state === "desactivee"}
       onClick={onSelect}
-      className={cx(
+      className={cn(
         classes,
         state === "desactivee" ? "cursor-not-allowed" : "cursor-pointer transition-all duration-100",
         state === "repos" && "active:-translate-x-1 active:translate-y-1 active:shadow-relief-appui",
@@ -97,7 +99,7 @@ interface ListeProps {
 // Marge gauche plus large que la droite : le relief des tuiles déborde vers la gauche.
 export function AnswerList({ label, className, children }: ListeProps) {
   return (
-    <div role="group" aria-label={label} className={cx("flex flex-col gap-4 pt-8 pr-4 pb-4 pl-6", className)}>
+    <div role="group" aria-label={label} className={cn("flex flex-col gap-4 pt-8 pr-4 pb-4 pl-6", className)}>
       {children}
     </div>
   );

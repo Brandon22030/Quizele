@@ -1,17 +1,13 @@
 export { AnswerList, AnswerTile, type AnswerTileState } from "./AnswerTile";
 export { AttenteAnimateur } from "./AttenteAnimateur";
-export { Bouton } from "./Bouton";
 export { Chrono } from "./Chrono";
 export { CodeCases } from "./CodeCases";
 export { Classement, type LigneClassement } from "./Classement";
 export { EcranJeu } from "./EcranJeu";
 export { EnonceQuestion, EnteteQuestion } from "./EnteteQuestion";
-export { Etoile } from "./Etoile";
 export { Explication } from "./Explication";
 export { Jauge } from "./Jauge";
 export { AttenteQuestionSuivante, ReponseEnregistree, ValidationMultiple } from "./MessagesJeu";
-export { Papier } from "./Papier";
-export { Pilule } from "./Pilule";
 export { Podium, type PlacePodium } from "./Podium";
 export { ListeJoueurs, PuceJoueur, PuceReste } from "./PuceJoueur";
 export { Rebond } from "./Rebond";

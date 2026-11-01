@@ -1,5 +1,5 @@
 import { Timer } from "lucide-react";
-import { Pilule } from "./Pilule";
+import { Pilule } from "../ui/pilule";
 import { formatDuree } from "./formats";
 
 interface Props {
@@ -24,11 +24,11 @@ export function ScoreFinal({ score, total, totalMs, rank, playerCount, message }
       </p>
       <p className="mt-2 font-affiche text-xl">bonnes réponses</p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        <Pilule ton="creme">
-          <Timer aria-hidden="true" className="size-4.5" />
+        <Pilule variante="creme">
+          <Timer aria-hidden="true" className="size-5" />
           Temps : {formatDuree(totalMs)}
         </Pilule>
-        <Pilule ton="soleil">
+        <Pilule variante="soleil">
           Rang : {rank} / {playerCount}
         </Pilule>
       </div>

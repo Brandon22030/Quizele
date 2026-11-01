@@ -1,21 +1,19 @@
-import { motion, useReducedMotion } from "motion/react";
-import { cx } from "./cx";
+import { cn } from "../ui/cn";
 
 interface Props {
+  taille?: "normal" | "petit";
   className?: string;
 }
 
-// Trois points qui rebondissent : attente d'un événement du serveur. Fixes sous prefers-reduced-motion.
-export function Rebond({ className }: Props) {
-  const reduced = useReducedMotion();
+// Trois points qui rebondissent : attente d'un événement du serveur. Le CSS les fige sous prefers-reduced-motion.
+export function Rebond({ taille = "normal", className }: Props) {
   return (
-    <span aria-hidden="true" className={cx("inline-flex items-center", className)}>
+    <span aria-hidden="true" className={cn("inline-flex items-center", className)}>
       {[0, 1, 2].map((i) => (
-        <motion.i
+        <i
           key={i}
-          className="mx-1 inline-block size-3.5 rounded-full bg-vert-foret"
-          animate={reduced ? undefined : { y: [0, -12, 0, 0] }}
-          transition={{ duration: 1, repeat: Infinity, delay: i * 0.15, times: [0, 0.4, 0.8, 1] }}
+          className={cn("mx-1 inline-block animate-rebond rounded-full bg-vert-foret", taille === "petit" ? "size-2" : "size-3")}
+          style={{ animationDelay: `${i * 0.15}s` }}
         />
       ))}
     </span>

@@ -1,12 +1,13 @@
 export const CODE_LENGTH = 6;
 
-// Majuscules sans accent, lettres et chiffres seulement : même alphabet que le code serveur.
+// Alphabet du code serveur : sans 0, O, 1 ni I, trop faciles à confondre à l'oral et à l'écran.
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+// Majuscules sans accent, uniquement les caractères de l'alphabet du serveur.
 export function sanitizeCode(raw: string): string {
-  return raw
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
+  return Array.from(raw.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase())
+    .filter((c) => ALPHABET.includes(c))
+    .join("");
 }
 
 export interface CodeEdit {
@@ -36,4 +37,11 @@ export function backspaceAt(value: string, index: number): CodeEdit {
   if (index === 0 || value.length === 0) return { value, focus: 0 };
   const prev = Math.min(index, value.length) - 1;
   return { value: value.slice(0, prev) + value.slice(prev + 1), focus: prev };
+}
+
+// Événement `change` d'une case. Sur les claviers Android, `key` vaut « Unidentified » : l'effacement
+// n'arrive donc pas par keydown mais par un change avec une valeur vide.
+export function changeAt(value: string, index: number, raw: string): CodeEdit {
+  if (raw === "") return value[index] ? backspaceAt(value, index) : { value, focus: Math.min(index, CODE_LENGTH - 1) };
+  return insertAt(value, index, extractTyped(value[index], raw));
 }

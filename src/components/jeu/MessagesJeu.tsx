@@ -1,18 +1,28 @@
+import { Button } from "../ui/button";
+import { cn } from "../ui/cn";
 import { Rebond } from "./Rebond";
-import { Bouton } from "./Bouton";
-import { TRAIT, cx } from "./cx";
 
-const encart = "rounded-md border-vert-foret bg-creme p-4 text-center shadow-relief-sm";
+const encart = "rounded-md border-trait border-vert-foret bg-creme p-4 text-center shadow-relief-sm";
+
+interface EnregistreeProps {
+  // La région role=status reste dans le DOM : seul son contenu apparaît, ce qui garantit l'annonce.
+  active?: boolean;
+  className?: string;
+}
 
 // Correction masquée par l'animateur : rien, ici, ne doit laisser deviner si la réponse était juste.
-export function ReponseEnregistree({ className }: { className?: string }) {
+export function ReponseEnregistree({ active = true, className }: EnregistreeProps) {
   return (
-    <div role="status" className={cx(encart, TRAIT, className)}>
-      <p className="font-affiche text-xl">Réponse enregistrée</p>
-      <p className="mt-1 flex items-center justify-center gap-2 text-sm font-semibold text-vert-mousse">
-        <Rebond className="scale-60" />
-        La correction arrive à la fin de la partie.
-      </p>
+    <div role="status" className={className}>
+      {active ? (
+        <div className={encart}>
+          <p className="font-affiche text-xl">Réponse enregistrée</p>
+          <p className="mt-1 flex items-center justify-center gap-2 text-sm font-semibold text-vert-mousse">
+            <Rebond taille="petit" />
+            La correction arrive à la fin de la partie.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -26,22 +36,21 @@ interface ValidationProps {
 // Question à plusieurs bonnes réponses : rien n'est envoyé tant que le joueur ne valide pas.
 export function ValidationMultiple({ selectedCount, onValidate, className }: ValidationProps) {
   const vide = selectedCount === 0;
+  const pluriel = selectedCount > 1 ? "s" : "";
   return (
-    <div className={cx(encart, TRAIT, className)}>
-      <p className="font-bold">
-        {vide ? "Sélectionne une ou plusieurs réponses." : `${selectedCount} réponse${selectedCount > 1 ? "s" : ""} sélectionnée${selectedCount > 1 ? "s" : ""}.`}
-      </p>
-      <Bouton bloc disabled={vide} onClick={onValidate} className="mt-3">
+    <div className={cn(encart, className)}>
+      <p className="font-bold">{vide ? "Sélectionne une ou plusieurs réponses." : `${selectedCount} réponse${pluriel} sélectionnée${pluriel}.`}</p>
+      <Button bloc disabled={vide} onClick={onValidate} className="mt-3">
         Valider la sélection
-      </Bouton>
+      </Button>
     </div>
   );
 }
 
 export function AttenteQuestionSuivante({ className }: { className?: string }) {
   return (
-    <p role="status" className={cx("flex items-center justify-center gap-2 text-sm font-semibold text-vert-mousse", className)}>
-      <Rebond className="scale-60" />
+    <p role="status" className={cn("flex items-center justify-center gap-2 text-sm font-semibold text-vert-mousse", className)}>
+      <Rebond taille="petit" />
       En attente de la question suivante…
     </p>
   );

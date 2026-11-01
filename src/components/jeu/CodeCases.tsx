@@ -1,8 +1,10 @@
 import { useRef, type ClipboardEvent, type KeyboardEvent } from "react";
-import { CODE_LENGTH, backspaceAt, extractTyped, insertAt } from "./code-input";
-import { cx, TRAIT } from "./cx";
+import { CODE_LENGTH, backspaceAt, changeAt, insertAt } from "./code-input";
+import { cn } from "../ui/cn";
 
 interface Props {
+  // Id du libellé visible qui nomme le groupe.
+  labelledBy: string;
   value: string;
   onChange: (value: string) => void;
   // Appelé quand les 6 cases sont remplies.
@@ -16,7 +18,7 @@ interface Props {
 
 const cases = Array.from({ length: CODE_LENGTH }, (_, i) => i);
 
-export function CodeCases({ value, onChange, onComplete, disabled, invalid, describedBy, autoFocus, className }: Props) {
+export function CodeCases({ labelledBy, value, onChange, onComplete, disabled, invalid, describedBy, autoFocus, className }: Props) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   // Une seule case est dans l'ordre de tabulation : la première vide, ou la dernière si le code est complet.
   const active = Math.min(value.length, CODE_LENGTH - 1);
@@ -46,7 +48,7 @@ export function CodeCases({ value, onChange, onComplete, disabled, invalid, desc
   };
 
   return (
-    <div role="group" aria-label="Code de la partie" className={cx("flex justify-center gap-2", className)}>
+    <div role="group" aria-labelledby={labelledBy} className={cn("flex justify-center gap-2", className)}>
       {cases.map((i) => (
         <input
           key={i}
@@ -54,7 +56,7 @@ export function CodeCases({ value, onChange, onComplete, disabled, invalid, desc
             refs.current[i] = el;
           }}
           value={value[i] ?? ""}
-          onChange={(e) => apply(insertAt(value, i, extractTyped(value[i], e.target.value)))}
+          onChange={(e) => apply(changeAt(value, i, e.target.value))}
           onKeyDown={(e) => onKeyDown(i, e)}
           onPaste={(e) => onPaste(i, e)}
           onFocus={(e) => e.currentTarget.select()}
@@ -70,9 +72,8 @@ export function CodeCases({ value, onChange, onComplete, disabled, invalid, desc
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          className={cx(
-            "h-16 w-12 rounded-sm border-vert-foret bg-creme text-center font-affiche text-2xl text-vert-foret uppercase shadow-relief-sm focus:bg-jaune-soleil",
-            TRAIT,
+          className={cn(
+            "h-16 w-12 rounded-sm border-trait border-vert-foret bg-creme text-center font-affiche text-2xl text-vert-foret uppercase shadow-relief-sm focus:bg-jaune-soleil",
             invalid && "border-piment",
           )}
         />

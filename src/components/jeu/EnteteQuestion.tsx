@@ -1,24 +1,27 @@
 import type { QuestionKind } from "../../shared/protocol";
-import { Papier } from "./Papier";
-import { Pilule } from "./Pilule";
+import { Papier } from "../ui/papier";
+import { Pilule } from "../ui/pilule";
 import { libelleJustes } from "./formats";
 
 interface EnteteProps {
   index: number;
   total: number;
-  score: number;
+  // Absent quand la correction est masquée : le score trahirait la justesse des réponses.
+  score?: number;
 }
 
 export function EnteteQuestion({ index, total, score }: EnteteProps) {
   return (
     <header className="flex items-center justify-between px-4 pt-2">
-      <Pilule ton="foret" penchee>
+      <Pilule variante="foret" inclinaison="gauche">
         Question {index} sur {total}
       </Pilule>
-      <Pilule ton="creme">
-        <span className="sr-only">Ton score : </span>
-        {libelleJustes(score)}
-      </Pilule>
+      {score === undefined ? null : (
+        <Pilule variante="creme">
+          <span className="sr-only">Ton score : </span>
+          {libelleJustes(score)}
+        </Pilule>
+      )}
     </header>
   );
 }

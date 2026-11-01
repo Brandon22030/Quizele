@@ -1,4 +1,4 @@
-import { cx, TRAIT } from "./cx";
+import { cn } from "../ui/cn";
 
 interface Props {
   value: number;
@@ -19,7 +19,7 @@ export function Jauge({ value, max, label, className }: Props) {
       aria-valuemax={max}
       aria-valuenow={value}
       aria-valuetext={`${value} sur ${max}`}
-      className={cx("h-5 overflow-hidden rounded-pill border-vert-nuit bg-vert-nuit", TRAIT, className)}
+      className={cn("h-5 overflow-hidden rounded-pill border-trait border-vert-nuit bg-vert-nuit", className)}
     >
       <div className="h-full bg-jaune-soleil transition-all duration-300" style={{ width: `${part}%` }} />
     </div>

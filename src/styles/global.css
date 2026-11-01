@@ -25,6 +25,7 @@
   --color-vert-mousse: #2b5a3b;  /* texte secondaire (5,58 sur jaune, 7,25 sur crème) */
   --color-vert-eclat: #3cc24f;   /* état juste, texte vert-nuit dessus (6,24) */
   --color-piment: #c8241b;       /* état faux, chrono critique, suppression (crème dessus : 5,12) */
+  --color-separateur: color-mix(in srgb, var(--color-vert-foret) 25%, transparent); /* filets pointillés sur papier crème */
   --color-mangue: #ff8a1f;       /* attention, chrono <= 10 s (vert-nuit dessus : 6,16) */
 
   /* Polices : une par rôle */
@@ -72,13 +73,29 @@
   --spacing-4: 16px;
   --spacing-5: 20px;
   --spacing-6: 24px;
+  --spacing-7: 28px;  /* pastille de OptionMode */
   --spacing-8: 32px;
+  --spacing-9: 36px;  /* pastille de Marque */
   --spacing-10: 40px;
   --spacing-11: 44px; /* cible tactile minimale */
   --spacing-12: 48px;
   --spacing-14: 56px; /* bouton principal */
   --spacing-16: 64px;
   --spacing-20: 80px;
+  --spacing-64: 256px; /* largeur du menu de compte */
+  /* Gabarits propres aux écrans de jeu (maquette QZ-001), nommés plutôt que numérotés : ils sortent de la grille de 4 px d'usage courant. */
+  --spacing-chrono: 128px;       /* anneau du chrono */
+  --spacing-scene: 300px;        /* scène de l'attente et du verdict juste (explosion de 300) */
+  --spacing-scene-coeur: 288px;  /* explosion crème de l'attente, posée sur celle de 300 */
+  --spacing-scene-basse: 260px;  /* scène du verdict « Pas cette fois » */
+  --spacing-badge-grand: 240px;  /* étoile « JUSTE ! » */
+  --spacing-badge-moyen: 220px;  /* étoile « Pas cette fois ! » */
+  --spacing-badge-petit: 144px;  /* étoile des écrans terminaux */
+  --spacing-marche: 104px;       /* largeur des marches 2 et 3 du podium */
+  --spacing-marche-large: 112px; /* largeur de la marche 1 */
+  --spacing-marche-haute: 120px; /* hauteur de la marche 1 */
+  --spacing-marche-moyenne: 80px;/* hauteur de la marche 2 */
+  --spacing-ecran: 400px;        /* largeur maximale d'une planche mobile dans le styleguide */
 
   /* Ombres « relief » : dures, sans flou, décalées vers le bas à gauche comme l'affiche */
   --shadow-relief-sm: -3px 3px 0 0 var(--color-vert-foret);
@@ -97,6 +114,7 @@
   --animate-tremble: tremble 0.5s ease-in-out infinite;
   --animate-brille: brille 1.4s linear infinite;
   --animate-tourne: tourne 14s linear infinite;
+  --animate-rebond: rebond 1s ease-in-out infinite;
 
   @keyframes pop {
     from { transform: scale(0.4) rotate(-8deg); opacity: 0; }
@@ -113,6 +131,10 @@
   }
   @keyframes tourne {
     to { transform: rotate(360deg); }
+  }
+  @keyframes rebond {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(calc(var(--spacing-3) * -1)); }
   }
 }
 
@@ -166,6 +188,21 @@
   .resume-sans-marqueur::-webkit-details-marker {
     display: none;
   }
+  /* Trame pointillée façon impression des écrans joueurs, très discrète. */
+  .trame-points {
+    background-image: radial-gradient(color-mix(in srgb, var(--color-vert-foret) 10%, transparent) 1.2px, transparent 1.4px);
+    background-size: var(--spacing-4) var(--spacing-4);
+  }
+  /* Anneau du chrono : --progression (0 à 100) vient du composant, --couleur-anneau du niveau (data-niveau). */
+  .anneau-chrono {
+    --couleur-anneau: var(--color-vert-foret);
+    background: conic-gradient(var(--couleur-anneau) calc(var(--progression, 100) * 1%), color-mix(in srgb, var(--color-vert-foret) 15%, transparent) 0);
+    -webkit-mask: radial-gradient(closest-side, transparent 78%, var(--color-vert-foret) 79%);
+    mask: radial-gradient(closest-side, transparent 78%, var(--color-vert-foret) 79%);
+  }
+  .anneau-chrono[data-niveau="critique"] {
+    --couleur-anneau: var(--color-piment);
+  }
   .bord-dechire {
     mask-image: var(--masque-dechire);
     mask-size: 100% 100%;
@@ -205,7 +242,8 @@
   .animate-pop,
   .animate-tremble,
   .animate-brille,
-  .animate-tourne {
+  .animate-tourne,
+  .animate-rebond {
     animation: none;
   }
   *,

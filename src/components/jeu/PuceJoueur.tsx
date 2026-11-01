@@ -1,23 +1,19 @@
-import { useReducedMotion } from "motion/react";
-import { cx, TRAIT } from "./cx";
+import { cn } from "../ui/cn";
 import { initiale } from "./formats";
 
 interface Props {
   pseudo: string;
-  // Vient d'arriver : fond jaune et animation d'apparition.
+  // Vient d'arriver : fond jaune et animation d'apparition (coupée par le CSS sous prefers-reduced-motion).
   nouveau?: boolean;
   className?: string;
 }
 
 export function PuceJoueur({ pseudo, nouveau = false, className }: Props) {
-  const reduced = useReducedMotion();
   return (
     <span
-      className={cx(
-        "inline-flex min-h-10 items-center gap-2 rounded-pill border-vert-foret py-0 pr-3 pl-1 text-sm font-extrabold",
-        TRAIT,
-        nouveau ? "bg-jaune-soleil" : "bg-creme",
-        nouveau && !reduced && "animate-pop",
+      className={cn(
+        "inline-flex min-h-10 items-center gap-2 rounded-pill border-trait border-vert-foret py-0 pr-3 pl-1 text-sm font-extrabold",
+        nouveau ? "animate-pop bg-jaune-soleil" : "bg-creme",
         className,
       )}
     >
@@ -32,7 +28,7 @@ export function PuceJoueur({ pseudo, nouveau = false, className }: Props) {
 // Puce de débordement : « + 5 autres ».
 export function PuceReste({ count }: { count: number }) {
   return (
-    <span className={cx("inline-flex min-h-10 items-center rounded-pill border-vert-foret px-3 text-sm font-extrabold", TRAIT)}>
+    <span className="inline-flex min-h-10 items-center rounded-pill border-trait border-vert-foret px-3 text-sm font-extrabold">
       + {count} {count > 1 ? "autres" : "autre"}
     </span>
   );
@@ -40,7 +36,7 @@ export function PuceReste({ count }: { count: number }) {
 
 interface ListeProps {
   players: { id: string; pseudo: string }[];
-  // Pseudo du dernier arrivé, mis en avant.
+  // Identifiant du dernier arrivé, mis en avant.
   newestId?: string;
   max?: number;
   label?: string;
