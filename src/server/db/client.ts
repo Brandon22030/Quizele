@@ -6,11 +6,13 @@ export const getDb = (d1: D1Database) => drizzle(d1, { schema });
 
 export type Db = ReturnType<typeof getDb>;
 
-// D1 refuse plus de 100 paramètres liés par requête : on découpe les insertions multi-lignes en conséquence.
+// Offre gratuite D1 : 100 paramètres liés par requête, 50 requêtes par invocation, chaque instruction d'un batch
+// comptant pour une requête. Les écritures multi-lignes sont donc découpées au plus près de 100 paramètres.
 export const D1_MAX_BOUND_PARAMS = 100;
 
-export function chunkRows<T>(rows: readonly T[], columnCount: number): T[][] {
-  const size = Math.max(1, Math.floor(D1_MAX_BOUND_PARAMS / columnCount));
+// fixedParams : paramètres présents une seule fois par instruction (garde, identifiant commun).
+export function chunkRows<T>(rows: readonly T[], paramsPerRow: number, fixedParams = 0): T[][] {
+  const size = Math.max(1, Math.floor((D1_MAX_BOUND_PARAMS - fixedParams) / paramsPerRow));
   const chunks: T[][] = [];
   for (let i = 0; i < rows.length; i += size) chunks.push(rows.slice(i, i + size));
   return chunks;

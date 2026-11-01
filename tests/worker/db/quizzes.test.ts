@@ -114,7 +114,7 @@ describe("loadQuizSnapshot", () => {
       shuffle: true,
       questions: [sampleQuestion({ reference: "Genèse 1", explanation: "Parce que" }), sampleQuestion({ type: "true_false", prompt: "Vrai ?" })],
     });
-    const snapshot = await loadQuizSnapshot(db, quizId);
+    const snapshot = await loadQuizSnapshot(db, "alice", quizId);
     expect(snapshot).toMatchObject({ quizId, ownerId: "alice", title: "Snap", shuffle: true, mode: "together" });
     expect(snapshot?.questions).toHaveLength(2);
     expect(snapshot?.questions[0]).toMatchObject({ reference: "Genèse 1", explanation: "Parce que", type: "single" });
@@ -125,8 +125,8 @@ describe("loadQuizSnapshot", () => {
   });
 
   it("renvoie null pour un quiz inconnu et gère un quiz sans question", async () => {
-    expect(await loadQuizSnapshot(db, "inconnu")).toBeNull();
+    expect(await loadQuizSnapshot(db, "alice", "inconnu")).toBeNull();
     const quizId = await createQuiz(db, "alice", { title: "Vide" });
-    expect((await loadQuizSnapshot(db, quizId))?.questions).toEqual([]);
+    expect((await loadQuizSnapshot(db, "alice", quizId))?.questions).toEqual([]);
   });
 });

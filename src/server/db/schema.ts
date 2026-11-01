@@ -11,6 +11,17 @@ export type QuestionDuration = (typeof QUESTION_DURATIONS)[number];
 export type GameMode = (typeof GAME_MODES)[number];
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
 
+// Plafonds de stockage. L'éditeur (zod, QZ-002-08) doit imposer les mêmes valeurs ou plus strictes : ces CHECK ne
+// sont qu'un filet contre l'enflure de la base, pas la validation affichée à l'utilisateur.
+export const MAX_QUESTIONS_PER_QUIZ = 50;
+export const MAX_OPTIONS_PER_QUESTION = 4;
+export const PROMPT_MAX_CHARS = 300;
+export const OPTION_LABEL_MAX_CHARS = 200;
+// Le pseudo est borné à 20 graphèmes par le protocole, mais un graphème emoji compte plusieurs caractères pour
+// length() de SQLite : borner à 20 ici rejetterait des pseudos valides et ferait échouer tout le bilan de fin de partie.
+// 200 = longueur brute maximale acceptée par pseudoSchema avant normalisation.
+export const PSEUDO_MAX_CHARS = 200;
+
 const id = () =>
   text("id")
     .primaryKey()
@@ -133,6 +144,7 @@ export const questions = sqliteTable(
     index("questions_quiz_position_idx").on(t.quizId, t.position),
     check("questions_type_check", inList("type", QUESTION_TYPES)),
     check("questions_duration_check", inList("duration_sec", QUESTION_DURATIONS)),
+    check("questions_prompt_length_check", sql.raw(`length("prompt") <= ${PROMPT_MAX_CHARS}`)),
   ],
 );
 
@@ -148,7 +160,10 @@ export const options = sqliteTable(
     label: text("label").notNull().default(""),
     isCorrect: integer("is_correct", { mode: "boolean" }).notNull().default(false),
   },
-  (t) => [index("options_question_position_idx").on(t.questionId, t.position)],
+  (t) => [
+    index("options_question_position_idx").on(t.questionId, t.position),
+    check("options_label_length_check", sql.raw(`length("label") <= ${OPTION_LABEL_MAX_CHARS}`)),
+  ],
 );
 
 // id = sid de la partie (nom du Durable Object) ; code = porte d'entrée courte, réutilisable une fois la partie terminée.
@@ -176,6 +191,8 @@ export const gameSessions = sqliteTable(
       .where(sql`${t.status} <> 'ended'`),
     index("game_sessions_owner_idx").on(t.ownerId, t.createdAt),
     index("game_sessions_created_idx").on(t.createdAt),
+    index("game_sessions_ended_idx").on(t.endedAt),
+    index("game_sessions_quiz_idx").on(t.quizId),
     check("game_sessions_mode_check", inList("mode", GAME_MODES)),
     check("game_sessions_status_check", inList("status", SESSION_STATUSES)),
   ],
@@ -193,7 +210,11 @@ export const sessionPlayers = sqliteTable(
     totalTimeMs: integer("total_time_ms").notNull().default(0),
     rank: integer("rank").notNull(),
   },
-  (t) => [index("session_players_session_rank_idx").on(t.sessionId, t.rank)],
+  // Rang strict (index + 1 dans le classement du Durable Object) : l'unicité empêche un bilan écrit deux fois.
+  (t) => [
+    uniqueIndex("session_players_session_rank_idx").on(t.sessionId, t.rank),
+    check("session_players_pseudo_length_check", sql.raw(`length("pseudo") BETWEEN 1 AND ${PSEUDO_MAX_CHARS}`)),
+  ],
 );
 
 // Agrégats par question, figés à la fin de la partie : pas de ligne par réponse individuelle.
@@ -212,7 +233,7 @@ export const questionStats = sqliteTable(
     correctCount: integer("correct_count").notNull().default(0),
     distribution: text("distribution", { mode: "json" }).$type<Record<string, number>>().notNull(),
   },
-  (t) => [index("question_stats_session_position_idx").on(t.sessionId, t.position)],
+  (t) => [uniqueIndex("question_stats_session_position_idx").on(t.sessionId, t.position)],
 );
 
 export const quizzesRelations = relations(quizzes, ({ many }) => ({ questions: many(questions) }));

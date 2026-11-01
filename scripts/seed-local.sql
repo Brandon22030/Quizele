@@ -1,10 +1,15 @@
 -- Données de développement local uniquement : aucun secret, comptes factices.
--- Rejouable : les lignes existantes sont écrasées.
-INSERT OR REPLACE INTO user (id, name, email, email_verified, created_at, updated_at)
-VALUES ('seed-user', 'Animateur de démonstration', 'demo@example.invalid', 1, 1767225600000, 1767225600000);
+-- Rejouable : les lignes existantes sont mises à jour sur place. Pas de INSERT OR REPLACE : il supprime puis
+-- réinsère la ligne, ce qui déclencherait les ON DELETE CASCADE (quiz, parties jouées) du compte de démonstration.
+INSERT INTO user (id, name, email, email_verified, created_at, updated_at)
+VALUES ('seed-user', 'Animateur de démonstration', 'demo@example.invalid', 1, 1767225600000, 1767225600000)
+ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, email_verified = excluded.email_verified, updated_at = excluded.updated_at;
 
-INSERT OR REPLACE INTO quizzes (id, owner_id, title, description, category, mode, show_correct_answer, shuffle, created_at, updated_at)
-VALUES ('seed-quiz', 'seed-user', 'Quiz de démonstration', 'Trois questions pour essayer le jeu.', 'Démonstration', 'together', 1, 0, 1767225600000, 1767225600000);
+INSERT INTO quizzes (id, owner_id, title, description, category, mode, show_correct_answer, shuffle, created_at, updated_at)
+VALUES ('seed-quiz', 'seed-user', 'Quiz de démonstration', 'Trois questions pour essayer le jeu.', 'Démonstration', 'together', 1, 0, 1767225600000, 1767225600000)
+ON CONFLICT(id) DO UPDATE SET owner_id = excluded.owner_id, title = excluded.title, description = excluded.description,
+  category = excluded.category, mode = excluded.mode, show_correct_answer = excluded.show_correct_answer,
+  shuffle = excluded.shuffle, updated_at = excluded.updated_at;
 
 DELETE FROM questions WHERE quiz_id = 'seed-quiz';
 

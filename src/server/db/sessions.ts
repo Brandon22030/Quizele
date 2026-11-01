@@ -1,5 +1,6 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db } from "./client";
+import { NotFoundError } from "./quizzes";
 import { gameSessions, type GameMode } from "./schema";
 
 // Sans 0/O/1/I : le code est lu à voix haute et recopié à la main.
@@ -27,12 +28,19 @@ export function generateGameCode(random: (max: number) => number = (max) => cryp
 const isUniqueViolation = (error: unknown): boolean =>
   /UNIQUE constraint failed/i.test(`${error} ${(error as { cause?: unknown })?.cause}`);
 
-// L'unicité est garantie par l'index partiel : on réessaie avec un autre code en cas de collision avec une partie active.
+// SERVEUR UNIQUEMENT : appelé par l'action de lancement de partie (partie.lancer, QZ-002-07) après loadQuizSnapshot.
+// L'insertion ne part que si le quiz appartient à ownerId, dans la même requête : aucune fenêtre entre contrôle et écriture.
+// L'unicité du code est garantie par l'index partiel : on réessaie avec un autre code en cas de collision.
 export async function createGameSession(db: Db, input: NewGameSession): Promise<{ id: string; code: string }> {
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     const code = generateGameCode();
     try {
-      await db.insert(gameSessions).values({ ...input, code, status: "lobby" });
+      const result = await db.run(sql`INSERT INTO game_sessions
+        (id, code, owner_id, quiz_id, quiz_title, mode, show_correct_answer, shuffle, status, created_at)
+        SELECT ${input.id}, ${code}, owner_id, id, ${input.quizTitle}, ${input.mode}, ${input.showCorrectAnswer ? 1 : 0},
+          ${input.shuffle ? 1 : 0}, 'lobby', ${Date.now()}
+        FROM quizzes WHERE id = ${input.quizId} AND owner_id = ${input.ownerId}`);
+      if (result.meta.changes === 0) throw new NotFoundError("Quiz introuvable");
       return { id: input.id, code };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;

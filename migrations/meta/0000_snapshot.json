@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "838e48c2-3da1-4d3e-8e09-10eccc855291",
+  "id": "0d926991-4796-4ac6-b33f-763c8763d9a7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "account": {
@@ -232,6 +232,20 @@
             "created_at"
           ],
           "isUnique": false
+        },
+        "game_sessions_ended_idx": {
+          "name": "game_sessions_ended_idx",
+          "columns": [
+            "ended_at"
+          ],
+          "isUnique": false
+        },
+        "game_sessions_quiz_idx": {
+          "name": "game_sessions_quiz_idx",
+          "columns": [
+            "quiz_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -343,7 +357,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "options_label_length_check": {
+          "name": "options_label_length_check",
+          "value": "length(\"label\") <= 200"
+        }
+      }
     },
     "question_stats": {
       "name": "question_stats",
@@ -421,7 +440,7 @@
             "session_id",
             "position"
           ],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -540,6 +559,10 @@
         "questions_duration_check": {
           "name": "questions_duration_check",
           "value": "\"duration_sec\" IN (10, 20, 30, 60)"
+        },
+        "questions_prompt_length_check": {
+          "name": "questions_prompt_length_check",
+          "value": "length(\"prompt\") <= 300"
         }
       }
     },
@@ -805,7 +828,7 @@
             "session_id",
             "rank"
           ],
-          "isUnique": false
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -825,7 +848,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "session_players_pseudo_length_check": {
+          "name": "session_players_pseudo_length_check",
+          "value": "length(\"pseudo\") BETWEEN 1 AND 200"
+        }
+      }
     },
     "user": {
       "name": "user",

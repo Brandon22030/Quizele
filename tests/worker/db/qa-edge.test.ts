@@ -143,7 +143,7 @@ describe("bonnes réponses : aucune lecture destinée au client ne renvoie is_co
   it("seuls getQuizForEditor (propriétaire) et loadQuizSnapshot portent la correction", async () => {
     const quizId = await createQuiz(db, "alice", { title: "Q", questions: [sampleQuestion()] });
     expect(leaks(await getQuizForEditor(db, "alice", quizId))).toBe(true);
-    expect(leaks(await loadQuizSnapshot(db, quizId))).toBe(true);
+    expect(leaks(await loadQuizSnapshot(db, "alice", quizId))).toBe(true);
     expect(leaks(await getQuizForEditor(db, "bob", quizId))).toBe(false);
   });
 });
@@ -184,6 +184,11 @@ describe("contraintes CHECK", () => {
 });
 
 describe("code de partie", () => {
+  // createGameSession exige un quiz appartenant à l'animateur.
+  beforeEach(async () => {
+    await env.DB.prepare("INSERT INTO quizzes (id, owner_id, title, created_at, updated_at) VALUES ('qa-quiz', 'alice', 'Q', 0, 0)").run();
+  });
+
   it("alphabet : jamais 0, O, 1, I, ni minuscule, sur un grand tirage", () => {
     const seen = new Set<string>();
     for (let i = 0; i < 3000; i++) for (const c of generateGameCode()) seen.add(c);
@@ -207,7 +212,7 @@ describe("code de partie", () => {
   it("collision avec une partie active : réessaie et obtient un autre code", async () => {
     await db.insert(gameSessions).values(sessionRow("s0", "AAAAAA", { status: "lobby" }));
     forceCodes(2, 5);
-    const { code } = await createGameSession(db, { id: "s1", ownerId: "alice", quizId: null as never, quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false });
+    const { code } = await createGameSession(db, { id: "s1", ownerId: "alice", quizId: "qa-quiz", quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false });
     expect(code).toBe("FFFFFF");
     expect((await findActiveSessionByCode(db, "AAAAAA"))?.id).toBe("s0");
   });
@@ -216,14 +221,14 @@ describe("code de partie", () => {
     await db.insert(gameSessions).values(sessionRow("s0", "AAAAAA", { status: "running" }));
     forceCodes(1000, 0);
     await expect(
-      createGameSession(db, { id: "s1", ownerId: "alice", quizId: null as never, quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
+      createGameSession(db, { id: "s1", ownerId: "alice", quizId: "qa-quiz", quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
     ).rejects.toThrow("Aucun code de partie disponible");
     expect(await count("game_sessions")).toBe(1);
   });
 
   it("n'avale pas une erreur qui n'est pas une collision (propriétaire inconnu)", async () => {
     await expect(
-      createGameSession(db, { id: "s1", ownerId: "fantome", quizId: null as never, quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
+      createGameSession(db, { id: "s1", ownerId: "fantome", quizId: "qa-quiz", quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
     ).rejects.toThrow();
   });
 
@@ -231,10 +236,10 @@ describe("code de partie", () => {
     await db.insert(gameSessions).values(sessionRow("s0", "AAAAAA", { status: "running" }));
     forceCodes(1000, 0);
     await expect(
-      createGameSession(db, { id: "s1", ownerId: "alice", quizId: null as never, quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
+      createGameSession(db, { id: "s1", ownerId: "alice", quizId: "qa-quiz", quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false }),
     ).rejects.toThrow();
     await saveSessionResults(db, "s0", [], []);
-    const { code } = await createGameSession(db, { id: "s2", ownerId: "alice", quizId: null as never, quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false });
+    const { code } = await createGameSession(db, { id: "s2", ownerId: "alice", quizId: "qa-quiz", quizTitle: "Q", mode: "together", showCorrectAnswer: true, shuffle: false });
     expect(code).toBe("AAAAAA");
     expect((await findActiveSessionByCode(db, "AAAAAA"))?.id).toBe("s2");
   });
@@ -435,7 +440,7 @@ describe("seed local rejouable", () => {
     const second = await Promise.all(["quizzes", "questions", "options"].map(count));
     expect(first).toEqual([1, 3, 10]);
     expect(second).toEqual(first);
-    const snap = await loadQuizSnapshot(db, "seed-quiz");
+    const snap = await loadQuizSnapshot(db, "seed-user", "seed-quiz");
     expect(snap?.questions).toHaveLength(3);
     for (const q of snap!.questions) {
       expect(q.options.length).toBeGreaterThanOrEqual(2);

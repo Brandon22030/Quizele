@@ -37,13 +37,16 @@ CREATE TABLE `game_sessions` (
 CREATE UNIQUE INDEX `game_sessions_active_code_idx` ON `game_sessions` (`code`) WHERE "game_sessions"."status" <> 'ended';--> statement-breakpoint
 CREATE INDEX `game_sessions_owner_idx` ON `game_sessions` (`owner_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `game_sessions_created_idx` ON `game_sessions` (`created_at`);--> statement-breakpoint
+CREATE INDEX `game_sessions_ended_idx` ON `game_sessions` (`ended_at`);--> statement-breakpoint
+CREATE INDEX `game_sessions_quiz_idx` ON `game_sessions` (`quiz_id`);--> statement-breakpoint
 CREATE TABLE `options` (
 	`id` text PRIMARY KEY NOT NULL,
 	`question_id` text NOT NULL,
 	`position` integer NOT NULL,
 	`label` text DEFAULT '' NOT NULL,
 	`is_correct` integer DEFAULT false NOT NULL,
-	FOREIGN KEY (`question_id`) REFERENCES `questions`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`question_id`) REFERENCES `questions`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "options_label_length_check" CHECK(length("label") <= 200)
 );
 --> statement-breakpoint
 CREATE INDEX `options_question_position_idx` ON `options` (`question_id`,`position`);--> statement-breakpoint
@@ -60,7 +63,7 @@ CREATE TABLE `question_stats` (
 	FOREIGN KEY (`session_id`) REFERENCES `game_sessions`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `question_stats_session_position_idx` ON `question_stats` (`session_id`,`position`);--> statement-breakpoint
+CREATE UNIQUE INDEX `question_stats_session_position_idx` ON `question_stats` (`session_id`,`position`);--> statement-breakpoint
 CREATE TABLE `questions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`quiz_id` text NOT NULL,
@@ -72,7 +75,8 @@ CREATE TABLE `questions` (
 	`explanation` text,
 	FOREIGN KEY (`quiz_id`) REFERENCES `quizzes`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "questions_type_check" CHECK("type" IN ('single', 'multiple', 'true_false')),
-	CONSTRAINT "questions_duration_check" CHECK("duration_sec" IN (10, 20, 30, 60))
+	CONSTRAINT "questions_duration_check" CHECK("duration_sec" IN (10, 20, 30, 60)),
+	CONSTRAINT "questions_prompt_length_check" CHECK(length("prompt") <= 300)
 );
 --> statement-breakpoint
 CREATE INDEX `questions_quiz_position_idx` ON `questions` (`quiz_id`,`position`);--> statement-breakpoint
@@ -113,10 +117,11 @@ CREATE TABLE `session_players` (
 	`score` integer DEFAULT 0 NOT NULL,
 	`total_time_ms` integer DEFAULT 0 NOT NULL,
 	`rank` integer NOT NULL,
-	FOREIGN KEY (`session_id`) REFERENCES `game_sessions`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`session_id`) REFERENCES `game_sessions`(`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "session_players_pseudo_length_check" CHECK(length("pseudo") BETWEEN 1 AND 200)
 );
 --> statement-breakpoint
-CREATE INDEX `session_players_session_rank_idx` ON `session_players` (`session_id`,`rank`);--> statement-breakpoint
+CREATE UNIQUE INDEX `session_players_session_rank_idx` ON `session_players` (`session_id`,`rank`);--> statement-breakpoint
 CREATE TABLE `user` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
