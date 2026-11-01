@@ -11,7 +11,7 @@ export const creationEtExode: Modele = {
     choixUnique("Quel est le premier livre de la Bible ?", ["L'Exode", "Les Psaumes", "La Genèse", "Matthieu"], 2, "Genèse 1:1"),
     choixUnique("Qu'est-ce que Dieu crée le premier jour ?", ["Les étoiles", "La lumière", "Les animaux", "L'homme"], 1, "Genèse 1:3-5"),
     vraiFaux("Dieu s'est reposé le septième jour.", true, "Genèse 2:2"),
-    vraiFaux("Dieu a créé l'homme le cinquième jour.", false, "Genèse 1:27-31", "L'homme est créé le sixième jour, après les animaux de la terre."),
+    vraiFaux("Dieu a créé l'homme le cinquième jour.", false, "Genèse 1:24-31", "L'homme est créé le sixième jour, après les animaux de la terre."),
     choixMultiple(
       "Lesquelles sont des plaies d'Égypte ?",
       ["La neige", "Le sang", "Le tremblement de terre", "Les grenouilles"],

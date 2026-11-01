@@ -14,7 +14,7 @@ export const vieDeJesus: Modele = {
     choixMultiple("Lesquels faisaient partie des douze apôtres ?", ["Pierre", "Paul", "Jean", "Timothée"], [0, 2], "Luc 6:13-16"),
     vraiFaux("Pierre a renié Jésus une seule fois.", false, "Matthieu 26:69-75", "Pierre l'a renié trois fois avant le chant du coq."),
     choixUnique("Qui a baptisé Jésus dans le Jourdain ?", ["Pierre", "Jean-Baptiste", "Jacques", "Barnabas"], 1, "Matthieu 3:13-17"),
-    vraiFaux("Judas a livré Jésus pour cinquante pièces d'argent.", false, "Matthieu 26:14-16", "Les chefs des prêtres lui ont donné trente pièces d'argent."),
+    vraiFaux("Judas a livré Jésus pour cinquante pièces d'argent.", false, "Matthieu 26:14-16", "Les principaux sacrificateurs lui ont donné trente pièces d'argent."),
     vraiFaux("Jésus a nourri la foule avec cinq pains et deux poissons.", true, "Matthieu 14:17-21"),
   ],
 };

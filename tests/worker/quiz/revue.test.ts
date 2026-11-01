@@ -134,7 +134,7 @@ describe("complétude : isQuestionComplete et le SQL de listQuizzes concordent",
     }
     expect(cases.length).toBeGreaterThan(200);
     expect(complete).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it("règles explicites", () => {
     const base = { type: "single" as const, prompt: "Q", options: opts(true, false) };

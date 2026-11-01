@@ -15,7 +15,7 @@ export const figuresAncienTestament: Modele = {
       "1 Samuel 17:49",
       "David n'avait ni épée ni armure : une pierre lancée à la fronde a suffi.",
     ),
-    vraiFaux("Jonas a été avalé par un lion.", false, "Jonas 1:17", "Dieu fait venir un grand poisson pour engloutir Jonas."),
+    vraiFaux("Jonas a été avalé par un lion.", false, "Jonas 2:1", "Dieu fait venir un grand poisson pour engloutir Jonas."),
     choixMultiple(
       "Lesquels sont des fils de Jacob ?",
       ["Samuel", "Joseph", "Aaron", "Juda"],
