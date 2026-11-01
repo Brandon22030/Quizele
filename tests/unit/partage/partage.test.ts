@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { sharePng } from "../../../src/client/partage/partage";
+import { messagePartage, sharePng } from "../../../src/client/partage/partage";
 
 const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" });
 const options = { filename: "resultat.png", title: "Mon résultat" };
@@ -48,17 +48,60 @@ describe("sharePng", () => {
     expect(download).not.toHaveBeenCalled();
   });
 
-  it("renvoie une erreur typée quand le partage échoue", async () => {
-    const share = vi.fn().mockRejectedValue(nomme("NotAllowedError", "refusé"));
-    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download: vi.fn() });
-    expect(resultat).toEqual({ status: "error", message: "refusé" });
+  it("renvoie une erreur typée en français quand le partage échoue", async () => {
+    const share = vi.fn().mockRejectedValue(nomme("DataError", "Invalid data"));
+    const download = vi.fn();
+    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download });
+    expect(resultat).toEqual({ status: "error", message: "Le partage a échoué. Réessaie." });
+    expect(download).not.toHaveBeenCalled();
   });
 
-  it("renvoie une erreur typée quand le téléchargement échoue", async () => {
+  it("renvoie une erreur typée en français quand le téléchargement échoue", async () => {
     const download = vi.fn(() => {
       throw new Error("disque plein");
     });
     const resultat = await sharePng(blob, options, { navigator: { canShare: () => false, share: vi.fn() }, download });
-    expect(resultat).toEqual({ status: "error", message: "disque plein" });
+    expect(resultat).toEqual({ status: "error", message: "Le téléchargement de l'image a échoué. Réessaie." });
+  });
+
+  it("geste expiré sur Safari iOS (NotAllowedError) : télécharge le même PNG", async () => {
+    const message = "The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.";
+    const download = vi.fn();
+    const share = vi.fn().mockRejectedValue(nomme("NotAllowedError", message));
+    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download });
+    expect(resultat).toEqual({ status: "downloaded" });
+    expect(download).toHaveBeenCalledWith(blob, "resultat.png");
+  });
+
+  it("Web Share interdit par la politique de permissions : erreur « bloqué », sans téléchargement", async () => {
+    const download = vi.fn();
+    const share = vi.fn().mockRejectedValue(nomme("NotAllowedError", "Failed to execute 'share' on 'Navigator': Permission denied."));
+    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download });
+    expect(resultat).toEqual({ status: "error", message: "Le partage a été bloqué par le navigateur." });
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("repli iOS dont le téléchargement échoue : erreur en français", async () => {
+    const download = vi.fn(() => {
+      throw new Error("quota");
+    });
+    const share = vi.fn().mockRejectedValue(nomme("NotAllowedError", "The request is not allowed"));
+    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download });
+    expect(resultat).toEqual({ status: "error", message: "Le téléchargement de l'image a échoué. Réessaie." });
+  });
+});
+
+describe("messagePartage", () => {
+  it("donne un texte français par statut, rien pour l'annulation", () => {
+    expect(messagePartage({ status: "shared" })).toBe("Image partagée.");
+    expect(messagePartage({ status: "downloaded" })).toBe("Image téléchargée.");
+    expect(messagePartage({ status: "cancelled" })).toBeNull();
+    expect(messagePartage({ status: "error", message: "Le partage a échoué. Réessaie." })).toBe("Le partage a échoué. Réessaie.");
+  });
+
+  it("annonce le message d'erreur renvoyé par sharePng", async () => {
+    const share = vi.fn().mockRejectedValue(nomme("TypeError", "boom"));
+    const resultat = await sharePng(blob, options, { navigator: { canShare: () => true, share }, download: vi.fn() });
+    expect(messagePartage(resultat)).toBe("Le partage a échoué. Réessaie.");
   });
 });
