@@ -26,11 +26,25 @@ describe("quota de lancements par heure", () => {
     expect(results.filter(Boolean)).toHaveLength(LAUNCH_QUOTA_PER_HOUR);
   });
 
-  it("le nettoyage du quota quotidien d'e-mails ne remet pas les compteurs de lancement à zéro", async () => {
+  it("ne touche pas à mail_quota : le quota quotidien d'e-mails et celui des lancements sont indépendants", async () => {
     const now = Date.UTC(2030, 0, 2, 9, 0);
     for (let i = 0; i < LAUNCH_QUOTA_PER_HOUR; i += 1) await consumeLaunchQuota(env.DB, "u4", now);
     await consumeDailyMailQuota(env.DB, 100, now);
     expect(await consumeLaunchQuota(env.DB, "u4", now)).toBe(false);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_quota WHERE key LIKE 'partie-lancer:%'").first<{ n: number }>()).toEqual({ n: 0 });
+  });
+
+  it("l'heure suivante efface les compteurs passés de cet animateur, sans toucher à un identifiant qui ne diffère que par la casse", async () => {
+    const now = Date.UTC(2030, 0, 3, 8, 0);
+    for (let i = 0; i < LAUNCH_QUOTA_PER_HOUR; i += 1) {
+      await consumeLaunchQuota(env.DB, "Abc", now);
+      await consumeLaunchQuota(env.DB, "abc", now);
+    }
+    await consumeLaunchQuota(env.DB, "abc", now + 60 * 60 * 1000);
+    const keys = (await env.DB.prepare("SELECT key FROM quota WHERE key LIKE 'partie-lancer:_bc:%' ORDER BY key").all<{ key: string }>()).results.map((r) => r.key);
+    expect(keys).toEqual(["partie-lancer:Abc:2030-01-03T08", "partie-lancer:abc:2030-01-03T09"]);
+    // Le compteur de « Abc » est intact : toujours au plafond.
+    expect(await consumeLaunchQuota(env.DB, "Abc", now)).toBe(false);
   });
 
   it("partie.lancer refuse le 21e lancement de l'heure avec un message en français, sans créer de partie", async () => {

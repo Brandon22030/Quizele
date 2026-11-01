@@ -5,7 +5,7 @@ import { getDb } from "../../../src/server/db/client";
 import { getSessionReport } from "../../../src/server/db/results";
 import type { QuizDefinition } from "../../../src/server/game/quiz";
 import { PLAYER_TOKEN_TTL_MS } from "../../../src/shared/protocol";
-import { OWNER_ID, sessionRow, setup, sidFor, spyOnDatabase, stubFor, type Client } from "./helpers";
+import { OWNER_ID, connect, sessionRow, setup, sidFor, spyOnDatabase, stubFor, type Client } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
@@ -84,7 +84,16 @@ describe("mode libre : joueurs partis", () => {
     }
   }
 
-  it("un joueur déconnecté à l'échéance de sa question est terminé, garde ses points et débloque la fin", async () => {
+  // Échéance de la question : le joueur passe en correction (jamais terminé directement), puis l'attente de correction
+  // expire à son tour.
+  async function expireTwice(code: string, playerId: string) {
+    await expireDeadline(code, playerId);
+    await runDurableObjectAlarm(stubFor(code));
+    await expireDeadline(code, playerId);
+    await runDurableObjectAlarm(stubFor(code));
+  }
+
+  it("un joueur déconnecté pendant sa question est terminé après l'attente de correction, garde ses points et débloque la fin", async () => {
     const { code, host, players } = await game(2, quiz(2, { mode: "own_pace" }));
     host.send({ type: "start" });
     await Promise.all(players.map((p) => p.client.waitFor("question")));
@@ -97,6 +106,10 @@ describe("mode libre : joueurs partis", () => {
     await players[0]!.client.waitFor("snapshot", (m) => m.phase === "waiting");
     expect((await sessionRow(sidFor(code)))?.status).not.toBe("ended");
 
+    await expireDeadline(code, players[1]!.playerId);
+    await runDurableObjectAlarm(stubFor(code));
+    // Première échéance : correction, pas la fin.
+    expect((await sessionRow(sidFor(code)))?.status).not.toBe("ended");
     await expireDeadline(code, players[1]!.playerId);
     await runDurableObjectAlarm(stubFor(code));
     const finished = await host.waitFor("finished");
@@ -127,9 +140,26 @@ describe("mode libre : joueurs partis", () => {
     await finishPlayer(players[0]!.client, 1);
     await players[0]!.client.waitFor("snapshot", (m) => m.phase === "waiting");
     expect((await sessionRow(sidFor(code)))?.status).not.toBe("ended");
-    await expireDeadline(code, playerId);
-    await runDurableObjectAlarm(stubFor(code));
+    await expireTwice(code, playerId);
     await host.waitFor("finished");
+  });
+
+  it("téléphone verrouillé : socket fermé pendant la question, reconnexion avant 3 min, la partie continue", async () => {
+    const { code, host, players } = await game(1, quiz(2, { mode: "own_pace" }));
+    host.send({ type: "start" });
+    await players[0]!.client.waitFor("question");
+    players[0]!.client.close();
+    await expireDeadline(code, players[0]!.playerId);
+    await runDurableObjectAlarm(stubFor(code));
+    const [state] = await runInDurableObject(stubFor(code), (_i, st) => st.storage.sql.exec("SELECT phase FROM pstate").toArray() as { phase: string }[]);
+    expect(state!.phase).toBe("revealed");
+    const back = await connect(code, players[0]!.token);
+    opened.push(back);
+    back.send({ type: "resume" });
+    await back.waitFor("snapshot");
+    back.send({ type: "next" });
+    expect(await back.waitFor("question", (m) => m.index === 1)).toMatchObject({ index: 1 });
+    expect(host.messages.some((m) => m.type === "finished")).toBe(false);
   });
 
   it("un joueur encore connecté n'est pas écarté", async () => {
