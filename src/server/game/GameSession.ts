@@ -28,6 +28,8 @@ interface SocketAttachment {
   // Seau à jetons du socket, qui survit à l'hibernation. Absent sur un attachement d'une version antérieure.
   tokens?: number;
   at?: number;
+  // Socket zombie remplacé par une nouvelle connexion, dont le seau a déjà été repris.
+  replaced?: boolean;
 }
 
 export type JoinResult =
@@ -54,7 +56,7 @@ const bucketKey = (attachment: { role: Role; playerId?: string }) => (attachment
 
 // L'état utile de la partie vit dans le SQLite : le Durable Object peut hiberner entre deux messages.
 // Les seuls champs d'instance sont des optimisations dont la perte est sans conséquence (drapeau de schéma,
-// regroupement du compteur de réponses).
+// regroupement du compteur de réponses, classement de la révélation en cache dans revealCache).
 export class GameSession extends DurableObject<Env> {
   private readonly store: GameStorage;
   private schemaReady = false;
@@ -147,9 +149,15 @@ export class GameSession extends DurableObject<Env> {
       if (claims.role !== "host") return closedSocket(CLOSE_CODES.gameGone, "Partie introuvable");
       await this.init(claims.code, claims.sid);
     } else {
-      const meta = this.store.readMeta();
-      claims = await verifyToken(secret, token, { code, sid: meta.sid });
+      claims = await verifyToken(secret, token, { code });
       if (!claims) return new Response("Jeton invalide", { status: 401 });
+      // Jeton authentique d'une autre partie sous le même code : refus applicatif, comme au routeur, pour que le
+      // client ne se reconnecte pas en boucle sur un 1006.
+      if (claims.sid !== this.store.readMeta().sid) {
+        return claims.role === "host"
+          ? closedSocket(CLOSE_CODES.tokenRejected, "Jeton d'une autre partie")
+          : closedSocket(CLOSE_CODES.gameGone, "Partie terminée");
+      }
     }
     if (claims.role === "player" && (!claims.playerId || !this.store.player(claims.playerId))) {
       if (claims.playerId && this.store.isBanned(claims.playerId)) return closedSocket(CLOSE_CODES.kicked, "Exclu de la partie");
@@ -160,6 +168,8 @@ export class GameSession extends DurableObject<Env> {
     const now = Date.now();
     const stored = this.store.bucket(key);
     const connectTokens = (stored ? refill(stored.connectTokens, stored.connectAt, now, CONNECT_BURST, CONNECT_REFILL_PER_MS) : CONNECT_BURST) - 1;
+    // 1008 et non un code 4xxx : la limite se recharge (une connexion toutes les 6 s), le client doit donc
+    // continuer à réessayer avec son délai croissant plutôt que d'abandonner définitivement.
     if (connectTokens < 0) return closedSocket(1008, "Trop de connexions");
 
     // Le seau repart de l'état le plus bas connu pour cette clé : sockets encore ouverts (zombie) ou état
@@ -174,8 +184,13 @@ export class GameSession extends DurableObject<Env> {
     this.store.saveBucket(key, { tokens, at: now, connectTokens, connectAt: now });
 
     // Un joueur qui se reconnecte laisse parfois un socket zombie : on le remplace.
+    // Son seau est déjà compté ci-dessus : marqué remplacé, sa fermeture ne réécrit pas la ligne buckets.
     if (claims.playerId) {
-      for (const socket of previous) socket.close(1000, "Remplacé par une nouvelle connexion");
+      for (const socket of previous) {
+        const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+        if (attachment) socket.serializeAttachment({ ...attachment, replaced: true } satisfies SocketAttachment);
+        socket.close(1000, "Remplacé par une nouvelle connexion");
+      }
     }
 
     const pair = new WebSocketPair();
@@ -191,14 +206,17 @@ export class GameSession extends DurableObject<Env> {
   }
 
   // Conserve le seau d'un socket qui se ferme, sans jamais le remonter au-dessus de l'état déjà conservé.
+  // Le seau conservé et celui du socket se rechargent au même rythme : si le socket n'est pas plus bas, il n'a rien
+  // consommé depuis la connexion et la ligne n'a pas à être réécrite.
   private persistBucket(attachment: SocketAttachment): void {
-    if (!this.ready()) return;
+    if (attachment.replaced || !this.ready()) return;
     const key = bucketKey(attachment);
     const now = Date.now();
     const stored = this.store.bucket(key);
     if (!stored) return;
-    const tokens = Math.max(0, Math.min(refill(stored.tokens, stored.at, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_MS), this.bucketNow(attachment, now)));
-    this.store.saveBucket(key, { ...stored, tokens, at: now });
+    const current = this.bucketNow(attachment, now);
+    if (current >= refill(stored.tokens, stored.at, now, BUCKET_CAPACITY, BUCKET_REFILL_PER_MS)) return;
+    this.store.saveBucket(key, { ...stored, tokens: Math.max(0, current), at: now });
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {

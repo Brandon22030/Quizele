@@ -71,13 +71,28 @@ describe("identité de partie (sid)", () => {
     expect(await sqlOf(old.code, "SELECT COUNT(*) AS n FROM players")).toEqual([{ n: 1 }]);
   });
 
+  // Ex-401 : un jeton authentique d'une autre partie sous le même code reçoit, comme au routeur, une fermeture
+  // applicative (4004 écran et joueur, 4001 hôte) au lieu d'un refus HTTP que le navigateur réduirait à un 1006.
   it("le DO de la partie refuse lui-même un jeton de même code mais d'un autre sid", async () => {
     const { code } = await game(0);
-    const response = await runInDurableObject(stubFor(code), async (instance) => {
-      const token = await signFor(code, { code, role: "screen", sid: "imposteur" });
-      return instance.fetch(new Request(`https://x.test/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": `${WS_SUBPROTOCOL}, ${token}` } }));
+    for (const [role, expected] of [["screen", 4004], ["player", 4004], ["host", 4001]] as const) {
+      const closeCode = await runInDurableObject(stubFor(code), async (instance) => {
+        const token = await signFor(code, { code, role, sid: "imposteur", playerId: role === "player" ? "x" : undefined });
+        const response = await instance.fetch(new Request(`https://x.test/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": `${WS_SUBPROTOCOL}, ${token}` } }));
+        expect(response.status).toBe(101);
+        const ws = response.webSocket!;
+        const closed = new Promise<number>((resolve) => ws.addEventListener("close", (event) => resolve(event.code)));
+        ws.accept();
+        return closed;
+      });
+      expect(closeCode, role).toBe(expected);
+    }
+    // Un jeton falsifié reste un refus HTTP 401.
+    const forged = await runInDurableObject(stubFor(code), async (instance) => {
+      const token = `${await signFor(code, { code, role: "screen", sid: "imposteur" })}x`;
+      return (await instance.fetch(new Request(`https://x.test/ws/${code}`, { headers: { Upgrade: "websocket", "Sec-WebSocket-Protocol": `${WS_SUBPROTOCOL}, ${token}` } }))).status;
     });
-    expect(response.status).toBe(401);
+    expect(forged).toBe(401);
   });
 
   it("le jeton dans la query string n'est plus accepté", async () => {

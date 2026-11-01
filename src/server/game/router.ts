@@ -19,6 +19,11 @@ async function holdsCode(env: Env, alias: ReturnType<typeof aliasStub>, sid: str
   return phase !== "finished";
 }
 
+async function refuseHost(env: Env, sid: string): Promise<Response> {
+  if ((await gameStub(env, sid).currentPhase()) !== null) return closedSocket(CLOSE_CODES.gameGone, "Partie terminée");
+  return closedSocket(CLOSE_CODES.tokenRejected, "Code déjà utilisé par une autre partie");
+}
+
 // Vérifie le jeton avant de réveiller la partie : un jeton falsifié ne coûte aucune requête sur le DO de jeu.
 // Le DO revérifie ensuite lui-même, il ne fait pas confiance au routeur.
 export async function routeWebSocket(request: Request, env: Env): Promise<Response> {
@@ -43,10 +48,10 @@ export async function routeWebSocket(request: Request, env: Env): Promise<Respon
   } else if (currentSid !== claims.sid) {
     // Le code n'est repris que si la partie qui le détient n'est plus en cours. La réservation précède la
     // création de la partie : deux hôtes simultanés ne peuvent pas réussir tous les deux.
-    if (currentSid !== null && (await holdsCode(env, alias, currentSid))) {
-      return new Response("Code déjà utilisé par une autre partie", { status: 409 });
-    }
-    if (!(await alias.registerSid(claims.sid, currentSid))) return new Response("Code déjà utilisé par une autre partie", { status: 409 });
+    // Refus en fermeture applicative, pas en HTTP : le navigateur ne verrait qu'un 1006 et l'hôte se reconnecterait
+    // en boucle. Si sa propre partie a existé, elle a perdu le code ; sinon c'est un conflit entre deux hôtes.
+    if (currentSid !== null && (await holdsCode(env, alias, currentSid))) return refuseHost(env, claims.sid);
+    if (!(await alias.registerSid(claims.sid, currentSid))) return refuseHost(env, claims.sid);
   }
 
   return gameStub(env, claims.sid).fetch(request);

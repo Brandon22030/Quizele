@@ -55,14 +55,24 @@ describe("alias : comparaison-échange entre hôtes", () => {
     expect(await alias.currentSid()).toBe("b");
   });
 
-  it("deux hôtes simultanés sur le même code : un seul obtient la partie, l'autre reçoit 409", async () => {
+  // Le perdant était refusé en HTTP 409, que le navigateur ne voit que comme un 1006 : il se reconnectait en boucle.
+  // Il reçoit désormais un socket refermé en 4001 (conflit entre hôtes, sa partie n'a jamais existé).
+  it("deux hôtes simultanés sur le même code : un seul obtient la partie, l'autre est refermé en 4001", async () => {
     const code = newCode();
     const sids = [crypto.randomUUID(), crypto.randomUUID()];
     const tokens = await Promise.all(sids.map((sid) => signFor(code, { code, role: "host", sid })));
     const responses = await Promise.all(tokens.map((token) => rawConnect(code, token)));
-    expect(responses.map((r) => r.status).sort()).toEqual([101, 409]);
-    const winner = responses.findIndex((r) => r.status === 101);
-    responses[winner]!.webSocket!.accept();
+    expect(responses.map((r) => r.status)).toEqual([101, 101]);
+    const outcomes = await Promise.all(
+      responses.map((response) => {
+        const ws = response.webSocket!;
+        const closed = new Promise<number>((resolve) => ws.addEventListener("close", (event) => resolve(event.code)));
+        ws.accept();
+        return Promise.race([closed, new Promise<null>((r) => setTimeout(() => r(null), 100))]);
+      }),
+    );
+    expect([...outcomes].sort()).toEqual([4001, null]);
+    const winner = outcomes.indexOf(null);
     responses[winner]!.webSocket!.close(1000);
     expect(await aliasStubFor(code).currentSid()).toBe(sids[winner]);
   });
@@ -70,7 +80,8 @@ describe("alias : comparaison-échange entre hôtes", () => {
   it("un autre hôte est refusé tant que la partie est en cours, puis accepté quand elle est terminée", async () => {
     const { code, host } = await game(0);
     const intruder = await signFor(code, { code, role: "host", sid: crypto.randomUUID() });
-    expect((await rawConnect(code, intruder)).status).toBe(409);
+    // Ex-409 : refus applicatif définitif (4001), sa partie n'ayant jamais existé.
+    expect(await closeCodeOf(code, intruder)).toBe(4001);
     // Le même hôte (même sid) se reconnecte sans difficulté.
     const again = await connect(code, await hostToken(code));
     opened.push(again);
@@ -81,10 +92,20 @@ describe("alias : comparaison-échange entre hôtes", () => {
     expect((await join(code, "Nouveau")).status).toBe(201);
   });
 
+  it("l'hôte d'une partie terminée dont le code a été repris est refermé en 4004, pas en 4001", async () => {
+    const { code, host } = await game(0);
+    const formerHost = await hostToken(code);
+    await finishGame(host);
+    const successor = await connect(code, await signFor(code, { code, role: "host", sid: crypto.randomUUID() }));
+    opened.push(successor);
+    expect(await closeCodeOf(code, formerHost)).toBe(4004);
+  });
+
   it("une réservation toute récente, partie pas encore créée, bloque aussi un second hôte", async () => {
     const code = newCode();
     expect(await aliasStubFor(code).registerSid("reserve-en-cours", null)).toBe(true);
-    expect((await rawConnect(code, await signFor(code, { code, role: "host", sid: crypto.randomUUID() }))).status).toBe(409);
+    // Ex-409 : conflit entre hôtes, refus applicatif définitif (4001).
+    expect(await closeCodeOf(code, await signFor(code, { code, role: "host", sid: crypto.randomUUID() }))).toBe(4001);
   });
 });
 
@@ -142,6 +163,25 @@ describe("seau à jetons et fréquence de connexion", () => {
     for (let i = 0; i < 12; i += 1) results.push(await openOrClosed(code, players[0]!.token, 20));
     expect(results.slice(0, 9).every((r) => r === null || r === 1000)).toBe(true);
     expect(results.slice(9)).toEqual([1008, 1008, 1008]);
+  });
+
+  it("ni une fermeture sans consommation ni le remplacement d'un zombie ne réécrivent la ligne buckets", async () => {
+    const { code, players } = await game(1);
+    const { client, playerId, token } = players[0]!;
+    const row = async () => (await sqlOf<{ tokens: number; at: number }>(code, `SELECT tokens, at FROM buckets WHERE key = 'p:${playerId}'`))[0]!;
+    const zombieClosed = closeOf(client);
+    const next = await connect(code, token);
+    opened.push(next);
+    const afterConnect = await row();
+    await zombieClosed;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await row()).toEqual(afterConnect);
+
+    const nextClosed = closeOf(next);
+    next.close();
+    await nextClosed;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await row()).toEqual(afterConnect);
   });
 
   it("un attachement sans seau (version antérieure) reste lisible", async () => {
