@@ -41,3 +41,36 @@ export const sampleQuestion = (overrides: Partial<QuestionInput> = {}): Question
   ],
   ...overrides,
 });
+
+// Enveloppe D1 qui trace chaque instruction préparée, ses paramètres liés et la taille de chaque batch().
+// Chaque instruction préparée compte pour une requête sur l'offre gratuite, qu'elle soit seule ou dans un batch.
+export function spiedDb() {
+  const trace = { batches: [] as number[], bound: [] as number[], prepared: 0 };
+  const proxy = new Proxy(env.DB, {
+    get(target, prop) {
+      if (prop === "prepare") {
+        return (query: string) => {
+          trace.prepared++;
+          const stmt = target.prepare(query);
+          const bind = stmt.bind.bind(stmt);
+          stmt.bind = ((...args: unknown[]) => {
+            trace.bound.push(args.length);
+            return bind(...args);
+          }) as typeof stmt.bind;
+          return stmt;
+        };
+      }
+      if (prop === "batch") {
+        return (stmts: D1PreparedStatement[]) => {
+          trace.batches.push(stmts.length);
+          return target.batch(stmts);
+        };
+      }
+      const value = Reflect.get(target, prop);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as D1Database;
+  return { db: getDb(proxy), trace };
+}
+
+export const fourOptions = (correct = "a") => ["a", "b", "c", "d"].map((label) => ({ label, isCorrect: label === correct }));
