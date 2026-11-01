@@ -112,6 +112,16 @@ export const verification = sqliteTable(
   (t) => [index("verification_identifier_idx").on(t.identifier)],
 );
 
+// Limitation de débit Better Auth (storage "database") : D1 est partagé entre isolats, contrairement à la mémoire.
+export const rateLimit = sqliteTable("rate_limit", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: integer("last_request").notNull(),
+});
+
 export const quizzes = sqliteTable(
   "quizzes",
   {
