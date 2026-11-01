@@ -122,6 +122,13 @@ export const rateLimit = sqliteTable("rate_limit", {
   lastRequest: integer("last_request").notNull(),
 });
 
+// Plafond quotidien d'envois (offre gratuite Resend) : hors de rate_limit, que Better Auth purge
+// au-delà de sa plus longue fenêtre (60 s), ce qui remettrait le compteur du jour à zéro.
+export const mailQuota = sqliteTable("mail_quota", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+});
+
 export const quizzes = sqliteTable(
   "quizzes",
   {

@@ -15,6 +15,13 @@
       "when": 1793553014489,
       "tag": "0001_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793556699356,
+      "tag": "0002_mail_quota",
+      "breakpoints": true
     }
   ]
 }

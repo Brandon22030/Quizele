@@ -5,6 +5,7 @@ export interface MailEnv {
   MAIL_TRANSPORT?: string;
   MAIL_FROM?: string;
   RESEND_API_KEY?: string;
+  BETTER_AUTH_URL?: string;
 }
 
 export interface Mail {
@@ -12,6 +13,14 @@ export interface Mail {
   subject: string;
   text: string;
   html: string;
+}
+
+// Le transport console écrit le lien de connexion dans les journaux : en ligne (https), il ouvrirait
+// n'importe quel compte à qui lit les journaux. Il doit donc être demandé explicitement, et jamais en https.
+function assertConsoleAllowed(env: MailEnv): void {
+  if (/^\s*https:/i.test(env.BETTER_AUTH_URL ?? "")) {
+    throw new Error("Transport console interdit quand BETTER_AUTH_URL est en https.");
+  }
 }
 
 // Interface unique d'envoi : changer de fournisseur (ou de transport) ne touche que ce fichier.
@@ -25,9 +34,14 @@ export async function sendMail(env: MailEnv, mail: Mail): Promise<void> {
       text: mail.text,
       html: mail.html,
     });
-    if (error) throw new Error(`Envoi de l'e-mail refusé par Resend : ${error.message}`);
+    // Le message de Resend peut reprendre l'adresse ou le contenu : seuls le statut et le code sont journalisés.
+    if (error) throw new Error(`Envoi de l'e-mail refusé par Resend (statut ${error.statusCode ?? "inconnu"}, code ${error.name}).`);
     return;
   }
-  // Transport local : le lien de connexion apparaît dans la console du serveur, aucun e-mail ne part.
-  console.info(`[mail:console] à ${mail.to} - ${mail.subject}\n${mail.text}`);
+  if (env.MAIL_TRANSPORT === "console") {
+    assertConsoleAllowed(env);
+    console.info(`[mail:console] à ${mail.to} - ${mail.subject}\n${mail.text}`);
+    return;
+  }
+  throw new Error('MAIL_TRANSPORT doit valoir "resend" ou "console".');
 }
