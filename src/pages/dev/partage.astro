@@ -1,0 +1,80 @@
+---
+import Base from "../../layouts/Base.astro";
+
+// Page de démonstration des images de partage : n'existe qu'en développement.
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404 });
+}
+---
+
+<Base title="Images de partage">
+  <main class="flex min-h-dvh flex-col gap-4 p-4">
+    <h1 class="font-affiche text-2xl text-vert-foret">Images de partage</h1>
+    <button
+      id="generer"
+      type="button"
+      class="min-h-14 rounded-pill border-trait border-vert-foret bg-vert-foret px-6 font-affiche text-lg text-creme focus-visible:outline-trait focus-visible:outline-offset-2 focus-visible:outline-vert-nuit"
+    >
+      Générer les images
+    </button>
+    <p id="etat" role="status" class="text-base text-vert-foret">En attente.</p>
+    <div id="sortie" class="flex flex-col gap-4"></div>
+  </main>
+</Base>
+
+<script>
+  import { renderLeaderboardImage, renderResultImage } from "../../client/partage";
+  import type { LeaderboardShareData, ResultShareData, ShareFormat } from "../../client/partage";
+
+  const top = [
+    { pseudo: "Esther.B", score: 9 },
+    { pseudo: "David", score: 8 },
+    { pseudo: "Grâce_22 (toi)", score: 7 },
+    { pseudo: "Ruth-Marie-Joséphine-de-la-Providence-Divine", score: 6 },
+    { pseudo: "Josué 🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺", score: 5 },
+  ];
+  const resultat: ResultShareData = {
+    quizTitle: "Les héros de la foi, des patriarches aux prophètes de l'Ancien Testament",
+    pseudo: "Grâce_22 (toi)",
+    score: 7,
+    total: 10,
+    rank: 3,
+    playerCount: 24,
+    top,
+  };
+  const classement: LeaderboardShareData = { quizTitle: resultat.quizTitle, total: 10, playerCount: 24, top };
+
+  const etat = document.getElementById("etat") as HTMLElement;
+  const sortie = document.getElementById("sortie") as HTMLElement;
+
+  async function generer() {
+    sortie.replaceChildren();
+    etat.textContent = "Génération en cours.";
+    try {
+      const formats: ShareFormat[] = ["portrait", "paysage"];
+      for (const format of formats) {
+        const images = [
+          { id: `resultat-${format}`, blob: await renderResultImage(resultat, format) },
+          { id: `classement-${format}`, blob: await renderLeaderboardImage(classement, format) },
+        ];
+        for (const { id, blob } of images) {
+          const img = document.createElement("img");
+          img.id = id;
+          img.alt = id;
+          img.src = URL.createObjectURL(blob);
+          img.className = "w-full border-trait border-vert-foret";
+          sortie.appendChild(img);
+        }
+      }
+      etat.textContent = "Images prêtes.";
+      document.body.dataset.pret = "true";
+    } catch {
+      etat.textContent = "La génération a échoué.";
+      document.body.dataset.pret = "erreur";
+    }
+  }
+
+  document.getElementById("generer")?.addEventListener("click", () => {
+    void generer();
+  });
+</script>
