@@ -261,3 +261,26 @@ test.describe("Repli sans JavaScript", () => {
     expect(await anneau(page)).toBe(vertForet);
   });
 });
+
+test.describe("Dialogue : un parent qui refuse la fermeture reste prévenu", () => {
+  test.beforeEach(async ({ page }) => ouvrir(page, "cas=refus"));
+  const demandes = (page: Page) => page.locator("[data-demandes]").evaluate((el) => Number(el.getAttribute("data-demandes")));
+
+  for (const [nom, fermer] of [
+    ["Échap", (page: Page) => page.keyboard.press("Escape")],
+    ["bouton Fermer", (page: Page) => page.getByRole("dialog").getByRole("button", { name: "Fermer" }).click()],
+    ["clic sur le voile", (page: Page) => page.mouse.click(2, 2)],
+  ] as const) {
+    test(`${nom} : refus puis acceptation`, async ({ page }) => {
+      await page.getByRole("button", { name: "Ouvrir la modale à refus" }).click();
+      const dialogue = page.getByRole("dialog", { name: "Modifications non enregistrées" });
+      await expect(dialogue).toBeVisible();
+      await fermer(page);
+      await expect.poll(() => demandes(page)).toBe(1);
+      await expect(dialogue).toBeVisible();
+      await fermer(page);
+      await expect.poll(() => demandes(page)).toBe(2);
+      await expect(dialogue).toBeHidden();
+    });
+  }
+});

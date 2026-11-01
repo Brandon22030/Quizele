@@ -196,3 +196,27 @@ export function DemoToasts() {
     </div>
   );
 }
+
+/** Cas de revue (?cas=refus) : un parent qui refuse la première demande de fermeture, puis l'accepte. */
+export function DemoRefus() {
+  const [ouvert, setOuvert] = useState(false);
+  const [demandes, setDemandes] = useState(0);
+  return (
+    <div className="flex flex-col gap-3">
+      <Button taille="petit" onClick={() => setOuvert(true)}>
+        Ouvrir la modale à refus
+      </Button>
+      <p data-demandes={demandes}>Demandes de fermeture : {demandes}</p>
+      <Modal
+        open={ouvert}
+        onClose={() => {
+          setDemandes((n) => n + 1);
+          if (demandes >= 1) setOuvert(false);
+        }}
+        titre="Modifications non enregistrées"
+      >
+        <p className="text-base font-semibold">Ferme une seconde fois pour abandonner.</p>
+      </Modal>
+    </div>
+  );
+}

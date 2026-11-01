@@ -28,6 +28,11 @@ export function Dialogue({ open, onClose, titre, children, className, variante }
   function demanderFermeture() {
     if (dejaFerme.current) return;
     dejaFerme.current = true;
+    // cancel et close d'une même fermeture arrivent dans la même tâche : on rouvre le garde ensuite, car un parent peut refuser
+    // la fermeture (modifications non enregistrées) et doit alors être prévenu de la tentative suivante.
+    setTimeout(() => {
+      dejaFerme.current = false;
+    }, 0);
     onClose();
   }
 

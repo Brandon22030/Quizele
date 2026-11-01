@@ -1,6 +1,6 @@
 ---
 import Base from "../../layouts/Base.astro";
-import DemoInteractive, { DemoToasts } from "../../components/ui/demo-interactive";
+import DemoInteractive, { DemoRefus, DemoToasts } from "../../components/ui/demo-interactive";
 import { DemoRepliOuvert, DemoStatiqueForet, DemoStatiqueJaune } from "../../components/ui/demo-statique";
 
 // Guide de style : n'existe qu'en développement.
@@ -9,7 +9,7 @@ if (!import.meta.env.DEV) {
 }
 
 // ?theme=foret : thème porté par <html data-theme="foret"> (écrans animateur), pas seulement par une zone.
-// ?cas=repli | toasts : blocs supplémentaires pour les tests de revue.
+// ?cas=repli | toasts | refus : blocs supplémentaires pour les tests de revue.
 const theme = Astro.url.searchParams.get("theme") === "foret" ? "foret" : "soleil";
 const cas = Astro.url.searchParams.get("cas");
 ---
@@ -24,6 +24,7 @@ const cas = Astro.url.searchParams.get("cas");
       </section>
       {cas === "repli" && <DemoRepliOuvert client:load />}
       {cas === "toasts" && <DemoToasts client:load />}
+      {cas === "refus" && <DemoRefus client:load />}
     </div>
 
     <div data-theme="foret" class="flex flex-col gap-6 bg-vert-foret px-4 py-8 text-creme">
