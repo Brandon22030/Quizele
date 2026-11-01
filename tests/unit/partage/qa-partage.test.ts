@@ -72,13 +72,23 @@ describe("QA sharePng", () => {
 
   it("le message d'une autre erreur est en français, jamais le texte brut du navigateur", async () => {
     const r = await sharePng(blob, options, {
-      navigator: { canShare: () => true, share: vi.fn().mockRejectedValue(nomme("NotAllowedError", "Permission denied")) },
+      navigator: { canShare: () => true, share: vi.fn().mockRejectedValue(nomme("SecurityError", "Permission denied")) },
       download: vi.fn(),
     });
     expect(r.status).toBe("error");
     const message = (r as { message: string }).message;
     expect(message).not.toMatch(/permission denied/i);
     expect(message).toMatch(/[éèàêç]|partage|impossible|échoué|réessaie/i);
+  });
+
+  it("tout NotAllowedError retombe sur le téléchargement, quel que soit son texte", async () => {
+    const download = vi.fn();
+    const r = await sharePng(blob, options, {
+      navigator: { canShare: () => true, share: vi.fn().mockRejectedValue(nomme("NotAllowedError", "Permission denied")) },
+      download,
+    });
+    expect(r).toEqual({ status: "downloaded" });
+    expect(download).toHaveBeenCalledOnce();
   });
 });
 
