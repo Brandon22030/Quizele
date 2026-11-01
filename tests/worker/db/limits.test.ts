@@ -5,6 +5,7 @@ import type { Db } from "../../../src/server/db/client";
 import {
   addQuestion,
   createQuiz,
+  NotFoundError,
   duplicateQuiz,
   getQuizForEditor,
   listQuizzes,
@@ -205,6 +206,63 @@ describe("contraintes de longueur", () => {
     await expect(
       addQuestion(db, "alice", quizId, sampleQuestion({ options: [{ label: "o".repeat(201), isCorrect: true }] })),
     ).rejects.toThrow();
+    expect(await count("questions")).toBe(1);
+  });
+});
+
+describe("addQuestion : garde atomique", () => {
+  it("4 options : une lecture puis un batch de 3 instructions, sous 100 paramètres", async () => {
+    const quizId = await createQuiz(db, "alice", { title: "A" });
+    const spied = spiedDb();
+    await addQuestion(spied.db, "alice", quizId, sampleQuestion({ options: fourOptions("c") }));
+    expect(spied.trace.batches).toEqual([3]);
+    expect(spied.trace.prepared).toBe(4);
+    expect(Math.max(...spied.trace.bound)).toBeLessThanOrEqual(100);
+    expect((await getQuizForEditor(db, "alice", quizId))!.questions[0]!.options.map((o) => [o.label, o.isCorrect])).toEqual([
+      ["a", false],
+      ["b", false],
+      ["c", true],
+      ["d", false],
+    ]);
+  });
+
+  it("quiz supprimé entre le contrôle et l'écriture : NotFoundError, aucune ligne orpheline", async () => {
+    const quizId = await createQuiz(db, "alice", { title: "Éphémère" });
+    const original = env.DB.batch.bind(env.DB);
+    env.DB.batch = (async (stmts: D1PreparedStatement[]) => {
+      await env.DB.prepare("DELETE FROM quizzes WHERE id = ?").bind(quizId).run();
+      env.DB.batch = original;
+      return original(stmts);
+    }) as D1Database["batch"];
+    try {
+      await expect(addQuestion(db, "alice", quizId, sampleQuestion())).rejects.toBeInstanceOf(NotFoundError);
+    } finally {
+      env.DB.batch = original;
+    }
+    expect(await count("questions")).toBe(0);
+    expect(await count("options")).toBe(0);
+  });
+});
+
+describe("contraintes de longueur : quiz et textes longs", () => {
+  const rawQuiz = (title: string, description: string | null) =>
+    env.DB.prepare("INSERT INTO quizzes (id, owner_id, title, description, created_at, updated_at) VALUES (?, 'alice', ?, ?, 0, 0)")
+      .bind(crypto.randomUUID(), title, description)
+      .run();
+
+  it("titre 120 et description 500 acceptés, au-delà refusés, description NULL acceptée", async () => {
+    await expect(rawQuiz("t".repeat(120), "d".repeat(500))).resolves.toBeDefined();
+    await expect(rawQuiz("t", null)).resolves.toBeDefined();
+    await expect(rawQuiz("t".repeat(121), null)).rejects.toThrow(/CHECK constraint failed/);
+    await expect(rawQuiz("t", "d".repeat(501))).rejects.toThrow(/CHECK constraint failed/);
+  });
+
+  it("référence et explication limitées à 500 caractères", async () => {
+    const quizId = await createQuiz(db, "alice", { title: "R" });
+    await expect(addQuestion(db, "alice", quizId, sampleQuestion({ reference: "r".repeat(500), explanation: "e".repeat(500) }))).resolves.toBeTypeOf("string");
+    await expect(addQuestion(db, "alice", quizId, sampleQuestion({ reference: "r".repeat(501) }))).rejects.toThrow();
+    await expect(addQuestion(db, "alice", quizId, sampleQuestion({ explanation: "e".repeat(501) }))).rejects.toThrow();
+    await expect(updateQuizSettings(db, "alice", quizId, { title: "t".repeat(121) })).rejects.toThrow();
     expect(await count("questions")).toBe(1);
   });
 });
