@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { startChronoTicker } from "../../../src/components/jeu/chrono-state";
+import { createQuestionClock } from "../../../src/shared/clock";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -11,7 +12,7 @@ describe("QA chrono : dérive d'horloge", () => {
     let local = localDebut;
     const restants: number[] = [];
     const onExpire = vi.fn();
-    const stop = startChronoTicker({ startedAt: 1_000_000, serverNow, durationMs: 10_000 }, () => local, {
+    const stop = startChronoTicker(createQuestionClock({ startedAt: 1_000_000, serverNow, durationMs: 10_000 }, () => local), {
       onTick: (l) => restants.push(l),
       onExpire,
     });

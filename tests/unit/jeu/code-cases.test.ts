@@ -2,11 +2,36 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CodeCases } from "../../../src/components/jeu/CodeCases";
-import { backspaceAt, extractTyped, insertAt, sanitizeCode } from "../../../src/components/jeu/code-input";
+import { backspaceAt, changeAt, extractTyped, insertAt, sanitizeCode } from "../../../src/components/jeu/code-input";
 
 describe("sanitizeCode", () => {
   it("met en majuscules, retire accents, espaces et tirets", () => {
     expect(sanitizeCode(" k7-q2 mé ")).toBe("K7Q2ME");
+  });
+});
+
+describe("alphabet du serveur", () => {
+  it("ignore 0, O, 1 et I, à la saisie comme au collage", () => {
+    expect(sanitizeCode("0O1IAB")).toBe("AB");
+    expect(insertAt("", 0, "0O1IAB6")).toEqual({ value: "AB6", focus: 3 });
+    expect(insertAt("AB", 2, "o")).toEqual({ value: "AB", focus: 2 });
+    expect(sanitizeCode("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")).toBe("ABCDEFGHJKLMNPQRSTUVWXYZ23456789");
+  });
+});
+
+describe("clavier Android (key « Unidentified »)", () => {
+  it("un change avec une valeur vide efface la case remplie", () => {
+    expect(changeAt("K7Q", 1, "")).toEqual({ value: "KQ", focus: 1 });
+    expect(changeAt("K7Q2MB", 5, "")).toEqual({ value: "K7Q2M", focus: 5 });
+  });
+
+  it("un change vide sur une case déjà vide ne change rien", () => {
+    expect(changeAt("K7", 3, "")).toEqual({ value: "K7", focus: 3 });
+  });
+
+  it("un change avec un caractère se comporte comme la saisie", () => {
+    expect(changeAt("K7", 2, "q")).toEqual({ value: "K7Q", focus: 3 });
+    expect(changeAt("K7Q", 1, "7X")).toEqual({ value: "KXQ", focus: 2 });
   });
 });
 
@@ -68,11 +93,12 @@ describe("retour arrière", () => {
 });
 
 describe("rendu de CodeCases", () => {
-  const html = renderToStaticMarkup(createElement(CodeCases, { value: "K7Q", onChange: () => undefined }));
+  const html = renderToStaticMarkup(createElement(CodeCases, { labelledBy: "libelle-code", value: "K7Q", onChange: () => undefined }));
 
   it("affiche 6 cases étiquetées dans un groupe", () => {
     expect(html).toContain('role="group"');
-    expect(html).toContain('aria-label="Code de la partie"');
+    expect(html).toContain('aria-labelledby="libelle-code"');
+    expect(html).not.toContain('aria-label="Code de la partie"');
     expect(html.match(/<input/g)).toHaveLength(6);
     expect(html).toContain('aria-label="Caractère 6 du code"');
   });

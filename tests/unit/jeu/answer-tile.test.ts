@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AnswerTile, type AnswerTileState } from "../../../src/components/jeu/AnswerTile";
 import { Verdict } from "../../../src/components/jeu/Verdict";
 import { ReponseEnregistree } from "../../../src/components/jeu/MessagesJeu";
+import { EnteteQuestion } from "../../../src/components/jeu/EnteteQuestion";
 import { StatutConnexion } from "../../../src/components/jeu/StatutConnexion";
 
 const tuile = (state: AnswerTileState, withSelect = true) =>
@@ -49,6 +50,13 @@ describe("AnswerTile", () => {
     expect(tuile("repos", false)).not.toContain("<button");
   });
 
+  it("alterne la couleur de la lettre selon la position, pas la lettre", () => {
+    const rendre = (index: number) =>
+      renderToStaticMarkup(createElement(AnswerTile, { letter: "A", index, label: "x", onSelect: () => undefined }));
+    expect(rendre(0)).toContain("bg-vert-foret text-jaune-soleil");
+    expect(rendre(1)).toContain("bg-jaune-soleil");
+  });
+
   it("cache la lettre aux lecteurs d'écran mais garde le libellé", () => {
     const html = tuile("repos");
     expect(html).toContain('aria-hidden="true"');
@@ -73,18 +81,35 @@ describe("correction masquée", () => {
     expect(html).toContain("Réponse enregistrée");
     expect(html).not.toMatch(/JUSTE|Juste|Bonne réponse|Pas cette fois|bg-vert-eclat|bg-piment/);
   });
+
+  it("garde la région role=status même inactive, mais vide", () => {
+    const html = renderToStaticMarkup(createElement(ReponseEnregistree, { active: false }));
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain("Réponse enregistrée");
+  });
+
+  it("l'en-tête sans score n'affiche aucune pilule de score", () => {
+    const sans = renderToStaticMarkup(createElement(EnteteQuestion, { index: 3, total: 10 }));
+    expect(sans).toContain("Question 3 sur 10");
+    expect(sans).not.toMatch(/juste|score/i);
+    const avec = renderToStaticMarkup(createElement(EnteteQuestion, { index: 3, total: 10, score: 0 }));
+    expect(avec).toContain("0 juste");
+  });
 });
 
 describe("StatutConnexion", () => {
   const rendre = (status: Parameters<typeof StatutConnexion>[0]["status"]) =>
     renderToStaticMarkup(createElement(StatutConnexion, { status }));
 
-  it("ne rend rien quand la connexion est ouverte", () => {
-    expect(rendre("open")).toBe("");
+  it("ouverte : la région role=status reste là, vide, sans alerte", () => {
+    const html = rendre("open");
+    expect(html).toContain('role="status"');
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toContain("Connexion");
   });
 
-  it("affiche « Connexion… » pendant la connexion", () => {
-    expect(rendre("connecting")).toContain("Connexion…");
+  it("affiche « Connexion… » dans la région de statut pendant la connexion", () => {
+    expect(rendre("connecting")).toMatch(/role="status"[^>]*>.*Connexion…/);
   });
 
   it("affiche la reprise en cours quand la connexion est perdue", () => {

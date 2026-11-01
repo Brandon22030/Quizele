@@ -45,9 +45,9 @@ describe("Podium et classement", () => {
     const html = renderToStaticMarkup(
       createElement(Podium, {
         places: [
-          { rank: 3, pseudo: "Grâce", isYou: true },
-          { rank: 1, pseudo: "Esther" },
-          { rank: 2, pseudo: "David" },
+          { playerId: "c", rank: 3, pseudo: "Grâce", isYou: true },
+          { playerId: "a", rank: 1, pseudo: "Esther" },
+          { playerId: "b", rank: 2, pseudo: "David" },
         ],
       }),
     );
@@ -58,7 +58,7 @@ describe("Podium et classement", () => {
   });
 
   it("n'affiche que les places existantes", () => {
-    const html = renderToStaticMarkup(createElement(Podium, { places: [{ rank: 1, pseudo: "Seul" }] }));
+    const html = renderToStaticMarkup(createElement(Podium, { places: [{ playerId: "a", rank: 1, pseudo: "Seul" }] }));
     expect(html.match(/<li/g)).toHaveLength(1);
   });
 
@@ -70,10 +70,24 @@ describe("Podium et classement", () => {
 
   it("classement : rang, pseudo et score sur le total", () => {
     const html = renderToStaticMarkup(
-      createElement(Classement, { rows: [{ rank: 4, pseudo: "Ruth", score: 6, isYou: true }], total: 10 }),
+      createElement(Classement, { rows: [{ playerId: "r", rank: 4, pseudo: "Ruth", score: 6, isYou: true }], total: 10 }),
     );
     expect(html).toContain("Ruth (toi)");
     expect(html).toContain("6 / 10");
+  });
+
+  it("sépare les lignes par un filet pointillé tiré d'un jeton, sans style inline", () => {
+    const html = renderToStaticMarkup(
+      createElement(Classement, {
+        rows: [
+          { playerId: "a", rank: 1, pseudo: "A", score: 1 },
+          { playerId: "b", rank: 2, pseudo: "B", score: 0 },
+        ],
+        total: 1,
+      }),
+    );
+    expect(html).toContain("divide-y-2 divide-dashed divide-separateur");
+    expect(html).not.toContain("style=");
   });
 });
 
