@@ -1,0 +1,11 @@
+# Copier vers .dev.vars (non versionné) pour surcharger les valeurs factices de wrangler.jsonc.
+# Ne jamais committer de vraie valeur.
+BETTER_AUTH_SECRET=remplacer-par-une-chaine-aleatoire-de-32-caracteres-ou-plus
+BETTER_AUTH_URL=http://localhost:4321
+PLAYER_TOKEN_SECRET=remplacer-par-une-autre-chaine-aleatoire-de-32-caracteres-ou-plus
+RESEND_API_KEY=
+MAIL_FROM=Quizdeszeles <local@example.invalid>
+# console : le lien magique est écrit dans le journal ; resend : envoi réel
+MAIL_TRANSPORT=console
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

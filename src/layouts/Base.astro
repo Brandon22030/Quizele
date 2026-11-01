@@ -1,0 +1,23 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  theme?: "soleil" | "foret";
+  title?: string;
+}
+
+const { theme = "soleil", title = "Quizdeszeles" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="fr" data-theme={theme}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
