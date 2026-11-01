@@ -43,7 +43,7 @@ export function MenuCompte({ nom, email, deconnexionHref, className }: MenuCompt
         aria-expanded={ouvert}
         aria-controls={panneauId}
         onClick={() => setOuvert((v) => !v)}
-        className="grid size-11 place-items-center rounded-full border-trait border-vert-foret bg-vert-foret font-affiche text-lg text-jaune-soleil shadow-relief-sm foret:focus-visible:outline-jaune-soleil"
+        className="grid size-11 place-items-center rounded-full border-trait border-vert-foret bg-vert-foret font-affiche text-lg text-jaune-soleil shadow-relief-sm foret:border-creme foret:focus-visible:outline-jaune-soleil"
       >
         <span aria-hidden="true">{initiale}</span>
       </button>
