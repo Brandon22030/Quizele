@@ -49,7 +49,6 @@ function vue(extra: Partial<VueProps> = {}): string {
     onChoisirModele: noop,
     toast: null,
     onFermerToast: noop,
-    onErreurDeconnexion: noop,
     ...extra,
   };
   return renderToStaticMarkup(createElement(TableauDeBordVue, props));
@@ -72,7 +71,33 @@ describe("tableau de bord : états", () => {
     expect(html).toContain("Supprimer");
     expect(html).toContain("Plus d&#x27;actions pour Les héros de la foi");
     expect(html).toContain("Menu du compte de Sarah");
-    expect(html).toContain('action="/api/auth/sign-out"');
+    // MenuCompte poste par défaut vers la route serveur /deconnexion : plus de contournement JSON vers Better Auth.
+    expect(html).toContain('action="/deconnexion"');
+    expect(html).not.toContain("/api/auth/sign-out");
+  });
+
+  it("panneau d'onglet focalisable sans masquer l'anneau de focus global", () => {
+    const html = vue();
+    const panneau = html.match(/<div[^>]*role="tabpanel"[^>]*>/)?.[0] ?? "";
+    expect(panneau).toContain('tabindex="0"');
+    expect(panneau).not.toContain("outline-none");
+  });
+
+  it("création depuis un modèle en cours : boutons aria-disabled (focus conservé), pas disabled", () => {
+    const html = vue({ quiz: { etat: "pret", elements: [] }, parties: [], demarrage: { modeleEnCours: "a", erreur: null } });
+    const boutons = html.match(/<button[^>]*data-papier[^>]*>/g) ?? [];
+    expect(boutons).toHaveLength(3);
+    for (const bouton of boutons) {
+      expect(bouton).toContain('aria-disabled="true"');
+      expect(bouton).not.toMatch(/\sdisabled=/);
+    }
+    expect(html).toContain("Création en cours...");
+  });
+
+  it("menu « … » : chaque bouton porte l'id de son quiz, cible du focus après duplication ou suppression", () => {
+    const html = vue();
+    expect(html).toContain('data-menu-quiz="q1"');
+    expect(html).toContain('data-menu-quiz="q2"');
   });
 
   it("chargement : squelettes annoncés, aucune carte", () => {

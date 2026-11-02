@@ -255,10 +255,12 @@ test.describe("tableau de bord : QA indépendante", () => {
     await contexte.close();
   });
 
-  test("déconnexion (contournement JSON) : la session est réellement fermée", async ({ browser }) => {
+  test("déconnexion (formulaire POST /deconnexion) : la session est réellement fermée", async ({ browser }) => {
     const { contexte, page } = await ouvrirSession(browser, SOLO);
     await page.getByRole("button", { name: /Menu du compte/ }).click();
+    const envoi = page.waitForRequest((r) => r.method() === "POST" && new URL(r.url()).pathname === "/deconnexion");
     await page.getByRole("button", { name: "Se déconnecter" }).click();
+    await envoi;
     await expect(page).toHaveURL(`${serveur.url}/`);
     const session = await page.evaluate(async () => (await fetch("/api/auth/get-session")).text());
     expect(session === "null" || session === "").toBe(true);

@@ -121,11 +121,25 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k1-menu-ouvert");
 
+    // Rechargement silencieux : aucun squelette entre la duplication et la nouvelle liste.
+    let squeletteVu = false;
+    await page.exposeFunction("signalerSquelette", () => {
+      squeletteVu = true;
+    });
+    await page.evaluate(() => {
+      new MutationObserver(() => {
+        if (document.querySelector('[aria-busy="true"]')) (window as unknown as { signalerSquelette: () => void }).signalerSquelette();
+      }).observe(document.body, { subtree: true, childList: true, attributes: true });
+    });
     await carte.getByRole("button", { name: "Dupliquer" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Quiz dupliqué." })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Mes quiz (3)" })).toBeVisible();
+    // Le focus suit la nouvelle carte, pas body.
+    const menuCopie = page.getByRole("button", { name: /^Plus d'actions pour Les paraboles \(copie\)$/ });
+    await expect(menuCopie).toBeFocused();
+    expect(squeletteVu).toBe(false);
 
-    await page.getByRole("button", { name: /Plus d'actions pour Les paraboles \(copie\)/ }).click();
+    await menuCopie.click();
     await page.getByRole("button", { name: "Supprimer" }).click();
     const dialogue = page.getByRole("dialog", { name: "Supprimer ce quiz ?" });
     await expect(dialogue).toBeVisible();
@@ -134,21 +148,27 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     await capturer(page, "k1-confirmation");
     await dialogue.getByRole("button", { name: "Annuler" }).click();
     await expect(page.getByRole("tab", { name: "Mes quiz (3)" })).toBeVisible();
+    // La modale rend le focus au « … » visible qui l'a ouverte, pas à l'action masquée du menu.
+    await expect(menuCopie).toBeFocused();
 
-    await page.getByRole("button", { name: /Plus d'actions pour Les paraboles \(copie\)/ }).click();
+    await menuCopie.click();
     await page.getByRole("button", { name: "Supprimer" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
     await expect(page.getByRole("tab", { name: "Mes quiz (2)" })).toBeVisible();
     await expect(page.getByRole("status").filter({ hasText: "Quiz supprimé." })).toBeVisible();
+    // La copie était en tête de liste : le focus passe à la carte suivante.
+    await expect(page.getByRole("button", { name: /^Plus d'actions pour Les paraboles$/ })).toBeFocused();
   });
 
   test("lancer un quiz incomplet : message serveur et lien vers l'éditeur", async ({ page }) => {
     await connecter(page, serveur);
     const carte = page.getByRole("listitem").filter({ hasText: "Les paraboles" }).first();
     await expect(carte.getByRole("link", { name: "Continuer" })).toHaveAttribute("href", /\/quiz\/[\w-]+$/);
-    await carte.getByRole("button", { name: /Plus d'actions pour Les paraboles/ }).click();
+    const menu = carte.getByRole("button", { name: /Plus d'actions pour Les paraboles/ });
+    await menu.click();
     await carte.getByRole("button", { name: "Lancer" }).click();
     await expect(carte.getByRole("alert")).toContainText("Le quiz n'est pas prêt");
+    await expect(menu).toBeFocused();
     await expect(carte.getByRole("link", { name: "Compléter le quiz" })).toHaveAttribute("href", /\/quiz\/[\w-]+$/);
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k1-lancement-incomplet");
@@ -187,34 +207,68 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     await capturer(page, "k1b-parties");
   });
 
-  test("chargement : squelettes annoncés tant que la liste n'est pas arrivée", async ({ page }) => {
+  test("liste lue côté serveur : les cartes sont dans le HTML, sans appel à quiz.lister au chargement", async ({ page }) => {
     await connecter(page, serveur);
+    const appels: string[] = [];
+    page.on("request", (requete) => {
+      if (requete.url().includes("_actions/quiz.lister")) appels.push(requete.url());
+    });
+    const reponse = await page.request.get(`${serveur.url}/tableau-de-bord`);
+    expect(await reponse.text()).toContain("Les paraboles");
+    await page.reload();
+    await hydrate(page);
+    await expect(page.getByRole("tab", { name: /Mes quiz \(\d\)/ })).toBeVisible();
+    expect(appels).toEqual([]);
+  });
+
+  test("erreur serveur, puis Réessayer : squelettes annoncés pendant le rechargement, puis la liste", async ({ page }) => {
+    await connecter(page, serveur);
+    // Panne de lecture : la table des questions disparaît le temps de la panne, la page rend l'état d'erreur.
+    serveur.sql("ALTER TABLE questions RENAME TO questions_off");
+    try {
+      await page.reload();
+      await hydrate(page);
+      await expect(page.getByRole("alert").filter({ hasText: "Tes quiz sont introuvables" })).toBeVisible();
+      expect(await axe(page)).toEqual([]);
+      await capturer(page, "k10-erreur");
+    } finally {
+      serveur.sql("ALTER TABLE questions_off RENAME TO questions");
+    }
+
     let liberer: () => void = () => {};
     const attente = new Promise<void>((r) => (liberer = r));
     await page.route(/_actions\/quiz\.lister/, async (route) => {
       await attente;
       await route.continue();
     });
-    await page.reload();
+    await page.getByRole("button", { name: "Réessayer" }).click();
     await expect(page.getByText("Chargement de tes quiz")).toBeAttached();
     await expect(page.locator('[aria-busy="true"]')).toBeVisible();
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k10-chargement");
     liberer();
-    await expect(page.getByRole("tab", { name: /Mes quiz \(\d\)/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible();
+    await page.unroute(/_actions\/quiz\.lister/);
   });
 
-  test("erreur : message, puis Réessayer recharge la liste", async ({ page }) => {
+  test("menu « … » : un clic dans le vide ferme le menu et rend le focus au bouton", async ({ page }) => {
     await connecter(page, serveur);
-    await page.route(/_actions\/quiz\.lister/, (route) => route.fulfill({ status: 500, json: { type: "AstroActionError", code: "INTERNAL_SERVER_ERROR", message: "Une erreur est survenue." } }));
-    await page.reload();
-    await hydrate(page);
-    await expect(page.getByRole("alert").filter({ hasText: "Tes quiz sont introuvables" })).toBeVisible();
-    expect(await axe(page)).toEqual([]);
-    await capturer(page, "k10-erreur");
-    await page.unroute(/_actions\/quiz\.lister/);
-    await page.getByRole("button", { name: "Réessayer" }).click();
-    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible();
+    const carte = page.getByRole("listitem").filter({ hasText: "Les paraboles" }).first();
+    const menu = carte.getByRole("button", { name: /Plus d'actions pour Les paraboles/ });
+    await menu.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu).toHaveAttribute("aria-expanded", "true");
+    // Focus sur une action du menu, puis clic hors du menu, sur une zone non focalisable.
+    await page.keyboard.press("Tab");
+    await expect(carte.getByRole("link", { name: "Modifier" })).toBeFocused();
+    await page.mouse.click(4, 4);
+    await expect(menu).toHaveAttribute("aria-expanded", "false");
+    await expect(menu).toBeFocused();
+
+    // Un clic extérieur sur un autre contrôle lui laisse le focus.
+    await menu.click();
+    await page.getByRole("tab", { name: "Parties jouées" }).click();
+    await expect(page.getByRole("tab", { name: "Parties jouées" })).toBeFocused();
   });
 
   test("compte : le menu affiche le nom et la déconnexion ferme la session", async ({ page }) => {
