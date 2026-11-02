@@ -571,7 +571,7 @@ test.describe("éditeur : QA, session réelle", () => {
       page.evaluate((v) => {
         const sonde = document.createElement("span");
         sonde.style.color = `var(${v})`;
-        document.body.append(sonde);
+        document.body.appendChild(sonde);
         const c = getComputedStyle(sonde).color;
         sonde.remove();
         return c;
