@@ -94,6 +94,18 @@ describe("tableau de bord : états", () => {
     expect(html).toContain("Création en cours...");
   });
 
+  it("rendu serveur : aucune date formatée (fuseau du navigateur inconnu), seulement des <time> masqués", () => {
+    const html = vue();
+    expect(html).not.toMatch(/nov\./);
+    expect(html).not.toContain("modifié le");
+    expect(html).toContain('<time dateTime="2026-11-08T10:00:00.000Z"></time>');
+    expect(html).toMatch(/<span hidden="">[^<]*<time dateTime="2026-11-01T10:00:00.000Z"><\/time><\/span>/);
+    const parties = vue({ onglet: "parties" });
+    expect(parties).not.toMatch(/octobre|oct\./);
+    expect(parties).toContain('<time dateTime="2026-10-25T10:00:00.000Z"');
+    expect(parties).toContain('aria-label="Voir le bilan de Camp de Pâques"');
+  });
+
   it("menu « … » : chaque bouton porte l'id de son quiz, cible du focus après duplication ou suppression", () => {
     const html = vue();
     expect(html).toContain('data-menu-quiz="q1"');

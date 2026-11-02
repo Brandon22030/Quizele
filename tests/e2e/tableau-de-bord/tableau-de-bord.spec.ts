@@ -221,6 +221,32 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     expect(appels).toEqual([]);
   });
 
+  test("dates : absentes du HTML serveur, formatées dans le fuseau du navigateur après hydratation, sans avertissement", async ({ browser }) => {
+    // Fuseau éloigné de l'UTC du serveur : un formatage serveur produirait ici un décalage d'hydratation.
+    const contexte = await browser.newContext({ timezoneId: "Pacific/Kiritimati", viewport: { width: 390, height: 844 } });
+    const page = await contexte.newPage();
+    const avertissements: string[] = [];
+    page.on("console", (message) => {
+      if (/hydrat|did not match|Minified React error #4(18|25)/i.test(message.text())) avertissements.push(message.text());
+    });
+    page.on("pageerror", (erreur) => avertissements.push(erreur.message));
+    await connecter(page, serveur);
+    const html = await (await page.request.get(`${serveur.url}/tableau-de-bord`)).text();
+    expect(html).toContain("Les paraboles");
+    expect(html).not.toContain("modifié le");
+    await page.reload();
+    await hydrate(page);
+    const carte = page.getByRole("listitem").filter({ hasText: "Les paraboles" }).first();
+    const date = carte.locator("time");
+    await expect(carte).toContainText(/modifié le \d{1,2} [a-zéû]+\.?/);
+    const attendu = await date.evaluate((el) =>
+      new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" }).format(new Date(el.getAttribute("datetime") ?? "")),
+    );
+    await expect(date).toHaveText(attendu);
+    expect(avertissements).toEqual([]);
+    await contexte.close();
+  });
+
   test("erreur serveur, puis Réessayer : squelettes annoncés pendant le rechargement, puis la liste", async ({ page }) => {
     await connecter(page, serveur);
     // Panne de lecture : la table des questions disparaît le temps de la panne, la page rend l'état d'erreur.
