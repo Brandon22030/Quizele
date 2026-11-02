@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useGameSession } from "../../client/realtime/use-game-session";
 import { VueJoueur, VueChargement, type ChoixLocal } from "./EcranJoueur";
 import { effacerJeton, lireJeton, retourRejoindre, type JetonJoueur } from "./jeton";
@@ -36,10 +36,6 @@ function Partie({ code, jeton }: { code: string; jeton: JetonJoueur }) {
   const getToken = useCallback(() => jeton.token, [jeton]);
   const { state, answer, next } = useGameSession({ code, getToken });
   const [choixLocal, setChoixLocal] = useState<ChoixLocal | null>(null);
-  // Le total de questions n'est pas repris par le message `finished` : on le garde pour l'écran de résultat.
-  const total = useRef(0);
-  if (state.question) total.current = state.question.total;
-
   useEffect(() => {
     if (state.connection === "rejected") retourRejoindre(code);
     // Exclu ou partie finie : le jeton ne servira plus, mais l'écran terminal reste affiché (pas de redirection).
@@ -54,5 +50,5 @@ function Partie({ code, jeton }: { code: string; jeton: JetonJoueur }) {
     [answer],
   );
 
-  return <VueJoueur code={code} state={state} total={total.current} choixLocal={choixLocal} onAnswer={repondre} onNext={next} />;
+  return <VueJoueur code={code} state={state} choixLocal={choixLocal} onAnswer={repondre} onNext={next} />;
 }

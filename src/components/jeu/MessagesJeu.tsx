@@ -7,19 +7,24 @@ const encart = "rounded-md border-trait border-vert-foret bg-creme p-4 text-cent
 interface EnregistreeProps {
   // La région role=status reste dans le DOM : seul son contenu apparaît, ce qui garantit l'annonce.
   active?: boolean;
+  // Texte sous le titre : avant la révélation, « à la fin de la partie » serait faux quand la correction est visible.
+  detail?: string;
   className?: string;
 }
 
 // Correction masquée par l'animateur : rien, ici, ne doit laisser deviner si la réponse était juste.
-export function ReponseEnregistree({ active = true, className }: EnregistreeProps) {
+export function ReponseEnregistree({ active = true, detail = "La correction arrive à la fin de la partie.", className }: EnregistreeProps) {
   return (
     <div role="status" className={className}>
       {active ? (
         <div className={encart}>
-          <p className="font-affiche text-xl">Réponse enregistrée</p>
+          {/* Cible du focus quand l'écran change : tabIndex -1 le rend focalisable par script sans l'ajouter à l'ordre de tabulation. */}
+          <h2 tabIndex={-1} data-focus-titre="" className="font-affiche text-xl">
+            Réponse enregistrée
+          </h2>
           <p className="mt-1 flex items-center justify-center gap-2 text-sm font-semibold text-vert-mousse">
             <Rebond taille="petit" />
-            La correction arrive à la fin de la partie.
+            {detail}
           </p>
         </div>
       ) : null}

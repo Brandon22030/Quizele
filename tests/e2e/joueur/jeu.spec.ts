@@ -67,6 +67,8 @@ async function capturer(page: Page, nom: string) {
 }
 
 async function sansViolation(page: Page) {
+  // Une transition de couleur en cours (tuile qui vient d'être choisie) fausse le calcul de contraste d'axe.
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished)));
   const resultat = await new AxeBuilder({ page }).analyze();
   expect(resultat.violations.map((v) => `${v.id} (${v.impact}) : ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 }
@@ -191,4 +193,60 @@ test("jeton refusé : la clé est supprimée puis retour à la saisie du code", 
   await page.waitForURL(`${URL_JEU}/j/${partie.code}`, { timeout: 45_000 });
   expect(await page.evaluate((k) => localStorage.getItem(k), cle)).toBeNull();
   await contexte.close();
+});
+
+test("focus sur le titre de chaque écran, annonces vocales et partage sans import au clic", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const partie = await lancerPartie({ questions: questions.slice(0, 1) });
+  const animateur = new Animateur(partie.code, partie.hostToken);
+  const page = await nouveauJoueur(browser, partie.code, "Ruth");
+  // navigator.share espion : relève si le geste du clic est encore actif à l'appel et quel fichier part.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __partage: { actif: boolean; fichier: string }[] };
+    w.__partage = [];
+    Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+    Object.defineProperty(navigator, "share", {
+      value: async (donnees: ShareData) => {
+        w.__partage.push({ actif: navigator.userActivation.isActive, fichier: donnees.files?.[0]?.name ?? "" });
+      },
+      configurable: true,
+    });
+  });
+  await page.reload();
+
+  const annonce = page.locator("p[aria-live=polite]");
+  const focus = () => page.evaluate(() => ({ balise: document.activeElement?.tagName, texte: document.activeElement?.textContent?.trim() ?? "" }));
+
+  await expect(page.getByText("EN ATTENTE")).toBeVisible();
+  expect((await focus()).texte).toBe("Salle d'attente");
+
+  await animateur.envoyer("start");
+  await expect(annonce).toHaveText("Question 1 sur 1");
+  expect(await focus()).toEqual({ balise: "H1", texte: questions[0]!.prompt });
+
+  await page.getByRole("button", { name: /Noé/ }).click();
+  await expect(annonce).toHaveText("Réponse bien enregistrée");
+  // Le bouton cliqué a disparu : le focus ne doit pas retomber sur body.
+  await expect.poll(focus).toEqual({ balise: "H2", texte: "Réponse enregistrée" });
+
+  await animateur.envoyer("reveal");
+  await expect(annonce).toHaveText("Juste !");
+  await expect.poll(async () => (await focus()).texte).toBe("JUSTE !");
+
+  await animateur.envoyer("end");
+  await expect(annonce).toHaveText("Résultats");
+  expect(await focus()).toEqual({ balise: "H1", texte: "Résultat final" });
+
+  const partager = page.getByRole("button", { name: "Partager mon score" });
+  await expect(partager).not.toHaveAttribute("aria-busy", "true", { timeout: 30_000 });
+  const apresClic: string[] = [];
+  page.on("request", (r) => apresClic.push(r.url()));
+  await partager.click();
+  await expect(page.getByRole("status").filter({ hasText: "Image partagée." })).toBeVisible();
+  expect(apresClic.filter((u) => /\.(js|mjs|ts|tsx)(\?|$)/.test(u))).toEqual([]);
+  const appels = await page.evaluate(() => (window as unknown as { __partage: unknown[] }).__partage);
+  expect(appels).toEqual([{ actif: true, fichier: "quizdeszeles-resultat.png" }]);
+
+  animateur.fermer();
+  await page.context().close();
 });

@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 import type { SessionState } from "../../client/realtime/session-state";
-import type { ShareResult } from "../../client/partage";
+import type { messagePartage as MessagePartage, sharePng as SharePng } from "../../client/partage";
 import { Classement, Podium, ScoreFinal, type LigneClassement, type PlacePodium } from "../../components/jeu";
 import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
+import { FocusTitre } from "./FocusTitre";
 
 interface Props {
   state: SessionState;
-  total: number;
 }
 
-type Image = { statut: "preparation" } | { statut: "prete"; blob: Blob } | { statut: "echec" };
+// Les fonctions de partage sont gardées avec le Blob : au clic, aucun import ne s'intercale avant navigator.share.
+interface Outils {
+  sharePng: typeof SharePng;
+  messagePartage: typeof MessagePartage;
+}
+
+type Image = { statut: "preparation" } | { statut: "prete"; blob: Blob; outils: Outils } | { statut: "echec" };
 
 function messageFinal(score: number, total: number): string {
   const part = total > 0 ? score / total : 0;
@@ -21,7 +27,7 @@ function messageFinal(score: number, total: number): string {
 
 // Écran f. Le PNG est fabriqué dès l'affichage : Safari iOS n'accepte navigator.share que dans le geste du clic,
 // sans chargement de module ni dessin entre les deux.
-export function Resultat({ state, total }: Props) {
+export function Resultat({ state }: Props) {
   const resultat = state.result;
   const classement = state.ranking;
   const moi = state.me;
@@ -29,6 +35,7 @@ export function Resultat({ state, total }: Props) {
   const [essai, setEssai] = useState(0);
   const [annonce, setAnnonce] = useState("");
 
+  const total = state.totalQuestions ?? state.question?.total ?? 0;
   const score = resultat?.score ?? 0;
   const nombreJoueurs = Math.max(state.playerCount, classement.length);
 
@@ -37,8 +44,9 @@ export function Resultat({ state, total }: Props) {
     let annule = false;
     setImage({ statut: "preparation" });
     import("../../client/partage")
-      .then(({ renderResultImage }) =>
-        renderResultImage({
+      .then(async ({ renderResultImage, sharePng, messagePartage }) => ({
+        outils: { sharePng, messagePartage },
+        blob: await renderResultImage({
           quizTitle: state.title,
           pseudo: moi?.pseudo ?? "",
           score: resultat.score,
@@ -47,8 +55,8 @@ export function Resultat({ state, total }: Props) {
           playerCount: nombreJoueurs,
           top: classement.slice(0, 5).map((l) => ({ pseudo: l.pseudo, score: l.score })),
         }),
-      )
-      .then((blob) => !annule && setImage({ statut: "prete", blob }))
+      }))
+      .then(({ blob, outils }) => !annule && setImage({ statut: "prete", blob, outils }))
       .catch(() => !annule && setImage({ statut: "echec" }));
     return () => {
       annule = true;
@@ -58,8 +66,9 @@ export function Resultat({ state, total }: Props) {
 
   const partager = async () => {
     if (image.statut !== "prete") return;
-    const { sharePng, messagePartage } = await import("../../client/partage");
-    const retour: ShareResult = await sharePng(image.blob, {
+    const { sharePng, messagePartage } = image.outils;
+    // Premier appel asynchrone du gestionnaire : navigator.share part dans le geste du clic (Safari iOS).
+    const retour = await sharePng(image.blob, {
       filename: "quizdeszeles-resultat.png",
       title: "Quizdeszeles",
       text: `J'ai fait ${score} sur ${total} à ${state.title}.`,
@@ -67,15 +76,15 @@ export function Resultat({ state, total }: Props) {
     setAnnonce(messagePartage(retour) ?? "");
   };
 
-  const places: PlacePodium[] = classement.slice(0, 3).map((l, i) => ({
+  const places: PlacePodium[] = classement.slice(0, 3).map((l) => ({
     playerId: l.playerId,
-    rank: (i + 1) as 1 | 2 | 3,
+    rank: l.rank as 1 | 2 | 3,
     pseudo: l.pseudo,
     isYou: l.playerId === moi?.playerId,
   }));
-  const lignes: LigneClassement[] = classement.slice(3).map((l, i) => ({
+  const lignes: LigneClassement[] = classement.slice(3).map((l) => ({
     playerId: l.playerId,
-    rank: i + 4,
+    rank: l.rank,
     pseudo: l.pseudo,
     score: l.score,
     isYou: l.playerId === moi?.playerId,
@@ -83,6 +92,7 @@ export function Resultat({ state, total }: Props) {
 
   return (
     <>
+      <FocusTitre />
       <h1 className="sr-only">Résultat final</h1>
       {resultat ? (
         <ScoreFinal

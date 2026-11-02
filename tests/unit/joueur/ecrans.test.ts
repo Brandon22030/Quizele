@@ -54,9 +54,9 @@ function etat(messages: ServerMessage[], connection: SessionState["connection"] 
   }, base);
 }
 
-function rendre(state: SessionState, opts: { choix?: ChoixLocal | null; total?: number } = {}): string {
+function rendre(state: SessionState, opts: { choix?: ChoixLocal | null } = {}): string {
   return renderToStaticMarkup(
-    createElement(VueJoueur, { code: CODE, state, total: opts.total ?? 10, choixLocal: opts.choix ?? null, onAnswer: () => undefined, onNext: () => undefined }),
+    createElement(VueJoueur, { code: CODE, state, choixLocal: opts.choix ?? null, onAnswer: () => undefined, onNext: () => undefined }),
   );
 }
 
@@ -108,7 +108,6 @@ describe("question (d)", () => {
     const html = rendre(etat(messages), { choix: { questionId: "q3", optionIds: ["o2"] } });
     expect(html).toContain("Réponse enregistrée");
     expect(html).toContain("Noé");
-    expect(html).not.toContain('role="timer"');
     expect(html).not.toMatch(/\d+ justes?/);
     for (const indice of [/JUSTE/, /PAS CETTE FOIS/i, /\bFaux\b/i, /Bonne réponse/, /Explication/]) expect(html).not.toMatch(indice);
   });
@@ -190,24 +189,31 @@ describe("aucune correction sans message reveal", () => {
 });
 
 describe("résultat (f)", () => {
-  it("rang, score, temps, podium et bouton de partage", () => {
+  it("rang serveur, total du message finished, temps, podium et bouton de partage", () => {
     const s = etat([
       snapshot({ phase: "question" }),
-      question(),
+      question({ total: 2 }),
       {
         type: "finished",
+        total: 10,
+        // Égalité : deux joueurs au rang 4, que `index + 1` aurait numérotés 4 et 5.
         ranking: [
-          { playerId: "p2", pseudo: "Esther.B", score: 9, totalMs: 100_000 },
-          { playerId: "p3", pseudo: "David", score: 8, totalMs: 100_000 },
-          { playerId: "p1", pseudo: "Grâce_22", score: 7, totalMs: 252_000 },
-          { playerId: "p4", pseudo: "Ruth", score: 6, totalMs: 90_000 },
+          { playerId: "p2", pseudo: "Esther.B", score: 9, totalMs: 100_000, rank: 1 },
+          { playerId: "p3", pseudo: "David", score: 8, totalMs: 100_000, rank: 2 },
+          { playerId: "p1", pseudo: "Grâce_22", score: 7, totalMs: 252_000, rank: 3 },
+          { playerId: "p4", pseudo: "Ruth", score: 6, totalMs: 90_000, rank: 4 },
+          { playerId: "p5", pseudo: "Josué", score: 6, totalMs: 95_000, rank: 4 },
         ],
         you: { rank: 3, score: 7, totalMs: 252_000 },
       },
     ]);
     const html = rendre(s);
     expect(html).toContain("Résultat final");
-    expect(html).toContain("Rang : 3 / 4");
+    expect(html).toContain("7 sur 10");
+    expect(html).not.toContain("sur 0");
+    expect(html).toMatch(/<b[^>]*>4<\/b>\s+Josué/);
+    expect(html).not.toMatch(/<b[^>]*>5<\/b>/);
+    expect(html).toContain("Rang : 3 / 5");
     expect(html).toContain("4 min 12 s");
     expect(html).toContain("Grâce_22 (toi)");
     expect(html).toContain("Ruth");
@@ -243,9 +249,67 @@ describe("connexion et fins de partie", () => {
   it("partie terminée après réception du résultat : le résultat reste affiché", () => {
     const fin = etat([
       ...enCours,
-      { type: "finished", ranking: [{ playerId: "p1", pseudo: "Grâce_22", score: 1, totalMs: 1000 }], you: { rank: 1, score: 1, totalMs: 1000 } },
+      { type: "finished", total: 1, ranking: [{ playerId: "p1", pseudo: "Grâce_22", score: 1, totalMs: 1000, rank: 1 }], you: { rank: 1, score: 1, totalMs: 1000 } },
     ]);
     const html = rendre(sessionReducer(fin, { type: "connection", status: "ended" }));
     expect(html).toContain("Résultat final");
+  });
+});
+
+describe("salle d'attente en direct", () => {
+  const joueurs = (pseudos: string[]) => pseudos.map((pseudo, i) => ({ id: `j${i}`, pseudo }));
+
+  it("pastilles des derniers arrivés et « + N autres », mises à jour par lobby_players", () => {
+    const debut = etat([snapshot({ playerCount: 12, players: joueurs(["Esther", "David", "Ruth"]) })]);
+    const html = rendre(debut);
+    for (const pseudo of ["Esther", "David", "Ruth"]) expect(html).toContain(pseudo);
+    expect(html).toContain("+ 9 autres");
+    expect(html).not.toContain("premier arrivé");
+
+    const suite = sessionReducer(debut, {
+      type: "message",
+      clock: null,
+      message: { type: "lobby_players", playerCount: 13, players: joueurs(["David", "Ruth", "Léa"]) },
+    });
+    const apres = rendre(suite);
+    expect(apres).toContain("Léa");
+    expect(apres).not.toContain("Esther");
+    expect(apres).toContain("+ 10 autres");
+  });
+});
+
+describe("annonces vocales", () => {
+  const live = (html: string) => /<p aria-live="polite" class="sr-only">([^<]*)<\/p>/.exec(html)?.[1];
+  const ack: ServerMessage = { type: "answer_ack", questionId: "q3", duplicate: false, late: false };
+  const base = [snapshot({ phase: "question" }), question()];
+
+  it("région persistante alimentée à chaque transition", () => {
+    expect(live(rendre(etat([snapshot()])))).toBe("");
+    expect(live(rendre(etat(base)))).toBe("Question 3 sur 10");
+    expect(live(rendre(etat([...base, ack])))).toBe("Réponse bien enregistrée");
+    const juste: ServerMessage = { type: "reveal", questionId: "q3", correctOptionIds: ["o2"], you: { wasCorrect: true, score: 1 } };
+    const faux: ServerMessage = { type: "reveal", questionId: "q3", correctOptionIds: ["o2"], you: { wasCorrect: false, score: 0 } };
+    expect(live(rendre(etat([...base, juste])))).toBe("Juste !");
+    expect(live(rendre(etat([...base, faux])))).toBe("Pas cette fois");
+    expect(live(rendre(etat([...base, { type: "reveal", questionId: "q3" }])))).toBe("Réponse bien enregistrée");
+    const fin: ServerMessage = { type: "finished", total: 2, ranking: [], you: { rank: 1, score: 1, totalMs: 1 } };
+    expect(live(rendre(etat([...base, fin])))).toBe("Résultats");
+  });
+
+  it("l'annonce ne répète pas le texte visible (pas de doublon à l'écran)", () => {
+    const html = rendre(etat([...base, ack]), { choix: { questionId: "q3", optionIds: ["o1"] } });
+    expect(html.match(/Réponse enregistrée/g)?.length).toBe(1);
+  });
+});
+
+describe("énoncé et chrono après envoi", () => {
+  it("restent affichés jusqu'à la correction", () => {
+    const html = rendre(
+      etat([snapshot({ phase: "question" }), question(), { type: "answer_ack", questionId: "q3", duplicate: false, late: false }]),
+      { choix: { questionId: "q3", optionIds: ["o1"] } },
+    );
+    expect(html).toContain('role="timer"');
+    expect(html).toContain("Qui a construit l&#x27;arche ?");
+    expect(html).toContain("On attend la suite de la partie.");
   });
 });

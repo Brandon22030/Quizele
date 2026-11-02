@@ -82,6 +82,13 @@ describe("correction masquée", () => {
     expect(html).not.toMatch(/JUSTE|Juste|Bonne réponse|Pas cette fois|bg-vert-eclat|bg-piment/);
   });
 
+  it("le texte sous le titre est paramétrable, le titre reste focalisable", () => {
+    const html = renderToStaticMarkup(createElement(ReponseEnregistree, { detail: "On attend la suite." }));
+    expect(html).toContain("On attend la suite.");
+    expect(html).not.toContain("à la fin de la partie");
+    expect(html).toContain('tabindex="-1"');
+  });
+
   it("garde la région role=status même inactive, mais vide", () => {
     const html = renderToStaticMarkup(createElement(ReponseEnregistree, { active: false }));
     expect(html).toContain('role="status"');

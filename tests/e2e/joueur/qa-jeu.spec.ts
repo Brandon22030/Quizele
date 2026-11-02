@@ -275,7 +275,7 @@ test("chrono à zéro : « Temps écoulé », tuiles inactives, aucun envoi, la 
   await expect(j.page.getByRole("timer")).toBeVisible();
   await expect(j.page.getByRole("heading", { name: "JUSTE !" })).toHaveCount(0);
   await expect(j.page.getByRole("timer")).toHaveAttribute("aria-label", "Temps écoulé", { timeout: 30_000 });
-  await expect(j.page.getByText("Trop tard, la correction arrive.")).toBeVisible();
+  await expect(j.page.getByText("Temps écoulé, on attend la suite.")).toBeVisible();
   // La tuile reste lisible mais n'est plus un bouton : plus rien à toucher.
   await expect(j.page.getByRole("button", { name: /Alpha/ })).toHaveCount(0);
   await expect(j.page.getByText("Alpha")).toBeVisible();
