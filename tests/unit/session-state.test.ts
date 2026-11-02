@@ -69,7 +69,7 @@ describe("session-state : corrections de revue", () => {
     expect(failed.error).toBe("wrong_phase");
     expect(apply(failed, { type: "answer_ack", questionId: "q1", duplicate: false, late: false }).error).toBeNull();
     expect(apply(failed, { type: "reveal", questionId: "q1" }).error).toBeNull();
-    expect(apply(failed, { type: "finished", ranking: [] }).error).toBeNull();
+    expect(apply(failed, { type: "finished", ranking: [], total: 3 }).error).toBeNull();
   });
 
   it("player_left retire le joueur et met à jour le compte", () => {
@@ -92,7 +92,7 @@ describe("session-state : statuts terminaux", () => {
 describe("session-state : changement de partie", () => {
   it("un statut terminal résiste aux changements de connexion mais pas à la remise à zéro d'un nouveau code", () => {
     let state = sessionReducer(initialSessionState, { type: "connection", status: "open" });
-    state = apply(state, { type: "finished", ranking: [] });
+    state = apply(state, { type: "finished", ranking: [], total: 3 });
     state = sessionReducer(state, { type: "connection", status: "ended" });
     expect(sessionReducer(state, { type: "connection", status: "open" }).connection).toBe("ended");
     // useGameSession envoie "reset" à chaque nouveau code avant d'ouvrir le socket de la nouvelle partie.
@@ -108,10 +108,20 @@ describe("session-state : changement de partie", () => {
     expect(state).toMatchObject({ finishedCount: 2, playerCount: 5 });
     state = apply(state, {
       type: "finished",
-      ranking: [{ playerId: "p1", pseudo: "Awa", score: 3, totalMs: 4000 }],
+      ranking: [{ playerId: "p1", pseudo: "Awa", score: 3, totalMs: 4000, rank: 1 }],
+      total: 10,
       you: { rank: 1, score: 3, totalMs: 4000 },
     });
-    expect(state).toMatchObject({ phase: "finished", result: { rank: 1, score: 3, totalMs: 4000 } });
+    expect(state).toMatchObject({ phase: "finished", result: { rank: 1, score: 3, totalMs: 4000 }, totalQuestions: 10 });
+  });
+
+  it("lobby_players remplace le compteur et les derniers arrivés", () => {
+    const state = apply(
+      { ...initialSessionState, players: [{ id: "p1", pseudo: "Awa" }] },
+      { type: "lobby_players", playerCount: 12, players: [{ id: "p2", pseudo: "Kofi" }, { id: "p3", pseudo: "Esi" }] },
+    );
+    expect(state.playerCount).toBe(12);
+    expect(state.players).toEqual([{ id: "p2", pseudo: "Kofi" }, { id: "p3", pseudo: "Esi" }]);
   });
 
   it("l'instantané d'une partie finie restitue le rang et le mode", () => {
@@ -123,7 +133,7 @@ describe("session-state : changement de partie", () => {
       title: "Quiz",
       playerCount: 1,
       mode: "own_pace",
-      ranking: [{ playerId: "p1", pseudo: "Awa", score: 2, totalMs: 900 }],
+      ranking: [{ playerId: "p1", pseudo: "Awa", score: 2, totalMs: 900, rank: 1 }],
       me: { playerId: "p1", pseudo: "Awa", score: 2, answered: false, rank: 1 },
     });
     expect(state).toMatchObject({ mode: "own_pace", result: { rank: 1, score: 2, totalMs: 900 } });
