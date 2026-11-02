@@ -1,0 +1,10 @@
+---
+import Base from "../../layouts/Base.astro";
+import Editeur from "../../islands/editeur/Editeur";
+---
+
+<Base title="Nouveau quiz - Quizdeszeles">
+  <main>
+    <Editeur client:load quizId={null} />
+  </main>
+</Base>
