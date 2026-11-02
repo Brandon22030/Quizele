@@ -27,11 +27,11 @@ if (!import.meta.env.DEV) {
   import type { LeaderboardShareData, ResultShareData, ShareFormat } from "../../client/partage";
 
   const top = [
-    { pseudo: "Esther.B", score: 9 },
-    { pseudo: "David", score: 8 },
-    { pseudo: "Grâce_22 (toi)", score: 7 },
-    { pseudo: "Ruth-Marie-Joséphine-de-la-Providence-Divine", score: 6 },
-    { pseudo: "Josué 🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺", score: 5 },
+    { pseudo: "Esther.B", score: 9, rank: 1 },
+    { pseudo: "David", score: 8, rank: 2 },
+    { pseudo: "Grâce_22 (toi)", score: 7, rank: 3, isYou: true },
+    { pseudo: "Ruth-Marie-Joséphine-de-la-Providence-Divine", score: 6, rank: 4 },
+    { pseudo: "Josué 🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺🎺", score: 5, rank: 5 },
   ];
   const resultat: ResultShareData = {
     quizTitle: "Les héros de la foi, des patriarches aux prophètes de l'Ancien Testament",

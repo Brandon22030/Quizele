@@ -160,7 +160,7 @@ function etiquette(s: Scene, texte: string, y: number, taille: number): void {
   ctx.fillText(fitText(mesure(ctx, ctx.font), texte, s.colonne.largeur), s.colonne.cx, y);
 }
 
-function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, surligne: number): void {
+function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number): void {
   const { ctx, t, feuille } = s;
   papier(ctx, t, feuille.x, feuille.haut, feuille.largeur, feuille.hauteur);
   const interieur = t.espaces.quatre;
@@ -185,7 +185,7 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
   entrees.forEach((entree, i) => {
     const y = haut + ligne * i;
     const milieu = y + ligne / 2;
-    if (i === surligne) {
+    if (entree.isYou) {
       ctx.beginPath();
       ctx.roundRect(gauche - t.espaces.deux / 2, y + t.espaces.deux / 4, droite - gauche + t.espaces.deux, ligne - t.espaces.deux / 2, t.espaces.deux);
       ctx.fillStyle = t.couleurs.jaune;
@@ -204,7 +204,7 @@ function feuilleClassement(s: Scene, top: ShareRankingEntry[], total: number, su
     ctx.fillStyle = t.couleurs.foret;
     ctx.textAlign = "left";
     ctx.font = fontRang;
-    ctx.fillText(String(i + 1), gauche + t.espaces.deux, milieu);
+    ctx.fillText(String(entree.rank), gauche + t.espaces.deux, milieu);
     const texteScore = `${entree.score} / ${total}`;
     ctx.font = fontScore;
     ctx.textAlign = "right";
@@ -273,8 +273,7 @@ export async function renderResultImage(entree: ResultShareData, format: ShareFo
       const haut = yPilules + hPseudo + t.espaces.quatre;
       preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
     }
-    const moi = data.top[data.rank - 1]?.pseudo === data.pseudo ? data.rank - 1 : -1;
-    feuilleClassement(s, data.top, data.total, moi);
+    feuilleClassement(s, data.top, data.total);
   });
 }
 
@@ -313,6 +312,6 @@ export async function renderLeaderboardImage(entree: LeaderboardShareData, forma
       const haut = yPilule + hJoueurs + t.espaces.quatre;
       preparerPortrait(s, haut, s.h - haut - t.espaces.quatre);
     }
-    feuilleClassement(s, data.top, data.total, -1);
+    feuilleClassement(s, data.top, data.total);
   });
 }

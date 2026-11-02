@@ -34,7 +34,7 @@ describe("QA partage : types d'entrée (AST)", () => {
     // @ts-expect-error idem pour le classement
     const b: LeaderboardShareData = { quizTitle: "t", total: 1, playerCount: 1, top: [], explanation: "x" };
     // @ts-expect-error idem pour les entrées du top
-    const c: ResultShareData = { ...ok, top: [{ pseudo: "x", score: 1, options: [] }] };
+    const c: ResultShareData = { ...ok, top: [{ pseudo: "x", score: 1, rank: 1, options: [] }] };
     expect([a, b, c]).toHaveLength(3);
   });
 });

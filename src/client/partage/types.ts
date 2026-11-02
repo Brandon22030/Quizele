@@ -6,6 +6,9 @@ export type ShareFormat = "portrait" | "paysage";
 export interface ShareRankingEntry {
   pseudo: string;
   score: number;
+  // Rang attribué par le serveur : l'image ne le recalcule pas.
+  rank: number;
+  isYou?: boolean;
 }
 
 export interface ResultShareData {

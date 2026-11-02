@@ -69,7 +69,7 @@ const jaune = (page: Page) =>
     return [r, g, b];
   });
 
-const top = (n: number) => Array.from({ length: n }, (_, i) => ({ pseudo: `Joueur${i + 1}`, score: Math.max(0, 10 - i) }));
+const top = (n: number) => Array.from({ length: n }, (_, i) => ({ pseudo: `Joueur${i + 1}`, score: Math.max(0, 10 - i), rank: i + 1 }));
 const base = { quizTitle: "Les héros de la foi", pseudo: "Grâce_22", score: 7, total: 10, rank: 3, playerCount: 24 };
 
 test.describe("images de partage : contenu des 4 PNG", () => {
@@ -139,19 +139,19 @@ test.describe("images de partage : polices", () => {
 
 test.describe("images de partage : robustesse", () => {
   const cas: Array<{ nom: string; donnees: Record<string, unknown> }> = [
-    { nom: "pseudo de 200 caractères sans espace", donnees: { ...base, pseudo: "W".repeat(200), top: [{ pseudo: "W".repeat(200), score: 9 }, ...top(4)] } },
+    { nom: "pseudo de 200 caractères sans espace", donnees: { ...base, pseudo: "W".repeat(200), top: [{ pseudo: "W".repeat(200), score: 9, rank: 1 }, ...top(4)] } },
     { nom: "pseudo de 200 caractères avec espaces", donnees: { ...base, pseudo: "Marie Ange ".repeat(20), top: top(5) } },
-    { nom: "emojis composés", donnees: { ...base, pseudo: "👨‍👩‍👧‍👦🏳️‍🌈👩🏽‍🚀".repeat(10), top: [{ pseudo: "👨‍👩‍👧‍👦".repeat(30), score: 5 }] } },
-    { nom: "arabe", donnees: { ...base, pseudo: "مرحبا بالعالم العربي الجميل", top: [{ pseudo: "مرحبا بالعالم".repeat(8), score: 8 }] } },
-    { nom: "hébreu", donnees: { ...base, pseudo: "שלום עולם".repeat(10), top: [{ pseudo: "שלום עולם", score: 8 }] } },
+    { nom: "emojis composés", donnees: { ...base, pseudo: "👨‍👩‍👧‍👦🏳️‍🌈👩🏽‍🚀".repeat(10), top: [{ pseudo: "👨‍👩‍👧‍👦".repeat(30), score: 5, rank: 1 }] } },
+    { nom: "arabe", donnees: { ...base, pseudo: "مرحبا بالعالم العربي الجميل", top: [{ pseudo: "مرحبا بالعالم".repeat(8), score: 8, rank: 1 }] } },
+    { nom: "hébreu", donnees: { ...base, pseudo: "שלום עולם".repeat(10), top: [{ pseudo: "שלום עולם", score: 8, rank: 1 }] } },
     { nom: "titre de 120 caractères", donnees: { ...base, quizTitle: "Les héros de la foi ".repeat(6).slice(0, 120), top: top(5) } },
     { nom: "titre de 120 caractères sans espace", donnees: { ...base, quizTitle: "É".repeat(120), top: top(5) } },
     { nom: "top vide", donnees: { ...base, rank: 1, playerCount: 0, top: [] } },
-    { nom: "top d'une entrée", donnees: { ...base, rank: 1, playerCount: 1, top: [{ pseudo: "Grâce_22", score: 7 }] } },
+    { nom: "top d'une entrée", donnees: { ...base, rank: 1, playerCount: 1, top: [{ pseudo: "Grâce_22", score: 7, rank: 1, isYou: true }] } },
     { nom: "top de 12 entrées", donnees: { ...base, rank: 9, top: top(12) } },
     { nom: "joueur hors du top 5", donnees: { ...base, rank: 17, playerCount: 40, top: top(5) } },
-    { nom: "score 0 sur 1", donnees: { ...base, score: 0, total: 1, rank: 1, playerCount: 1, top: [{ pseudo: "Grâce_22", score: 0 }] } },
-    { nom: "score 50 sur 50", donnees: { ...base, score: 50, total: 50, rank: 1, top: [{ pseudo: "Grâce_22", score: 50 }] } },
+    { nom: "score 0 sur 1", donnees: { ...base, score: 0, total: 1, rank: 1, playerCount: 1, top: [{ pseudo: "Grâce_22", score: 0, rank: 1 }] } },
+    { nom: "score 50 sur 50", donnees: { ...base, score: 50, total: 50, rank: 1, top: [{ pseudo: "Grâce_22", score: 50, rank: 1 }] } },
     { nom: "200 joueurs", donnees: { ...base, rank: 137, playerCount: 200, top: top(200) } },
   ];
 

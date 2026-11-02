@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { URL_DEV } from "../serveurs";
 
 const MODULE = "/src/client/partage/index.ts";
-const top = (n: number) => Array.from({ length: n }, (_, i) => ({ pseudo: `Joueur${i + 1}`, score: Math.max(0, 10 - i) }));
+const top = (n: number) => Array.from({ length: n }, (_, i) => ({ pseudo: `Joueur${i + 1}`, score: Math.max(0, 10 - i), rank: i + 1 }));
 const base = { quizTitle: "Les héros de la foi", pseudo: "Grâce_22", score: 7, total: 10, rank: 3, playerCount: 24, top: top(5) };
 
 async function ouvrir(page: Page) {
@@ -150,7 +150,7 @@ test("titre et pseudos sans caractère de contrôle ni de forçage de direction"
     ...base,
     quizTitle: piege,
     pseudo: "Grâce‮_22",
-    top: [{ pseudo: "Grâce‮_22", score: 7 }, ...top(4)],
+    top: [{ pseudo: "Grâce‮_22", score: 7, rank: 1 }, ...top(4)],
   });
   const interdits = /[\p{Cc}‪-‮⁦-⁩]/u;
   expect(r.textes.filter((t) => interdits.test(t.texte)).map((t) => t.texte)).toEqual([]);

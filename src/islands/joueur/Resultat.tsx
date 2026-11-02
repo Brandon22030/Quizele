@@ -53,7 +53,7 @@ export function Resultat({ state }: Props) {
           total,
           rank: resultat.rank,
           playerCount: nombreJoueurs,
-          top: classement.slice(0, 5).map((l) => ({ pseudo: l.pseudo, score: l.score })),
+          top: classement.slice(0, 5).map((l) => ({ pseudo: l.pseudo, score: l.score, rank: l.rank, isYou: l.playerId === moi?.playerId })),
         }),
       }))
       .then(({ blob, outils }) => !annule && setImage({ statut: "prete", blob, outils }))
