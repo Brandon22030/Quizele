@@ -1,0 +1,12 @@
+---
+import Base from "../layouts/Base.astro";
+import PageMessage from "../islands/connexion/PageMessage";
+
+Astro.response.status = 404;
+---
+
+<Base title="Page introuvable - Quizdeszeles">
+  <PageMessage code="404" titre="Page introuvable">
+    Cette page n'existe pas ou a été déplacée. Reviens à l'accueil pour repartir du bon pied.
+  </PageMessage>
+</Base>

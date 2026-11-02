@@ -1,0 +1,24 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../../layouts/Base.astro";
+import Verifier from "../../islands/connexion/Verifier";
+import { Marque } from "../../components/ui/marque";
+import { availableLoginMethods, MAGIC_LINK_EXPIRES_IN_SECONDS } from "../../server/auth/auth";
+import { safeReturnPath } from "../../server/auth/routes";
+import { retourBrut, urlErreurConnexion, validerEmail } from "../../islands/connexion/logique";
+
+const retour = safeReturnPath(retourBrut(Astro.url.search), Astro.url.origin);
+const email = validerEmail(Astro.url.searchParams.get("email") ?? "");
+
+// Sans adresse valide ou sans lien magique actif, il n'y a rien à confirmer : retour au formulaire.
+if (!email.ok || !availableLoginMethods(env).magicLink) return Astro.redirect(urlErreurConnexion(retour));
+---
+
+<Base title="Regarde ta boîte mail - Quizdeszeles">
+  <main class="flex min-h-dvh flex-col items-center gap-6 px-4 py-8">
+    <Marque />
+    <div class="flex flex-1 flex-col items-center justify-center">
+      <Verifier client:load email={email.email} retour={retour} validiteMinutes={MAGIC_LINK_EXPIRES_IN_SECONDS / 60} />
+    </div>
+  </main>
+</Base>
