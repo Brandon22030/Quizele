@@ -1,6 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { applyPrivateCacheHeaders } from "../../../src/server/auth/routes";
 import { isCrossSiteRequest } from "../../../src/server/auth/sign-out";
 import { freshDb } from "../db/helpers";
 import { authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
@@ -115,5 +116,46 @@ describe("isCrossSiteRequest", () => {
     expect(isCrossSiteRequest(req({ origin: "http://localhost:4322" }))).toBe(true);
     expect(isCrossSiteRequest(req({ "sec-fetch-site": "same-site", origin: ORIGIN }))).toBe(true);
     expect(isCrossSiteRequest(req({ "sec-fetch-site": "cross-site" }))).toBe(true);
+  });
+});
+
+describe("Cache-Control des pages privées", () => {
+  const cacheOf = async (path: string, cookie?: string) =>
+    (await SELF.fetch(`${ORIGIN}${path}`, { redirect: "manual", headers: cookie ? { cookie } : {} })).headers.get("cache-control");
+
+  it("/connexion et ses sous-pages ne sont jamais mises en cache, connecté ou non", async () => {
+    const cookie = await signIn("cache@example.test");
+    for (const path of ["/connexion", "/connexion/verifier"]) {
+      expect(await cacheOf(path, cookie), path).toBe("private, no-store");
+      expect(await cacheOf(path), path).toBe("private, no-store");
+    }
+  });
+
+  it("la redirection d'un chemin protégé vers /connexion n'est pas mise en cache", async () => {
+    for (const path of ["/tableau-de-bord", "/quiz/x", "/partie/x/animer"]) {
+      const res = await SELF.fetch(`${ORIGIN}${path}`, { redirect: "manual" });
+      expect(res.status, path).toBe(302);
+      expect(res.headers.get("cache-control"), path).toBe("private, no-store");
+    }
+  });
+
+  it("les pages publiques ne reçoivent pas l'en-tête, même avec une session", async () => {
+    const cookie = await signIn("public@example.test");
+    for (const path of ["/", "/j/ABC234", "/api/auth/get-session"]) expect(await cacheOf(path, cookie), path).not.toBe("private, no-store");
+  });
+
+  // Les pages protégées (tableau de bord, éditeur) ne sont pas encore construites sur cette branche : la règle
+  // appliquée par le middleware à leur réponse est vérifiée sur la fonction qu'il appelle.
+  it("une réponse de page protégée reçoit private, no-store, sauf si la page a fixé sa politique", () => {
+    for (const path of ["/tableau-de-bord", "/quiz/abc/editer", "/partie/x/animer", "/connexion"]) {
+      expect(applyPrivateCacheHeaders(path, new Response("ok")).headers.get("cache-control"), path).toBe("private, no-store");
+    }
+    const own = new Response("ok", { headers: { "Cache-Control": "no-cache" } });
+    expect(applyPrivateCacheHeaders("/quiz/x", own).headers.get("cache-control")).toBe("no-cache");
+    const player = new Response("ok", { headers: { "Cache-Control": "private, max-age=30" } });
+    expect(applyPrivateCacheHeaders("/j/ABC234", player).headers.get("cache-control")).toBe("private, max-age=30");
+    for (const path of ["/", "/j/ABC234", "/quizz", "/connexionx"]) {
+      expect(applyPrivateCacheHeaders(path, new Response("ok")).headers.has("cache-control"), path).toBe(false);
+    }
   });
 });
