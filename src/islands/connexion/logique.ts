@@ -36,6 +36,8 @@ export function messageErreurRedirection(code: string | null | undefined): strin
     case "state_mismatch":
     case "state_not_found":
       return "La connexion avec Google a expiré ou a été interrompue. Relance-la.";
+    case "deconnexion":
+      return "La déconnexion n'a pas pu être confirmée. Reconnecte-toi ou réessaie.";
     case "access_denied":
       return "La connexion avec Google a été refusée. Tu peux réessayer ou choisir une autre méthode.";
     default:

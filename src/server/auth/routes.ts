@@ -24,9 +24,10 @@ export function isPrivateNoStorePath(pathname: string): boolean {
   return isProtectedPath(pathname) || pathname === "/connexion" || pathname.startsWith("/connexion/");
 }
 
-// Une page qui fixe elle-même sa politique de cache garde la main.
+// Sur les chemins protégés, la règle est imposée même si la page a posé son propre Cache-Control : un cache
+// permissif choisi par erreur réexposerait l'e-mail de l'animateur. /connexion* garde la main sur le sien.
 export function applyPrivateCacheHeaders(pathname: string, response: Response): Response {
-  if (isPrivateNoStorePath(pathname) && !response.headers.has("cache-control")) {
+  if (isProtectedPath(pathname) || (isPrivateNoStorePath(pathname) && !response.headers.has("cache-control"))) {
     response.headers.set("Cache-Control", "private, no-store");
   }
   return response;
