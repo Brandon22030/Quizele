@@ -1,0 +1,39 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../../../layouts/Base.astro";
+import Reglages from "../../../islands/reglages/Reglages";
+import type { DonneesReglages, EtatChargement } from "../../../islands/reglages/logique";
+import { getDb } from "../../../server/db/client";
+import { actionFailure, charger } from "../../../server/quiz/handlers";
+
+// Le middleware redirige déjà vers /connexion : ce garde sert au typage.
+const user = Astro.locals.user;
+const quizId = Astro.params.id ?? "";
+if (!user) return Astro.redirect(`/connexion?retour=${encodeURIComponent(`/quiz/${quizId}/reglages`)}`);
+
+// charger filtre sur le propriétaire : le quiz d'un autre animateur est « introuvable », sans distinction.
+let initial: EtatChargement<DonneesReglages>;
+try {
+  const { quiz } = await charger(getDb(env.DB), user, { quizId });
+  initial = {
+    etat: "pret",
+    donnees: {
+      quizId: quiz.id,
+      title: quiz.title,
+      mode: quiz.mode,
+      showCorrectAnswer: quiz.showCorrectAnswer,
+      shuffle: quiz.shuffle,
+      description: quiz.description ?? "",
+      category: quiz.category ?? "",
+    },
+  };
+} catch (error) {
+  const echec = actionFailure("charger", error);
+  Astro.response.status = echec.code === "NOT_FOUND" ? 404 : 500;
+  initial = { etat: "erreur", message: echec.message, reessayable: echec.code === "INTERNAL_SERVER_ERROR" };
+}
+---
+
+<Base title="Réglages du quiz - Quizdeszeles">
+  <Reglages client:load quizId={quizId} initial={initial} />
+</Base>
