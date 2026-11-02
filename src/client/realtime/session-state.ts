@@ -32,6 +32,8 @@ export interface SessionState {
   finishedCount: number;
   // Résultat du joueur reçu avec la fin de partie : rang, score et temps, sans correction.
   result: { rank: number; score: number; totalMs: number } | null;
+  // Nombre de questions du quiz, connu à la fin de partie : sert au « 7 / 10 » du résultat.
+  totalQuestions: number | null;
   lateAnswer: boolean;
   error: string | null;
 }
@@ -59,6 +61,7 @@ export const initialSessionState: SessionState = {
   answeredCount: 0,
   finishedCount: 0,
   result: null,
+  totalQuestions: null,
   lateAnswer: false,
   error: null,
 };
@@ -101,6 +104,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
                 totalMs: message.ranking?.find((row) => row.playerId === message.me?.playerId)?.totalMs ?? 0,
               }
             : null,
+        totalQuestions: message.total ?? state.totalQuestions,
         lateAnswer: false,
       };
     case "question": {
@@ -123,7 +127,7 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       return { ...state, error: null, phase: "revealed", reveal, me: state.me && reveal.you ? { ...state.me, score: reveal.you.score } : state.me };
     }
     case "finished":
-      return { ...state, error: null, phase: "finished", ranking: message.ranking, result: message.you ?? null };
+      return { ...state, error: null, phase: "finished", ranking: message.ranking, result: message.you ?? null, totalQuestions: message.total };
     case "progress":
       return { ...state, finishedCount: message.finished, playerCount: message.total };
     case "answer_ack":
@@ -132,6 +136,8 @@ export function sessionReducer(state: SessionState, action: SessionAction): Sess
       // Un compteur en retard d'une question précédente ne doit pas écraser celui de la question courante.
       if (state.question?.questionId !== message.questionId) return state;
       return { ...state, answeredCount: message.count };
+    case "lobby_players":
+      return { ...state, playerCount: message.playerCount, players: message.players };
     case "player_left":
       return {
         ...state,

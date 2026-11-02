@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import {
   ANSWER_TOLERANCE_MS,
   CLOSE_CODES,
+  LOBBY_RECENT_PLAYERS,
   MAX_MESSAGE_BYTES,
   MAX_PLAYERS,
   PLAYER_TOKEN_TTL_MS,
@@ -53,6 +54,7 @@ const CONNECT_COST = 5;
 const CONNECT_BURST = 10;
 const CONNECT_REFILL_PER_MS = 1 / 6000;
 const COUNT_INTERVAL_MS = 250;
+const LOBBY_INTERVAL_MS = 500;
 // Une écriture finale restée sans réponse au-delà de ce délai est considérée comme perdue (objet évincé en route) :
 // la fin de partie peut alors être retentée.
 const FINISH_LOCK_MS = 30_000;
@@ -74,6 +76,8 @@ export class GameSession extends DurableObject<Env> {
   private schemaReady = false;
   private countTimer: ReturnType<typeof setTimeout> | null = null;
   private lastCountAt = 0;
+  private lobbyTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastLobbyAt = 0;
   // Classement de la révélation en cours, recalculé seulement s'il est perdu (hibernation) ou invalidé.
   private revealCache: { questionId: string; computed: ReturnType<GameSession["computeReveal"]> } | null = null;
 
@@ -129,6 +133,7 @@ export class GameSession extends DurableObject<Env> {
       player: { id: playerId, pseudo: pseudo.data },
       count: this.store.playerCount(),
     }));
+    this.notifyLobby();
     return { ok: true, playerId };
   }
 
@@ -483,6 +488,26 @@ export class GameSession extends DurableObject<Env> {
     }, wait);
   }
 
+  // Salle d'attente : les joueurs reçoivent le nombre de présents et les derniers arrivés, au plus un message toutes
+  // les 500 ms. Les anciens arrivants ne sont jamais listés en entier.
+  private notifyLobby(): void {
+    const wait = LOBBY_INTERVAL_MS - (Date.now() - this.lastLobbyAt);
+    if (wait <= 0) return this.sendLobby();
+    if (this.lobbyTimer) return;
+    this.lobbyTimer = setTimeout(() => {
+      this.lobbyTimer = null;
+      this.sendLobby();
+    }, wait);
+  }
+
+  private sendLobby(): void {
+    if (!this.ready() || this.store.readMeta().phase !== "lobby") return;
+    this.lastLobbyAt = Date.now();
+    const playerCount = this.store.playerCount();
+    const players = this.store.recentPlayers(LOBBY_RECENT_PLAYERS);
+    this.broadcast(["player"], () => ({ type: "lobby_players", playerCount, players }));
+  }
+
   private sendCount(): void {
     if (!this.ready()) return;
     const meta = this.store.readMeta();
@@ -508,6 +533,7 @@ export class GameSession extends DurableObject<Env> {
       const playerId = message.playerId;
       this.broadcast(["host", "screen"], () => ({ type: "player_left", playerId, count: this.store.playerCount() }));
       if (meta.phase === "question") this.notifyCount();
+      this.notifyLobby();
       await this.scheduleAlarm();
       return this.finishIfAllDone();
     }
@@ -620,10 +646,11 @@ export class GameSession extends DurableObject<Env> {
     this.store.writeMeta({ phase: "finished", finished_at: now, finishing_at: 0 });
     this.revealCache = null;
     await this.scheduleAlarm();
-    const full = JSON.stringify({ type: "finished", ranking });
+    const total = this.store.questionCount();
+    const full = JSON.stringify({ type: "finished", ranking, total });
     this.sendAll("host", full);
     this.sendAll("screen", full);
-    const base = JSON.stringify({ type: "finished", ranking: ranking.slice(0, PLAYER_RANKING_SIZE) });
+    const base = JSON.stringify({ type: "finished", ranking: ranking.slice(0, PLAYER_RANKING_SIZE), total });
     const rankOf = new Map(ranking.map((entry, index) => [entry.playerId, { entry, rank: index + 1 }]));
     for (const ws of this.ctx.getWebSockets("player")) {
       const found = rankOf.get((ws.deserializeAttachment() as SocketAttachment | null)?.playerId ?? "");
@@ -739,8 +766,12 @@ export class GameSession extends DurableObject<Env> {
       }
     }
     const ranking = meta.phase === "finished" ? rankEntries(this.store.ranking()) : null;
-    if (ranking) snapshot.ranking = attachment.role === "player" ? ranking.slice(0, PLAYER_RANKING_SIZE) : ranking;
+    if (ranking) {
+      snapshot.ranking = attachment.role === "player" ? ranking.slice(0, PLAYER_RANKING_SIZE) : ranking;
+      snapshot.total = this.store.questionCount();
+    }
     if (attachment.role !== "player") snapshot.players = this.store.players();
+    else if (meta.phase === "lobby") snapshot.players = this.store.recentPlayers(LOBBY_RECENT_PLAYERS);
 
     if (attachment.role === "player" && attachment.playerId) {
       const player = this.store.player(attachment.playerId);

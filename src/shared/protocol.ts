@@ -12,6 +12,9 @@ export const GAME_MODES = ["together", "own_pace"] as const;
 export const gameModeSchema = z.enum(GAME_MODES);
 export type GameMode = z.infer<typeof gameModeSchema>;
 
+// Nombre de pastilles « derniers arrivés » montrées aux joueurs dans la salle d'attente.
+export const LOBBY_RECENT_PLAYERS = 7;
+
 export const PSEUDO_MAX_LENGTH = 20;
 export const MAX_PLAYERS = 200;
 export const MAX_OPTIONS = 8;
@@ -111,6 +114,8 @@ export const rankingEntrySchema = z.object({
   pseudo: z.string(),
   score: z.number().int(),
   totalMs: z.number().int(),
+  // Rang attribué par le serveur (strictement unique, départage compris) : les écrans ne le recalculent pas.
+  rank: z.number().int(),
 });
 export type RankingEntry = z.infer<typeof rankingEntrySchema>;
 
@@ -144,6 +149,8 @@ export const snapshotSchema = z.object({
   question: questionPayloadSchema.optional(),
   reveal: revealPayloadSchema.optional(),
   ranking: z.array(rankingEntrySchema).optional(),
+  // Présent une fois la partie finie : nombre de questions du quiz, pour afficher « 7 / 10 ».
+  total: z.number().int().optional(),
   me: z
     .object({
       playerId: z.string(),
@@ -181,6 +188,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("finished"),
     ranking: z.array(rankingEntrySchema),
+    total: z.number().int(),
     you: z.object({ rank: z.number().int(), score: z.number().int(), totalMs: z.number().int() }).optional(),
   }),
   // Mode libre : nombre de joueurs ayant fini, pour l'hôte et l'écran.
@@ -194,6 +202,8 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("answer_count"), questionId: z.string(), count: z.number().int(), total: z.number().int() }),
   z.object({ type: z.literal("player_joined"), player: playerInfoSchema, count: z.number().int() }),
   z.object({ type: z.literal("player_left"), playerId: z.string(), count: z.number().int() }),
+  // Salle d'attente, joueurs seulement : le nombre de présents et les derniers arrivés (LOBBY_RECENT_PLAYERS au plus).
+  z.object({ type: z.literal("lobby_players"), playerCount: z.number().int(), players: z.array(playerInfoSchema) }),
   z.object({ type: z.literal("error"), code: errorCodeSchema }),
 ]);
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

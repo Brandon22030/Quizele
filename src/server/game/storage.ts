@@ -254,6 +254,14 @@ export class GameStorage {
     return this.sql.exec<{ id: string; pseudo: string }>("SELECT id, pseudo FROM players ORDER BY joined_at, id").toArray();
   }
 
+  // Les derniers arrivés, du plus ancien au plus récent.
+  recentPlayers(limit: number): { id: string; pseudo: string }[] {
+    return this.sql
+      .exec<{ id: string; pseudo: string }>("SELECT id, pseudo FROM players ORDER BY joined_at DESC, id DESC LIMIT ?", limit)
+      .toArray()
+      .reverse();
+  }
+
   player(id: string): { id: string; pseudo: string } | null {
     return this.sql.exec<{ id: string; pseudo: string }>("SELECT id, pseudo FROM players WHERE id = ?", id).toArray()[0] ?? null;
   }
@@ -289,9 +297,9 @@ export class GameStorage {
   }
 
   // `excludingQuestionId` : pendant une question, le score d'un joueur ne doit pas révéler si sa réponse en cours est juste.
-  ranking(excludingQuestionId = ""): RankingEntry[] {
+  ranking(excludingQuestionId = ""): Omit<RankingEntry, "rank">[] {
     return this.sql
-      .exec<RankingEntry>(
+      .exec<Omit<RankingEntry, "rank">>(
         `SELECT p.id AS playerId, p.pseudo AS pseudo, COALESCE(SUM(a.correct), 0) AS score,
                 COALESCE(SUM(CASE WHEN a.correct = 1 THEN a.elapsed_ms ELSE 0 END), 0) AS totalMs
          FROM players p LEFT JOIN answers a ON a.player_id = p.id AND a.question_id <> ? GROUP BY p.id`,
