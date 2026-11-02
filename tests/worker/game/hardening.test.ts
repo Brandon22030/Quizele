@@ -130,7 +130,7 @@ describe("purge des parties abandonnées", () => {
     expect(await sqlOf(code, "SELECT name FROM sqlite_master WHERE name = 'meta'")).toEqual([]);
     // Même instance : pas d'erreur "no such table", la partie est simplement introuvable.
     expect(await stub.join("Retardataire")).toEqual({ ok: false, error: "game_not_found" });
-    expect((await join(code, "Retardataire")).status).toBe(404);
+    expect((await join(code, "Retardataire")).status).toBe(410);
   });
 
   it("une partie dont la dernière commande hôte est récente n'est pas purgée par l'alarme", async () => {

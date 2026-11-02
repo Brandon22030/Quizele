@@ -88,7 +88,7 @@ describe("code de partie : unicité portée par D1", () => {
     const { code, host, players } = await game(1);
     await finishGame(host);
     expect(await closeCodeOf(code, players[0]!.token)).toBe(4004);
-    expect((await join(code, "Tardif")).status).toBe(404);
+    expect((await join(code, "Tardif")).status).toBe(410);
   });
 });
 

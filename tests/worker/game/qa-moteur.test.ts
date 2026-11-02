@@ -130,7 +130,7 @@ describe("code de partie", () => {
         players: state.storage.sql.exec("SELECT COUNT(*) AS n FROM players").one(),
       }));
     const before = await snapshot();
-    expect((await join(code, "Tardif")).status).toBe(404);
+    expect((await join(code, "Tardif")).status).toBe(410);
     expect(await closeCodeOf(code, token)).toBe(CLOSE_CODES.gameGone);
     expect(await closeCodeOf(code, await hostToken(code))).toBe(CLOSE_CODES.gameGone);
     expect(await snapshot()).toEqual(before);

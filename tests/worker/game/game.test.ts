@@ -293,9 +293,9 @@ describe("partie complète", () => {
     }
     const finished = await players[1]!.client.waitFor("finished");
     expect(finished.ranking.map((r) => [r.pseudo, r.score])).toEqual([["Joueur 0", 3], ["Joueur 1", 0]]);
-    // Le code est libéré dès que D1 passe la partie à « terminée » : le point d'entrée HTTP ne la connaît plus, et le
+    // Le code est libéré dès que D1 passe la partie à « terminée » : le point d'entrée HTTP la dit terminée (410), et le
     // Durable Object, interrogé directement, refuse lui aussi.
-    expect((await join(code, "Retard")).status).toBe(404);
+    expect((await join(code, "Retard")).status).toBe(410);
     expect(await stubFor(code).join("Retard")).toEqual({ ok: false, error: "game_finished" });
     expect(await runInDurableObject(stubFor(code), (_i, state) => state.storage.getAlarm())).not.toBeNull();
   });
