@@ -116,6 +116,7 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     const carte = page.getByRole("listitem").filter({ hasText: "Les paraboles" }).first();
     await carte.getByRole("button", { name: /Plus d'actions pour Les paraboles/ }).click();
     await expect(carte.getByRole("link", { name: "Modifier" })).toBeVisible();
+    await expect(carte.getByRole("link", { name: "Essayer comme un joueur" })).toHaveAttribute("href", /\/quiz\/[\w-]+\/apercu$/);
     await ciblesTactilesAssezGrandes(page);
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k1-menu-ouvert");
@@ -144,6 +145,8 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
   test("lancer un quiz incomplet : message serveur et lien vers l'éditeur", async ({ page }) => {
     await connecter(page, serveur);
     const carte = page.getByRole("listitem").filter({ hasText: "Les paraboles" }).first();
+    await expect(carte.getByRole("link", { name: "Continuer" })).toHaveAttribute("href", /\/quiz\/[\w-]+$/);
+    await carte.getByRole("button", { name: /Plus d'actions pour Les paraboles/ }).click();
     await carte.getByRole("button", { name: "Lancer" }).click();
     await expect(carte.getByRole("alert")).toContainText("Le quiz n'est pas prêt");
     await expect(carte.getByRole("link", { name: "Compléter le quiz" })).toHaveAttribute("href", /\/quiz\/[\w-]+$/);

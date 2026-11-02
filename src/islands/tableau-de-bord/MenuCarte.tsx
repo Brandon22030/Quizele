@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Copy, Ellipsis, Pencil, Trash2 } from "lucide-react";
+import { Copy, Ellipsis, Eye, Pencil, Play, Trash2 } from "lucide-react";
 import { IconButton } from "../../components/ui/button";
 import { cn } from "../../components/ui/cn";
 import { urlEditeur } from "./logique";
@@ -7,6 +7,8 @@ import { urlEditeur } from "./logique";
 interface MenuCarteProps {
   quizId: string;
   titre: string;
+  /** Fourni pour un brouillon : « Lancer » n'est alors pas l'action principale de la carte. */
+  onLancer?: () => void;
   onDupliquer: () => void;
   onSupprimer: () => void;
   /** Prévient la carte : un menu ouvert doit passer au-dessus de la carte suivante. */
@@ -17,7 +19,7 @@ const lienMenu = "flex min-h-11 w-full items-center gap-3 rounded-sm px-3 text-l
 
 // Menu en divulgation (bouton + liste d'actions) plutôt que role="menu" : pas de gestion de flèches à maintenir, et
 // chaque action reste un vrai lien ou bouton pour les lecteurs d'écran.
-export function MenuCarte({ quizId, titre, onDupliquer, onSupprimer, onOuverture }: MenuCarteProps) {
+export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, onOuverture }: MenuCarteProps) {
   const [ouvert, setOuvert] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
   const panneauId = useId();
@@ -70,6 +72,27 @@ export function MenuCarte({ quizId, titre, onDupliquer, onSupprimer, onOuverture
             Modifier
           </a>
         </li>
+        <li>
+          <a href={`${urlEditeur(quizId)}/apercu`} className={lienMenu}>
+            <Eye aria-hidden="true" className="size-5" />
+            Essayer comme un joueur
+          </a>
+        </li>
+        {onLancer ? (
+          <li>
+            <button
+              type="button"
+              className={lienMenu}
+              onClick={() => {
+                basculer(false);
+                onLancer();
+              }}
+            >
+              <Play aria-hidden="true" className="size-5" />
+              Lancer
+            </button>
+          </li>
+        ) : null}
         <li>
           <button
             type="button"

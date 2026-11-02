@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Play } from "lucide-react";
+import { Check, Pencil, Play } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
 import { Papier } from "../../components/ui/papier";
@@ -33,19 +33,25 @@ export function CarteQuiz({ quiz, lancementEnCours, erreur, onLancer, onDuplique
             {libelleQuestions(quiz.questionCount)} - modifié le {dateCourte(quiz.updatedAt)}
           </p>
         </div>
-        <MenuCarte quizId={quiz.id} titre={quiz.title} onDupliquer={onDupliquer} onSupprimer={onSupprimer} onOuverture={setMenuOuvert} />
+        <MenuCarte quizId={quiz.id} titre={quiz.title} onLancer={ready ? undefined : onLancer} onDupliquer={onDupliquer} onSupprimer={onSupprimer} onOuverture={setMenuOuvert} />
       </div>
-      <Button
-        bloc
-        variante={ready ? "primaire" : "creme"}
-        className="mt-4"
-        chargement={lancementEnCours}
-        libelleChargement={`Lancement de ${quiz.title} en cours`}
-        onClick={onLancer}
-      >
-        <Play aria-hidden="true" className="size-5" />
-        Lancer
-      </Button>
+      {ready ? (
+        <Button
+          bloc
+          className="mt-4"
+          chargement={lancementEnCours}
+          libelleChargement={`Lancement de ${quiz.title} en cours`}
+          onClick={onLancer}
+        >
+          <Play aria-hidden="true" className="size-5" />
+          Lancer
+        </Button>
+      ) : (
+        <Button href={urlEditeur(quiz.id)} bloc variante="creme" className="mt-4">
+          <Pencil aria-hidden="true" className="size-5" />
+          Continuer
+        </Button>
+      )}
       {erreur ? (
         <div className="mt-4 flex flex-col gap-3">
           <EtatErreur>{erreur.message}</EtatErreur>

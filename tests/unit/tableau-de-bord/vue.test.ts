@@ -49,7 +49,7 @@ function vue(extra: Partial<VueProps> = {}): string {
     onChoisirModele: noop,
     toast: null,
     onFermerToast: noop,
-    onDeconnexion: noop,
+    onErreurDeconnexion: noop,
     ...extra,
   };
   return renderToStaticMarkup(createElement(TableauDeBordVue, props));
@@ -61,7 +61,12 @@ describe("tableau de bord : états", () => {
     expect(html).toContain("Mes quiz (2)");
     expect(html).toContain("Prêt à jouer");
     expect(html).toContain("Brouillon - 1 question à compléter");
+    // Prêt : Lancer principal ; brouillon : Continuer principal et Lancer dans le menu.
     expect(html.match(/>Lancer</g)).toHaveLength(2);
+    expect(html).toContain("Continuer");
+    expect(html).toContain("Essayer comme un joueur");
+    expect(html).toContain('href="/quiz/q1/apercu"');
+    expect(html).not.toContain("Parties jouées (");
     expect(html).toContain('href="/quiz/q1"');
     expect(html).toContain("Dupliquer");
     expect(html).toContain("Supprimer");

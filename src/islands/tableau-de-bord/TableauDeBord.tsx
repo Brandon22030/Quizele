@@ -131,16 +131,6 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
     }
   }
 
-  async function deconnecter() {
-    try {
-      const reponse = await fetch("/api/auth/sign-out", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      if (!reponse.ok) throw new Error("sign-out");
-      window.location.assign("/");
-    } catch {
-      setToast({ variante: "erreur", texte: "Déconnexion impossible pour le moment. Réessaie." });
-    }
-  }
-
   return (
     <TableauDeBordVue
       utilisateur={utilisateur}
@@ -165,7 +155,7 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
       onChoisirModele={(id) => void choisirModele(id)}
       toast={toast}
       onFermerToast={() => setToast(null)}
-      onDeconnexion={() => void deconnecter()}
+      onErreurDeconnexion={() => setToast({ variante: "erreur", texte: "Déconnexion impossible pour le moment. Réessaie." })}
     />
   );
 }
