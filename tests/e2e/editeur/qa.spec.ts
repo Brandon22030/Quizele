@@ -603,7 +603,7 @@ test.describe("éditeur : QA, session réelle", () => {
     expect(bas, "la feuille doit défiler avec 20 questions").not.toBeNull();
     const zone = page.locator("[data-zone-glisser]");
     const avant = await zone.evaluate((el) => el.scrollTop);
-    const poignee = await feuille.getByRole("button", { name: "Déplacer la question 1" }).boundingBox();
+    const poignee = await feuille.getByRole("button", { name: "Déplacer la question 1", exact: true }).boundingBox();
     if (!poignee) throw new Error("poignée introuvable");
     const x = poignee.x + poignee.width / 2;
     await page.mouse.move(x, poignee.y + poignee.height / 2);
