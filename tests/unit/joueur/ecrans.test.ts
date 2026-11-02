@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { initialSessionState, sessionReducer, type SessionState } from "../../../src/client/realtime/session-state";
 import { createQuestionClock } from "../../../src/shared/clock";
 import type { ServerMessage } from "../../../src/shared/protocol";
+import { allerAuTitre } from "../../../src/islands/joueur/FocusTitre";
 import { VueJoueur, type ChoixLocal } from "../../../src/islands/joueur/EcranJoueur";
 
 const CODE = "K7Q2M9";
@@ -311,5 +312,28 @@ describe("énoncé et chrono après envoi", () => {
     expect(html).toContain('role="timer"');
     expect(html).toContain("Qui a construit l&#x27;arche ?");
     expect(html).toContain("On attend la suite de la partie.");
+  });
+});
+
+describe("retour en haut au changement d'écran", () => {
+  it("remonte sans animation puis donne le focus au titre sans défilement", () => {
+    const appels: string[] = [];
+    const titre = {
+      hasAttribute: () => false,
+      tabIndex: 0,
+      focus: (o: FocusOptions) => appels.push(`focus:${o.preventScroll}`),
+    } as unknown as HTMLElement;
+    allerAuTitre("h1", {
+      querySelector: () => titre,
+      scrollTo: (o) => appels.push(`scroll:${o.top}:${o.behavior}`),
+    });
+    expect(appels).toEqual(["scroll:0:instant", "focus:true"]);
+    expect(titre.tabIndex).toBe(-1);
+  });
+
+  it("remonte même sans titre trouvé", () => {
+    const appels: string[] = [];
+    allerAuTitre("h1", { querySelector: () => null, scrollTo: (o) => appels.push(`scroll:${o.top}`) });
+    expect(appels).toEqual(["scroll:0"]);
   });
 });

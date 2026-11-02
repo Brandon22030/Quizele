@@ -229,8 +229,15 @@ test("focus sur le titre de chaque écran, annonces vocales et partage sans impo
   // Le bouton cliqué a disparu : le focus ne doit pas retomber sur body.
   await expect.poll(focus).toEqual({ balise: "H2", texte: "Réponse enregistrée" });
 
+  // Page défilée vers le bas : le changement d'écran la ramène en haut.
+  await page.evaluate(() => {
+    document.body.style.minHeight = "3000px";
+    window.scrollTo(0, 500);
+  });
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await animateur.envoyer("reveal");
   await expect(annonce).toHaveText("Juste !");
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect.poll(async () => (await focus()).texte).toBe("JUSTE !");
 
   await animateur.envoyer("end");
