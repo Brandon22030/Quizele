@@ -79,7 +79,8 @@ async function creerQuizVide(page: Page, titre: string): Promise<string> {
   return id;
 }
 
-const statut = (page: Page) => page.getByRole("status").filter({ hasText: /Enregistr|En attente|Non enregistré/ }).first();
+// La pilule d'en-tête n'est plus une région live (elle changeait à chaque frappe) : on la lit par son texte exact.
+const statut = (page: Page) => page.locator("header").getByText(/^(Enregistré|Enregistrement…|Non enregistré|En attente)$/);
 
 test.beforeEach(({ browserName: _navigateur }, testInfo) => {
   // Les deux projets (mobile et bureau) lanceraient les mêmes parcours sur les mêmes ports : le bureau a ses propres tests.

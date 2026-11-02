@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DELAI_ENREGISTREMENT_MS, DELAI_REPRISE_MS, ErreurApi, FileEnregistrement, type EditeurApi } from "../../../src/islands/editeur/file-enregistrement";
+import {
+  AVIS_AUTRE_ONGLET,
+  DELAI_ENREGISTREMENT_MS,
+  DELAI_REPRISE_MS,
+  DELAI_REQUETE_MS,
+  ErreurApi,
+  FileEnregistrement,
+  MESSAGE_HORS_LIGNE,
+  avecDelaiMax,
+  type EditeurApi,
+} from "../../../src/islands/editeur/file-enregistrement";
 import { aDesMarques, ajouterQuestion, basculerJuste, brouillonVierge, changerLibelle, changerTitre, dupliquerQuestion, majQuestion, nouvelleQuestion, ordonner, supprimerQuestion, type Brouillon } from "../../../src/islands/editeur/modele";
 import { cleStockage, lireBrouillon, type Stockage } from "../../../src/islands/editeur/stockage";
 
@@ -146,13 +156,14 @@ describe("hors ligne puis reprise", () => {
     const { api, appels } = fausseApi();
     api.majQuestion = async () => {
       appels.push("maj");
-      throw new ErreurApi("Cette question est introuvable.", { code: "NOT_FOUND" });
+      // NOT_FOUND a désormais son propre traitement (question supprimée ailleurs) : une autre erreur du serveur porte ce cas.
+      throw new ErreurApi("Cette question est invalide.", { code: "BAD_REQUEST" });
     };
     const file = new FileEnregistrement({ api, stockage: null, brouillon: existant() });
     file.modifier((b) => majQuestion(b, "a", { prompt: "X" }));
     await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS + DELAI_REPRISE_MS * 3);
     expect(appels).toEqual(["maj"]);
-    expect(file.instantane()).toMatchObject({ statut: "echec", message: "Cette question est introuvable.", horsLigne: false, code: "NOT_FOUND" });
+    expect(file.instantane()).toMatchObject({ statut: "echec", message: "Cette question est invalide.", horsLigne: false, code: "BAD_REQUEST" });
   });
 });
 
@@ -232,6 +243,148 @@ describe("questions et ordre", () => {
     liberer();
     await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
     expect(appels.filter((a) => a.startsWith("debut"))).toEqual(["debut:true", "debut:false"]);
+    expect(file.instantane().statut).toBe("enregistre");
+  });
+});
+
+describe("conflits et suppressions concurrentes", () => {
+  it("une question supprimée pendant son ajout est supprimée sur le serveur au tour suivant", async () => {
+    const { api, appels } = fausseApi();
+    let liberer: () => void = () => {};
+    const porte = new Promise<void>((r) => (liberer = r));
+    const origine = api.ajouterQuestion;
+    api.ajouterQuestion = async (quizId, q) => {
+      await porte;
+      return origine(quizId, q);
+    };
+    const stockage = faussStockage();
+    const file = new FileEnregistrement({ api, stockage, brouillon: existant() });
+    const nouvelle = { ...nouvelleQuestion(), prompt: "Éphémère" };
+    file.modifier((b) => ajouterQuestion(b, nouvelle));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    // L'ajout est parti ; l'animateur supprime la question avant la réponse (elle n'a pas encore d'identifiant).
+    file.modifier((b) => supprimerQuestion(b, nouvelle.key));
+    liberer();
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    expect(appels).toEqual(["ajouter:Éphémère", "suppr:srv1"]);
+    expect(file.instantane().brouillon.questions.map((q) => q.key)).toEqual(["a"]);
+    expect(file.instantane().brouillon.sale).toEqual({ titre: false, ordre: false, questions: [], supprimees: [] });
+    expect(file.instantane().statut).toBe("enregistre");
+    expect(stockage.donnees.size).toBe(0);
+  });
+
+  it("NOT_FOUND sur une mise à jour (supprimée ailleurs) retire la marque, prévient et laisse passer le reste", async () => {
+    const { api, appels } = fausseApi();
+    const origine = api.majQuestion;
+    api.majQuestion = async (id, q) => {
+      if (id === "a") throw new ErreurApi("Cette question est introuvable.", { code: "NOT_FOUND" });
+      return origine(id, q);
+    };
+    const base = existant();
+    const deux = { ...base.questions[0], key: "b", id: "b", prompt: "Deux" };
+    const file = new FileEnregistrement({ api, stockage: null, brouillon: { ...base, questions: [base.questions[0], deux] } });
+    file.modifier((b) => majQuestion(majQuestion(b, "a", { prompt: "Disparue" }), "b", { prompt: "Deux bis" }));
+    file.modifier((b) => changerTitre(b, "Nouveau titre"));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS + DELAI_REPRISE_MS * 2);
+    expect(appels).toEqual(["titre:Nouveau titre", "maj:b:Deux bis"]);
+    expect(file.instantane()).toMatchObject({
+      statut: "enregistre",
+      message: null,
+      avis: { message: "La question 1 a été supprimée ailleurs. Recharge pour voir le quiz à jour.", recharger: true },
+    });
+    expect(aDesMarques(file.instantane().brouillon)).toBe(false);
+
+    // La file n'est pas bloquée : la modification suivante part normalement.
+    file.modifier((b) => majQuestion(b, "b", { prompt: "Deux ter" }));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    expect(appels.at(-1)).toBe("maj:b:Deux ter");
+    expect(file.instantane().statut).toBe("enregistre");
+  });
+
+  it("un ordre refusé (« plus à jour ») est abandonné, dit et propose de recharger, sans bloquer la file", async () => {
+    const { api, appels } = fausseApi();
+    const message = "L'ordre des questions n'est plus à jour. Recharge la page.";
+    let refuser = true;
+    const origine = api.reordonner;
+    api.reordonner = async (quizId, ids) => {
+      appels.push(`tentative:${ids.join(",")}`);
+      if (refuser) throw new ErreurApi(message, { code: "BAD_REQUEST" });
+      return origine(quizId, ids);
+    };
+    const base = existant();
+    const deux = { ...base.questions[0], key: "b", id: "b", prompt: "Deux" };
+    const file = new FileEnregistrement({ api, stockage: null, brouillon: { ...base, questions: [base.questions[0], deux] } });
+    file.modifier((b) => ordonner(b, ["b", "a"]));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS + DELAI_REPRISE_MS * 2);
+    expect(appels).toEqual(["tentative:b,a"]);
+    expect(file.instantane()).toMatchObject({ statut: "enregistre", message: null, avis: { message, recharger: true } });
+
+    refuser = false;
+    file.modifier((b) => majQuestion(b, "a", { prompt: "Après" }));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    expect(appels.at(-1)).toBe("maj:a:Après");
+    expect(file.instantane().statut).toBe("enregistre");
+  });
+
+  it("prévient après chaque écriture confirmée, jamais après un échec, et signaler n'émet qu'une fois le même avis", async () => {
+    const { api, etat } = fausseApi();
+    const surEcriture = vi.fn();
+    const file = new FileEnregistrement({ api, stockage: null, brouillon: existant(), surEcriture });
+    file.modifier((b) => majQuestion(changerTitre(b, "T2"), "a", { prompt: "P2" }));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    expect(surEcriture).toHaveBeenCalledTimes(2);
+
+    etat.reseau = false;
+    file.modifier((b) => majQuestion(b, "a", { prompt: "P3" }));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS);
+    expect(surEcriture).toHaveBeenCalledTimes(2);
+
+    const ecouteur = vi.fn();
+    file.abonner(ecouteur);
+    file.signaler({ message: AVIS_AUTRE_ONGLET, recharger: true });
+    file.signaler({ message: AVIS_AUTRE_ONGLET, recharger: true });
+    expect(ecouteur).toHaveBeenCalledTimes(1);
+    expect(file.instantane().avis).toEqual({ message: AVIS_AUTRE_ONGLET, recharger: true });
+    file.signaler(null);
+    expect(file.instantane().avis).toBeNull();
+  });
+});
+
+describe("délai maximal par requête", () => {
+  it("avecDelaiMax rejette en erreur réseau après environ 15 s, et laisse passer une réponse à temps", async () => {
+    expect(DELAI_REQUETE_MS).toBe(15_000);
+    const jamais = avecDelaiMax(new Promise<never>(() => {}), "Connexion perdue.");
+    const verdict = jamais.then(
+      () => "résolu",
+      (e: unknown) => e,
+    );
+    await vi.advanceTimersByTimeAsync(DELAI_REQUETE_MS - 1);
+    let fini = false;
+    void verdict.then(() => (fini = true));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fini).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const erreur = await verdict;
+    expect(erreur).toBeInstanceOf(ErreurApi);
+    expect((erreur as ErreurApi).reseau).toBe(true);
+
+    await expect(avecDelaiMax(Promise.resolve(42), "x")).resolves.toBe(42);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("une requête qui ne répond jamais ne bloque pas la file : échec hors ligne, puis reprise automatique", async () => {
+    const { api, appels } = fausseApi();
+    let pendre = true;
+    const origine = api.majQuestion;
+    api.majQuestion = (id, q) => avecDelaiMax(pendre ? new Promise<void>(() => {}) : origine(id, q), "Connexion perdue.");
+    const file = new FileEnregistrement({ api, stockage: null, brouillon: existant() });
+    file.modifier((b) => majQuestion(b, "a", { prompt: "Sans réponse" }));
+    await vi.advanceTimersByTimeAsync(DELAI_ENREGISTREMENT_MS + DELAI_REQUETE_MS);
+    expect(file.instantane()).toMatchObject({ statut: "echec", horsLigne: true, message: MESSAGE_HORS_LIGNE });
+
+    pendre = false;
+    await vi.advanceTimersByTimeAsync(DELAI_REPRISE_MS);
+    expect(appels).toEqual(["maj:a:Sans réponse"]);
     expect(file.instantane().statut).toBe("enregistre");
   });
 });

@@ -75,7 +75,8 @@ async function quizAvec(page: Page, titre: string, prompts: string[]): Promise<s
   return id;
 }
 
-const statut = (page: Page) => page.getByRole("status").filter({ hasText: /Enregistr|En attente|Non enregistré/ }).first();
+// La pilule d'en-tête n'est plus une région live (elle changeait à chaque frappe) : on la lit par son texte exact.
+const statut = (page: Page) => page.locator("header").getByText(/^(Enregistré|Enregistrement…|Non enregistré|En attente)$/);
 const enregistre = (page: Page) => expect(statut(page)).toHaveText("Enregistré", { timeout: 20_000 });
 const charger = (page: Page, id: string) => rpc(page, "charger", { quizId: id });
 
@@ -321,8 +322,14 @@ test.describe("éditeur : QA, session réelle", () => {
     brut = await charger(page, id);
     expect(brut).toContain("Écrit par B ensuite");
     expect(brut).not.toContain("Écrit par A");
-    // Documenté : l'onglet A n'est pas averti ; son écran garde l'ancienne valeur jusqu'au rechargement.
+    // L'onglet A est averti que B a écrit ; son écran garde l'ancienne valeur jusqu'au rechargement.
+    await expect(page.getByText("Ce quiz est ouvert dans un autre onglet. Recharge pour voir ses changements.")).toBeVisible();
     await expect(page.getByLabel("Énoncé de la question 1")).toHaveValue("Écrit par A");
+    const recharge = page.waitForEvent("load");
+    await page.getByRole("button", { name: "Recharger" }).click();
+    await recharge;
+    await hydrate(page);
+    await expect(page.getByLabel("Énoncé de la question 1")).toHaveValue("Écrit par B ensuite");
     await autre.close();
   });
 
@@ -372,6 +379,243 @@ test.describe("éditeur : QA, session réelle", () => {
     await expect(apercu.getByText("Énoncé modifié en direct")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280);
     expect(await axe(page)).toEqual([]);
+  });
+
+  test("deux onglets sur /quiz/nouveau : un brouillon détenu n'est pas repris ailleurs, il l'est une fois l'onglet fermé", async ({ page, context }) => {
+    test.setTimeout(90_000);
+    await connecter(page, "/quiz/nouveau");
+    await hydrate(page);
+    await page.getByLabel("Énoncé de la question 1").fill("Brouillon de A");
+    await expect(statut(page)).toHaveText("En attente", { timeout: 10_000 });
+
+    const b = await context.newPage();
+    const creationsB: string[] = [];
+    b.on("request", (r) => {
+      if (r.url().includes("/_actions/quiz.creer")) creationsB.push(r.url());
+    });
+    await b.goto(`${serveur.url}/quiz/nouveau`);
+    await hydrate(b);
+    // A détient ce brouillon : B repart d'une page vierge, sous sa propre session.
+    await expect(b.getByLabel("Énoncé de la question 1")).toHaveValue("");
+    await expect(page.getByLabel("Énoncé de la question 1")).toHaveValue("Brouillon de A");
+
+    // A fermé sans avoir créé le quiz : un nouvel onglet reprend son brouillon, et lui seul le crée.
+    await page.close();
+    const c = await context.newPage();
+    await c.goto(`${serveur.url}/quiz/nouveau`);
+    await hydrate(c);
+    await expect(c.getByLabel("Énoncé de la question 1")).toHaveValue("Brouillon de A");
+    await c.getByLabel("Titre du quiz").fill("Repris par C");
+    await expect(c).toHaveURL(/\/quiz\/(?!nouveau)[^/]+$/, { timeout: 15_000 });
+    await enregistre(c);
+    await b.waitForTimeout(1_500);
+    expect(creationsB).toEqual([]);
+    await expect(b.getByLabel("Énoncé de la question 1")).toHaveValue("");
+    // Le brouillon créé ne ressuscite pas sur /quiz/nouveau.
+    const d = await context.newPage();
+    await d.goto(`${serveur.url}/quiz/nouveau`);
+    await hydrate(d);
+    await expect(d.getByLabel("Énoncé de la question 1")).toHaveValue("");
+    await Promise.all([b.close(), c.close(), d.close()]);
+  });
+
+  test("conflits : question supprimée ailleurs et ordre périmé sont signalés sans bloquer l'enregistrement", async ({ page }) => {
+    test.setTimeout(90_000);
+    const id = idDans(await rpc(page, "creer", { title: "Conflits" }), ["Conflits"]);
+    const ids: string[] = [];
+    for (const p of ["Un", "Deux", "Trois"]) ids.push(idDans(await rpc(page, "ajouterQuestion", { quizId: id, question: question(p) }), [id]));
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    await enregistre(page);
+
+    // Supprimée ailleurs pendant que l'écran l'affiche encore.
+    await rpc(page, "supprimerQuestion", { questionId: ids[0] });
+    await page.getByLabel("Énoncé de la question 1").fill("Un modifié trop tard");
+    await expect(page.getByText("La question 1 a été supprimée ailleurs. Recharge pour voir le quiz à jour.")).toBeVisible({ timeout: 15_000 });
+    await enregistre(page);
+    await expect(page.getByRole("button", { name: "Recharger" })).toBeVisible();
+
+    // L'ordre envoyé cite encore la question supprimée : refusé, dit, et la file continue.
+    await page.getByRole("button", { name: "Voir et réorganiser les questions" }).click();
+    const feuille = page.getByRole("dialog", { name: "Tes questions (3)" });
+    await feuille.getByRole("button", { name: "Déplacer la question 2" }).focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("L'ordre des questions n'est plus à jour. Recharge la page.")).toBeVisible({ timeout: 15_000 });
+    await enregistre(page);
+    expect(await axe(page)).toEqual([]);
+
+    await page.getByRole("button", { name: "Question 2" }).click();
+    await page.getByLabel("Énoncé de la question 2").fill("Toujours enregistrée");
+    await enregistre(page);
+    expect(await charger(page, id)).toContain("Toujours enregistrée");
+
+    const recharge = page.waitForEvent("load");
+    await page.getByRole("button", { name: "Recharger" }).click();
+    await recharge;
+    await hydrate(page);
+    await expect(page.getByRole("navigation", { name: "Questions" }).getByRole("button", { name: /^Question \d/ })).toHaveCount(2);
+    await expect(page.getByText(/supprimée ailleurs|plus à jour/)).toHaveCount(0);
+  });
+
+  test("statut : la pilule n'est pas une région live ; seuls l'échec, l'attente et le retour après échec sont annoncés", async ({ page }) => {
+    const id = await quizAvec(page, "Annonces", ["Départ"]);
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    await enregistre(page);
+    expect(await statut(page).getAttribute("role")).toBeNull();
+    expect(await statut(page).evaluate((el) => el.closest("[role=status], [aria-live]"))).toBeNull();
+    // Région présente dès l'ouverture, vide tant que rien d'utile n'est à dire.
+    const region = page.locator("p.sr-only[role=status]");
+    await expect(region).toHaveCount(1);
+    await expect(region).toHaveText("");
+
+    await page.getByLabel("Énoncé de la question 1").fill("Frappe ordinaire");
+    await enregistre(page);
+    await expect(region).toHaveText("");
+
+    await page.route("**/_actions/**", (route) => route.abort("internetdisconnected"));
+    await page.getByLabel("Énoncé de la question 1").fill("Sans réseau");
+    await expect(statut(page)).toHaveText("Non enregistré", { timeout: 10_000 });
+    await expect(region).toHaveText("Non enregistré");
+    await page.unroute("**/_actions/**");
+    await page.getByRole("button", { name: "Réessayer maintenant" }).click();
+    await enregistre(page);
+    await expect(region).toHaveText("Enregistré");
+
+    await page.getByLabel("Titre du quiz").fill("");
+    await expect(statut(page)).toHaveText("En attente", { timeout: 10_000 });
+    await expect(region).toHaveText("En attente");
+    await page.getByLabel("Titre du quiz").fill("Annonces bis");
+    await enregistre(page);
+    await expect(region).toHaveText("");
+  });
+
+  test("requête sans réponse : passé 15 s elle compte comme une coupure, puis l'envoi reprend tout seul", async ({ page }) => {
+    test.setTimeout(90_000);
+    const id = await quizAvec(page, "Requête pendue", ["Départ"]);
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    await enregistre(page);
+    // La requête part mais ne reçoit jamais de réponse, ni d'erreur : le cas d'un réseau mobile qui décroche.
+    await page.route("**/_actions/quiz.majQuestion/**", () => {});
+    const debut = Date.now();
+    await page.getByLabel("Énoncé de la question 1").fill("Envoyée dans le vide");
+    await expect(statut(page)).toHaveText("Non enregistré", { timeout: 25_000 });
+    expect(Date.now() - debut).toBeGreaterThanOrEqual(14_000);
+    await expect(page.getByRole("alert")).toContainText("Tes modifications sont gardées sur cet appareil");
+    await page.unroute("**/_actions/quiz.majQuestion/**");
+    await enregistre(page);
+    expect(await charger(page, id)).toContain("Envoyée dans le vide");
+  });
+
+  test("limite de 50 : bouton aria-disabled et focalisable, relié à son aide, clic et Entrée ignorés, mobile et bureau", async ({ page }) => {
+    test.setTimeout(180_000);
+    const id = idDans(await rpc(page, "creer", { title: "Cinquante bis" }), ["Cinquante bis"]);
+    for (let i = 1; i <= 50; i += 1) await rpc(page, "ajouterQuestion", { quizId: id, question: question(`Question numéro ${i}`) });
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    const aide = "Un quiz compte 50 questions au plus.";
+    for (const largeur of [390, 1280]) {
+      await page.setViewportSize({ width: largeur, height: 844 });
+      const ajout = page.getByRole("button", { name: "Ajouter une question" });
+      await expect(ajout).toHaveAttribute("aria-disabled", "true");
+      expect(await ajout.getAttribute("disabled")).toBeNull();
+      await expect(ajout).toHaveAccessibleDescription(aide);
+      await expect(page.getByText(aide)).toBeVisible();
+      await ajout.click({ force: true });
+      await ajout.press("Enter");
+      await expect(ajout).toBeFocused();
+      await expect(page.getByLabel(/Énoncé de la question 51/)).toHaveCount(0);
+      await expect(statut(page)).toHaveText("Enregistré");
+    }
+    expect((await charger(page, id)).match(/Question numéro/g)).toHaveLength(50);
+  });
+
+  test("aperçu joueur monté seulement à partir de 1024 px", async ({ page }) => {
+    const id = await quizAvec(page, "Aperçu conditionnel", ["Question de l'aperçu"]);
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    const apercu = page.locator("aside[aria-label='Aperçu joueur']");
+    await expect(apercu.getByText("Question de l'aperçu")).toHaveCount(0);
+    await page.setViewportSize({ width: 1023, height: 800 });
+    await expect(apercu.getByText("Question de l'aperçu")).toHaveCount(0);
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await expect(apercu.getByText("Question de l'aperçu")).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(apercu.getByText("Question de l'aperçu")).toHaveCount(0);
+  });
+
+  test("bureau : réponses sur une colonne, libellé long affiché en entier, placeholder lisible sur la tuile juste", async ({ page }) => {
+    const id = await quizAvec(page, "Libellés longs", ["Question aux longues réponses"]);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    const long = "Une réponse volontairement longue, pour vérifier que rien n'est coupé sur l'écran du bureau, même au-delà d'une ligne";
+    const a = page.getByLabel("Réponse A", { exact: true });
+    const b = page.getByLabel("Réponse B", { exact: true });
+    await b.fill(long);
+    await expect(b).toHaveValue(long);
+    expect(await b.evaluate((el) => el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    const [ba, bb] = [await a.boundingBox(), await b.boundingBox()];
+    expect(ba && bb && Math.abs(ba.x - bb.x) < 1 && bb.y > ba.y).toBe(true);
+    // Une seule ligne logique : Entrée n'insère rien.
+    await b.press("End");
+    await b.press("Enter");
+    await expect(b).toHaveValue(long);
+
+    // A est juste (question créée ainsi), B ne l'est pas : le placeholder suit la couleur du texte de sa tuile.
+    await a.fill("");
+    await b.fill("");
+    const couleur = (nom: string) =>
+      page.evaluate((v) => {
+        const sonde = document.createElement("span");
+        sonde.style.color = `var(${v})`;
+        document.body.append(sonde);
+        const c = getComputedStyle(sonde).color;
+        sonde.remove();
+        return c;
+      }, nom);
+    const placeholder = (champ: typeof a) => champ.evaluate((el) => getComputedStyle(el, "::placeholder").color);
+    expect(await placeholder(a)).toBe(await couleur("--color-vert-nuit"));
+    expect(await placeholder(b)).toBe(await couleur("--color-vert-mousse"));
+  });
+
+  test("glisser dans une longue liste : la feuille défile seule près du bord", async ({ page }) => {
+    test.setTimeout(120_000);
+    const prompts = Array.from({ length: 20 }, (_, i) => `Ligne ${i + 1} de la liste`);
+    const id = await quizAvec(page, "Longue liste", prompts);
+    await page.goto(`${serveur.url}/quiz/${id}`);
+    await hydrate(page);
+    await page.getByRole("button", { name: "Voir et réorganiser les questions" }).click();
+    const feuille = page.getByRole("dialog", { name: "Tes questions (20)" });
+    await expect(feuille).toBeVisible();
+    const bas = await feuille.locator("ol").evaluate((ol) => {
+      for (let el = ol.parentElement; el; el = el.parentElement) {
+        const o = getComputedStyle(el).overflowY;
+        if ((o === "auto" || o === "scroll") && el.scrollHeight > el.clientHeight) {
+          el.setAttribute("data-zone-glisser", "");
+          return el.getBoundingClientRect().bottom;
+        }
+      }
+      return null;
+    });
+    expect(bas, "la feuille doit défiler avec 20 questions").not.toBeNull();
+    const zone = page.locator("[data-zone-glisser]");
+    const avant = await zone.evaluate((el) => el.scrollTop);
+    const poignee = await feuille.getByRole("button", { name: "Déplacer la question 1" }).boundingBox();
+    if (!poignee) throw new Error("poignée introuvable");
+    const x = poignee.x + poignee.width / 2;
+    await page.mouse.move(x, poignee.y + poignee.height / 2);
+    await page.mouse.down();
+    // Le pointeur s'arrête près du bord bas et n'en bouge plus : seule la liste défile.
+    await page.mouse.move(x, (bas as number) - 8, { steps: 10 });
+    await expect.poll(() => zone.evaluate((el) => el.scrollTop), { timeout: 5_000 }).toBeGreaterThan(avant + 200);
+    await page.mouse.up();
+    const textes = await feuille.locator("ol > li").evaluateAll((lis) => lis.map((li) => li.textContent ?? ""));
+    expect(textes.findIndex((t) => t.includes("Ligne 1 de la liste"))).toBeGreaterThan(8);
+    await page.keyboard.press("Escape");
+    await enregistre(page);
   });
 
   // En dernier : ce test échoue tant que le message de limite n'existe pas, et la série serial ne doit pas bloquer les autres.
