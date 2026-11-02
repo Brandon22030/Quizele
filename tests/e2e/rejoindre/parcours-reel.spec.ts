@@ -109,14 +109,15 @@ test.describe("avec D1 migrée", () => {
     expect(res.status).toBe(404);
   });
 
-  test("code inconnu : 404 game_not_found affiché en français", async ({ page }) => {
+  test("code inconnu : annoncé dès l'arrivée sans champ pseudo, l'API répond 404 game_not_found", async ({ page }) => {
     await page.goto(`${base}/j/ZZZZZZ`);
     await pret(page);
-    await page.getByLabel("Pseudo").fill("Léa");
-    const reponse = page.waitForResponse((r) => r.url().includes("/api/parties/ZZZZZZ/joueurs"));
-    await page.getByRole("button", { name: "Rejoindre", exact: true }).click();
-    expect((await reponse).status()).toBe(404);
+    // Le bloc pseudo est masqué tant que le code annoncé inconnu n'est pas modifié : l'erreur se lit à l'arrivée, plus après l'envoi.
     await expect(page.getByRole("alert").filter({ hasText: "Aucune partie ne correspond à ce code" })).toBeVisible();
+    await expect(page.getByLabel("Pseudo")).toHaveCount(0);
+    const res = await page.request.post(`${base}/api/parties/ZZZZZZ/joueurs`, { data: { pseudo: "Léa" } });
+    expect(res.status()).toBe(404);
+    expect(await res.json()).toEqual({ error: "game_not_found" });
   });
 
   test("inscription réelle : 201, jeton signé stocké, redirection vers /jouer, reprise directe", async ({ page }) => {
@@ -242,7 +243,7 @@ test.describe("avec D1 migrée", () => {
     await expect(page.getByText("Animé par")).toHaveCount(0);
   });
 
-  test("code inconnu : l'échec est annoncé dès l'arrivée, sans envoi, avec le formulaire encore utilisable", async ({ page }) => {
+  test("code inconnu : l'échec est annoncé dès l'arrivée, sans envoi, sans champ pseudo", async ({ page }) => {
     let envois = 0;
     page.on("request", (r) => r.method() === "POST" && r.url().includes("/joueurs") && envois++);
     await page.goto(`${base}/j/ZZZZZZ`);
@@ -251,10 +252,11 @@ test.describe("avec D1 migrée", () => {
     await expect(page.getByText("Animé par")).toHaveCount(0);
     expect(envois).toBe(0);
     await sansViolation(page);
-    await expect(page.getByLabel("Pseudo")).toBeVisible();
+    // Code inconnu et non modifié : le pseudo n'a pas de sens, il reparaît quand le code change.
+    await expect(page.getByLabel("Pseudo")).toHaveCount(0);
   });
 
-  test("partie terminée : annoncée dès l'arrivée ; l'API, qui ne cherche que les parties actives dans D1, répond 404", async ({ page }) => {
+  test("partie terminée : annoncée dès l'arrivée ; l'API répond 410 game_finished", async ({ page }) => {
     const { code } = await creer();
     terminer(code);
     await page.goto(`${base}/j/${code}`);
@@ -263,8 +265,9 @@ test.describe("avec D1 migrée", () => {
     await expect(page.getByText("Animé par")).toHaveCount(0);
     await sansViolation(page);
     const res = await page.request.post(`${base}/api/parties/${code}/joueurs`, { data: { pseudo: "Tard" } });
-    // Choix de conception : D1 d'abord, une partie terminée n'atteint plus le Durable Object (le 410 n'existe que côté DO).
-    expect(res.status()).toBe(404);
+    // Le 404 figé ici contredisait la page qui annonce « terminée » : l'API relit désormais la dernière partie du code (410).
+    expect(res.status()).toBe(410);
+    expect(await res.json()).toEqual({ error: "game_finished" });
   });
 
   test("forme non normalisée : 301 vers /j/CODE, y compris pour une partie réelle", async ({ request }) => {

@@ -4,6 +4,7 @@ import type { Db } from "../../../src/server/db/client";
 import { saveSessionResults } from "../../../src/server/db/results";
 import { createQuiz, NotFoundError } from "../../../src/server/db/quizzes";
 import { createGameSession, findActiveSessionByCode, findJoinPreviewByCode, generateGameCode, markSessionRunning } from "../../../src/server/db/sessions";
+import { env } from "cloudflare:workers";
 import { gameSessions, user } from "../../../src/server/db/schema";
 import { freshDb, insertUser } from "./helpers";
 
@@ -147,5 +148,18 @@ describe("findJoinPreviewByCode", () => {
       status: "running",
       quizTitle: "En cours",
     });
+  });
+});
+
+describe("index de lecture par code", () => {
+  it("findJoinPreviewByCode utilise game_sessions_code_created_idx, sans balayage de table", async () => {
+    const plan = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT status, quiz_title FROM game_sessions WHERE code = ? ORDER BY created_at DESC LIMIT 1",
+    )
+      .bind("ABC234")
+      .all<{ detail: string }>();
+    const details = plan.results.map((r) => r.detail).join(" | ");
+    expect(details).toContain("game_sessions_code_created_idx");
+    expect(details).not.toMatch(/SCAN game_sessions/);
   });
 });
