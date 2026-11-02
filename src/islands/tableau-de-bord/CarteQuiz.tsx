@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
 import { Papier } from "../../components/ui/papier";
 import { Pilule } from "../../components/ui/pilule";
+import { DateLocale } from "./date-locale";
 import { MenuCarte } from "./MenuCarte";
 import { dateCourte, libelleQuestions, urlEditeur, type ErreurLancement, type QuizCarte } from "./logique";
 
@@ -30,7 +31,8 @@ export function CarteQuiz({ quiz, lancementEnCours, erreur, onLancer, onDuplique
           </Pilule>
           <h2 className="mt-2 font-affiche text-xl leading-tight break-words">{quiz.title}</h2>
           <p className="text-sm font-semibold text-vert-mousse">
-            {libelleQuestions(quiz.questionCount)} - modifié le {dateCourte(quiz.updatedAt)}
+            {libelleQuestions(quiz.questionCount)}
+            <DateLocale date={quiz.updatedAt} format={dateCourte} prefixe=" - modifié le " />
           </p>
         </div>
         <MenuCarte quizId={quiz.id} titre={quiz.title} onLancer={ready ? undefined : onLancer} onDupliquer={onDupliquer} onSupprimer={onSupprimer} onOuverture={setMenuOuvert} />
