@@ -225,12 +225,20 @@ test.describe("connexion : lien magique, comportements du formulaire", () => {
   });
 
   test("l'adresse affichée dans la confirmation est échappée (pas d'injection HTML)", async ({ page }) => {
-    // Adresse invalide en sessionStorage : ignorée, la page reste sans renvoi (l'adresse n'est plus lue dans l'URL).
-    await page.addInitScript(() => sessionStorage.setItem("quizdeszeles:connexion-email", "<img src=x onerror=alert(1)>@exemple.fr"));
+    // validerEmail refuse les espaces mais accepte < et > : le domaine, que la version masquée conserve, porte la charge hostile.
+    const hostile = "a@<svg.onload=alert(1)>.fr";
+    let dialogue = false;
+    page.on("dialog", (d) => {
+      dialogue = true;
+      void d.dismiss();
+    });
+    await page.addInitScript((valeur) => sessionStorage.setItem("quizdeszeles:connexion-email", valeur), hostile);
     await page.goto(`${serveur.url}/connexion/verifier`);
     await hydrate(page);
-    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toHaveCount(0);
-    expect(await page.locator("img[src='x']").count()).toBe(0);
+    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toBeVisible();
+    await expect(page.getByText("a***@<svg.onload=alert(1)>.fr")).toBeVisible();
+    expect(await page.locator("main svg[onload], main img, main [onload]").count()).toBe(0);
+    expect(dialogue).toBe(false);
   });
 
   const retoursMalveillants = [
