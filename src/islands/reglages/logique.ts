@@ -115,3 +115,32 @@ export interface DonneesReglages extends Reglages {
   quizId: string;
   title: string;
 }
+
+// Ce que la région persistante dit au lecteur d'écran : seuls « Non enregistré » et le retour à la normale comptent. La
+// pilule change à chaque frappe ; l'annoncer à chaque fois couvrirait la saisie.
+export interface EtatAnnonce {
+  texte: string;
+  echec: boolean;
+}
+
+export const ANNONCE_INITIALE: EtatAnnonce = { texte: "", echec: false };
+
+export function annoncerStatut(etat: EtatAnnonce, statut: StatutEnregistrement): EtatAnnonce {
+  if (statut.etat === "echec") return etat.echec ? etat : { texte: "Non enregistré", echec: true };
+  if (statut.etat === "enregistre") return etat.echec ? { texte: "Enregistré", echec: false } : etat;
+  return etat;
+}
+
+export const URL_MAJ_REGLAGES = "/_actions/quiz.majReglages";
+
+// Envoi de dernier recours à la fermeture de la page : keepalive laisse la requête finir après le déchargement. Même
+// endpoint et même corps JSON que le client des Actions Astro, donc mêmes contrôles d'origine et de session côté serveur.
+export function envoyerALaSortie(quizId: string, patch: PatchReglages, envoyer: typeof fetch = fetch): void {
+  if (Object.keys(patch).length === 0) return;
+  void envoyer(URL_MAJ_REGLAGES, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quizId, ...patch }),
+    keepalive: true,
+  }).catch(() => {});
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { creerFileEnregistrement, libelleStatut, type PatchReglages, type StatutEnregistrement } from "../../../src/islands/reglages/logique";
+import { ANNONCE_INITIALE, annoncerStatut, creerFileEnregistrement, envoyerALaSortie, libelleStatut, type PatchReglages, type StatutEnregistrement } from "../../../src/islands/reglages/logique";
 
 function banc(reponses: Array<string | null | "lance">) {
   const envois: PatchReglages[] = [];
@@ -87,5 +87,40 @@ describe("file d'enregistrement des réglages", () => {
     expect(libelleStatut({ etat: "enregistre" })).toBe("Enregistré");
     expect(libelleStatut({ etat: "enregistrement" })).toBe("Enregistrement…");
     expect(libelleStatut({ etat: "echec", message: "m" })).toBe("Non enregistré");
+  });
+});
+
+describe("annonces de statut", () => {
+  it("n'annonce ni l'enregistrement en cours ni un succès ordinaire", () => {
+    expect(annoncerStatut(ANNONCE_INITIALE, { etat: "enregistrement" })).toBe(ANNONCE_INITIALE);
+    expect(annoncerStatut(ANNONCE_INITIALE, { etat: "enregistre" })).toBe(ANNONCE_INITIALE);
+  });
+
+  it("annonce un échec une fois, puis le retour à la normale", () => {
+    const echec = annoncerStatut(ANNONCE_INITIALE, { etat: "echec", message: "m" });
+    expect(echec.texte).toBe("Non enregistré");
+    expect(annoncerStatut(echec, { etat: "echec", message: "m" })).toBe(echec);
+    expect(annoncerStatut(echec, { etat: "enregistre" }).texte).toBe("Enregistré");
+  });
+});
+
+describe("envoi à la fermeture de la page", () => {
+  it("POST JSON keepalive sur l'endpoint de l'action, avec le quizId", () => {
+    const appels: Array<[string, RequestInit]> = [];
+    const faux = ((url: string, init: RequestInit) => {
+      appels.push([url, init]);
+      return Promise.resolve(new Response());
+    }) as unknown as typeof fetch;
+    envoyerALaSortie("q1", { category: "Bible" }, faux);
+    expect(appels).toHaveLength(1);
+    expect(appels[0]![0]).toBe("/_actions/quiz.majReglages");
+    expect(appels[0]![1]).toMatchObject({ method: "POST", keepalive: true, headers: { "Content-Type": "application/json" } });
+    expect(JSON.parse(appels[0]![1].body as string)).toEqual({ quizId: "q1", category: "Bible" });
+  });
+
+  it("n'envoie rien sans saisie en attente", () => {
+    let appele = false;
+    envoyerALaSortie("q1", {}, (() => ((appele = true), Promise.resolve(new Response()))) as unknown as typeof fetch);
+    expect(appele).toBe(false);
   });
 });

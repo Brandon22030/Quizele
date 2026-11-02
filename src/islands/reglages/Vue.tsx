@@ -16,11 +16,12 @@ interface CadreProps {
   quizId: string;
   titre?: string;
   statut?: StatutEnregistrement;
+  annonce?: string;
   onRetour?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
   children: ReactNode;
 }
 
-export function Cadre({ quizId, titre, statut = { etat: "repos" }, onRetour, children }: CadreProps) {
+export function Cadre({ quizId, titre, statut = { etat: "repos" }, annonce = "", onRetour, children }: CadreProps) {
   const libelle = libelleStatut(statut);
   return (
     <div className="trame-points min-h-dvh pb-8">
@@ -39,7 +40,11 @@ export function Cadre({ quizId, titre, statut = { etat: "repos" }, onRetour, chi
             {titre ? <p className="max-w-full truncate text-sm font-bold text-vert-mousse">{titre}</p> : null}
           </div>
           {/* Région toujours montée : un statut inséré avec son texte est annoncé de façon peu fiable. */}
-          <p role="status" className="ml-auto shrink-0">
+          <p aria-live="polite" className="sr-only">
+            {annonce}
+          </p>
+          {/* Pilule visible, non annoncée (aria-live off) : la région sr-only ci-dessus porte les annonces utiles. */}
+          <p role="status" aria-live="off" className="ml-auto shrink-0">
             {libelle ? (
               <span
                 className={cn(
@@ -98,6 +103,7 @@ interface VueProps {
   donnees: DonneesReglages;
   valeurs: Reglages;
   statut: StatutEnregistrement;
+  annonce: string;
   onChange: (patch: Partial<Reglages>) => void;
   onTexte: (champ: "description" | "category", valeur: string) => void;
   onTexteTermine: () => void;
@@ -105,14 +111,19 @@ interface VueProps {
   onRetour: (event: React.MouseEvent<HTMLAnchorElement>) => void;
 }
 
-export function VueReglages({ donnees, valeurs, statut, onChange, onTexte, onTexteTermine, onReessayer, onRetour }: VueProps) {
+export function VueReglages({ donnees, valeurs, statut, annonce, onChange, onTexte, onTexteTermine, onReessayer, onRetour }: VueProps) {
   return (
-    <Cadre quizId={donnees.quizId} titre={donnees.title} statut={statut} onRetour={onRetour}>
+    <Cadre quizId={donnees.quizId} titre={donnees.title} statut={statut} annonce={annonce} onRetour={onRetour}>
       <div className="flex flex-col gap-6">
         {statut.etat === "echec" ? (
           <EtatErreur titre="Réglage non enregistré" onRetry={onReessayer}>
             {statut.message}
           </EtatErreur>
+        ) : null}
+        {statut.etat === "echec" ? (
+          <Button href={urlEditeur(donnees.quizId)} variante="creme" taille="petit" className="self-start">
+            Quitter sans enregistrer
+          </Button>
         ) : null}
         <fieldset>
           <legend className="font-affiche text-xl">Comment on joue ?</legend>
@@ -142,7 +153,7 @@ export function VueReglages({ donnees, valeurs, statut, onChange, onTexte, onTex
             checked={valeurs.showCorrectAnswer}
             onChange={(e) => onChange({ showCorrectAnswer: e.target.checked })}
           />
-          <div className="border-t-trait border-dashed border-vert-foret" />
+          <div className="border-trait border-x-0 border-b-0 border-dashed border-vert-foret" />
           <Interrupteur
             label="Mélanger l'ordre"
             description="Questions et réponses, pour éviter de copier sur le voisin."

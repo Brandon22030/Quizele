@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Eye, ListChecks } from "lucide-react";
 import { AnswerList, AnswerTile, Chrono, EnonceQuestion, EnteteQuestion, Explication, ValidationMultiple } from "../../components/jeu";
 import { Button } from "../../components/ui/button";
@@ -86,12 +86,18 @@ function VueVide({ quizId }: { quizId: string }) {
 
 export function VueApercu({ donnees }: { donnees: DonneesApercu }) {
   const [index, setIndex] = useState(0);
+  // Les barres collantes (bandeau en haut, navigation en bas) ne doivent pas masquer l'élément qui reçoit le focus.
+  useEffect(() => {
+    const classes = ["scroll-pt-20", "scroll-pb-20"];
+    document.documentElement.classList.add(...classes);
+    return () => document.documentElement.classList.remove(...classes);
+  }, []);
   const total = donnees.questions.length;
   if (total === 0) return <VueVide quizId={donnees.quizId} />;
   const question = donnees.questions[index]!;
 
   const navigation = (
-    <nav aria-label="Navigation dans l'aperçu" className="sticky bottom-0 z-30 border-t-trait border-vert-foret bg-jaune-soleil">
+    <nav aria-label="Navigation dans l'aperçu" className="sticky bottom-0 z-30 border-trait border-x-0 border-b-0 border-vert-foret bg-jaune-soleil">
       <div className="mx-auto flex w-full max-w-ecran gap-3 px-4 py-3">
         <Button variante="creme" taille="petit" className="flex-1" disabled={index === 0} onClick={() => setIndex(index - 1)}>
           <ArrowLeft aria-hidden="true" className="size-4" />

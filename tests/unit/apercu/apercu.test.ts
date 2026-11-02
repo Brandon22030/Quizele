@@ -55,6 +55,12 @@ describe("aperçu : rendu", () => {
     expect(html).toContain("Valider la sélection");
   });
 
+  it("filet de la barre de navigation : bordure déclarée", () => {
+    const html = renderToStaticMarkup(createElement(VueApercu, { donnees }));
+    expect(html).toContain("border-trait border-x-0 border-b-0");
+    expect(html).not.toContain("border-t-trait");
+  });
+
   it("n'expose aucune bonne réponse avant le choix", () => {
     const html = renderToStaticMarkup(createElement(VueApercu, { donnees }));
     expect(html).not.toContain("Bonne réponse");

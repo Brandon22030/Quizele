@@ -22,6 +22,7 @@ function rendre(statut: StatutEnregistrement = { etat: "repos" }, extra: Partial
       donnees: d,
       valeurs: d,
       statut,
+      annonce: "",
       onChange: noop,
       onTexte: noop,
       onTexteTermine: noop,
@@ -64,6 +65,12 @@ describe("réglages : rendu", () => {
     expect(echec).toContain("Non enregistré");
     expect(echec).toContain("Une erreur est survenue.");
     expect(echec).toContain("Réessayer");
+    expect(echec).toContain("Quitter sans enregistrer");
+  });
+
+  it("séparateur entre les interrupteurs : bordure réellement déclarée", () => {
+    expect(rendre()).toContain("border-trait border-x-0 border-b-0 border-dashed");
+    expect(rendre()).not.toContain("border-t-trait");
   });
 
   it("chargement et erreur", () => {

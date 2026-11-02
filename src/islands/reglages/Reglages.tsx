@@ -3,7 +3,10 @@ import { actions } from "astro:actions";
 import { VueChargement, VueErreur, VueReglages } from "./Vue";
 import {
   MESSAGE_RESEAU,
+  ANNONCE_INITIALE,
+  annoncerStatut,
   creerFileEnregistrement,
+  envoyerALaSortie,
   urlEditeur,
   type DonneesReglages,
   type EtatChargement,
@@ -63,6 +66,8 @@ function Edition({ donnees }: { donnees: DonneesReglages }) {
     category: donnees.category,
   });
   const [statut, setStatut] = useState<StatutEnregistrement>({ etat: "repos" });
+  const [annonce, setAnnonce] = useState(ANNONCE_INITIALE);
+  const retourBloque = useRef(false);
   const texteEnAttente = useRef<PatchReglages>({});
   const minuteur = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,6 +77,7 @@ function Edition({ donnees }: { donnees: DonneesReglages }) {
         const { error } = await actions.quiz.majReglages({ quizId: donnees.quizId, ...patch });
         return error ? error.message : null;
       }, (nouveau) => {
+        setAnnonce((a) => annoncerStatut(a, nouveau));
         // Une saisie encore dans son délai n'est pas partie : « Enregistré » serait faux tant qu'elle est en attente.
         setStatut(nouveau.etat === "enregistre" && Object.keys(texteEnAttente.current).length > 0 ? { etat: "enregistrement" } : nouveau);
       }),
@@ -86,12 +92,19 @@ function Edition({ donnees }: { donnees: DonneesReglages }) {
     if (Object.keys(patch).length > 0) file.pousser(patch);
   }
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // La saisie encore dans son délai de frappe ne partirait jamais : on l'envoie à la fermeture de la page.
+    const alaSortie = () => {
+      const patch = texteEnAttente.current;
+      texteEnAttente.current = {};
+      envoyerALaSortie(donnees.quizId, patch);
+    };
+    window.addEventListener("pagehide", alaSortie);
+    return () => {
+      window.removeEventListener("pagehide", alaSortie);
       if (minuteur.current) clearTimeout(minuteur.current);
-    },
-    [],
-  );
+    };
+  }, [donnees.quizId]);
 
   function changer(patch: PatchReglages) {
     setValeurs((v) => ({ ...v, ...patch }));
@@ -110,11 +123,14 @@ function Edition({ donnees }: { donnees: DonneesReglages }) {
   // Quitter avec une saisie ou un envoi en cours : on laisse finir, sinon la navigation annulerait la requête.
   function retour(event: React.MouseEvent<HTMLAnchorElement>) {
     if (Object.keys(texteEnAttente.current).length === 0 && statut.etat !== "enregistrement" && statut.etat !== "echec") return;
+    // Hors ligne, l'attente ne finira pas : au deuxième clic, l'animateur quitte quand même.
+    if (retourBloque.current) return;
     event.preventDefault();
     envoyerTexte();
     void file.attendre().then(() => {
       // Un échec reste affiché (avec Réessayer) plutôt que d'abandonner la modification en silence.
-      if (!file.enEchec()) window.location.assign(urlEditeur(donnees.quizId));
+      if (file.enEchec()) retourBloque.current = true;
+      else window.location.assign(urlEditeur(donnees.quizId));
     });
   }
 
@@ -123,6 +139,7 @@ function Edition({ donnees }: { donnees: DonneesReglages }) {
       donnees={donnees}
       valeurs={valeurs}
       statut={statut}
+      annonce={annonce.texte}
       onChange={changer}
       onTexte={saisirTexte}
       onTexteTermine={envoyerTexte}
