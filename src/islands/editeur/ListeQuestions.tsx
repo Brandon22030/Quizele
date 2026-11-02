@@ -30,6 +30,10 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
   const cles = questions.map((q) => q.key);
   const clesRef = useRef(cles);
   clesRef.current = cles;
+  // Le parent passe une nouvelle fonction à chaque rendu : en dépendance, chaque déplacement relancerait l'effet du glisser
+  // et couperait le défilement automatique, que seul un nouveau mouvement du pointeur redémarrait.
+  const onOrdreRef = useRef(onOrdre);
+  onOrdreRef.current = onOrdre;
 
   // Un nœud déplacé par React perd le focus : on le rend à la poignée après chaque déplacement au clavier.
   useLayoutEffect(() => {
@@ -53,7 +57,7 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
       });
       const cible = indexSousPointeur(bandes, y);
       const depart = courant.indexOf(glisse);
-      if (cible !== -1 && depart !== -1 && cible !== depart) onOrdre(deplacer(courant, depart, cible));
+      if (cible !== -1 && depart !== -1 && cible !== depart) onOrdreRef.current(deplacer(courant, depart, cible));
     };
     // Tant que le pointeur reste près d'un bord, la zone défile à chaque image ; les lignes passent sous le pointeur immobile.
     const defiler = () => {
@@ -83,7 +87,7 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
       window.removeEventListener("pointerup", finir);
       window.removeEventListener("pointercancel", finir);
     };
-  }, [glisse, onOrdre]);
+  }, [glisse]);
 
   function auClavier(e: KeyboardEvent<HTMLButtonElement>, key: string) {
     const delta = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
