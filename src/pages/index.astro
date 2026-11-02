@@ -10,6 +10,11 @@ import { TitreAffiche } from "../components/ui/titre-affiche";
 import { TraitsEnergie } from "../components/ui/traits-energie";
 import { BookOpen, Pencil } from "lucide-react";
 import CodeAccueil from "../islands/rejoindre/CodeAccueil";
+import { CODE_LENGTH, sanitizeCode } from "../components/jeu/code-input";
+
+// Repli sans JavaScript et avant l'hydratation : le formulaire du ticket envoie ?code=, on mène à la page de la partie.
+const saisi = sanitizeCode(Astro.url.searchParams.get("code") ?? "").slice(0, CODE_LENGTH);
+if (saisi !== "") return Astro.redirect(`/j/${saisi}`, 303);
 
 const etapes = [
   { titre: "Créer", texte: "Tu écris tes questions, les propositions et les explications. Tout s'enregistre au fur et à mesure." },
@@ -43,7 +48,7 @@ const etapes = [
         </div>
       </section>
 
-      <CodeAccueil client:load />
+      <CodeAccueil client:idle />
 
       <section id="comment-ca-marche" class="px-5 pt-12 pb-4" aria-labelledby="titre-comment">
         <h2 id="titre-comment" class="text-center font-affiche text-2xl">Comment ça marche</h2>

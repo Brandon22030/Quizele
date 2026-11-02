@@ -1,7 +1,7 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import type { Db } from "./client";
 import { NotFoundError } from "./quizzes";
-import { gameSessions, type GameMode } from "./schema";
+import { gameSessions, user, type GameMode } from "./schema";
 
 // Sans 0/O/1/I : le code est lu à voix haute et recopié à la main.
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -56,6 +56,22 @@ export async function findActiveSessionByCode(db: Db, code: string) {
       .select({ id: gameSessions.id, status: gameSessions.status, ownerId: gameSessions.ownerId })
       .from(gameSessions)
       .where(and(eq(gameSessions.code, code), ne(gameSessions.status, "ended")))
+      .get()) ?? null
+  );
+}
+
+// Lecture publique pour l'écran de saisie du pseudo : titre figé et nom affiché de l'animateur, jamais l'e-mail ni
+// l'id du quiz. Contrairement à findActiveSessionByCode, une partie terminée est renvoyée (la plus récente du code)
+// pour dire « terminée » plutôt que « inconnue ».
+export async function findJoinPreviewByCode(db: Db, code: string) {
+  return (
+    (await db
+      .select({ status: gameSessions.status, quizTitle: gameSessions.quizTitle, hostName: user.name })
+      .from(gameSessions)
+      .innerJoin(user, eq(user.id, gameSessions.ownerId))
+      .where(eq(gameSessions.code, code))
+      .orderBy(desc(gameSessions.createdAt))
+      .limit(1)
       .get()) ?? null
   );
 }

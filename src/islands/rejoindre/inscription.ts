@@ -1,4 +1,5 @@
 import { CODE_LENGTH } from "../../components/jeu/code-input";
+import { localNow } from "../../shared/clock";
 import { PSEUDO_MAX_LENGTH, joinResponseSchema, pseudoSchema } from "../../shared/protocol";
 
 export type JoinFailure = "invalid_pseudo" | "pseudo_taken" | "game_full" | "game_not_found" | "game_finished" | "network" | "unknown";
@@ -40,11 +41,29 @@ export function validatePseudo(raw: string): string | null {
 
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-export function readToken(store: Store, code: string): StoredToken | null {
+// Le serveur juge la signature ; le client ne lit que l'échéance `e` (en ms) de la charge utile pour ne pas
+// garder un jeton mort. Une charge illisible n'est pas écartée ici : /jouer la fera refuser par le serveur.
+function isExpired(token: string, now: number): boolean {
+  try {
+    const payload = token.split(".")[0] ?? "";
+    const claims: unknown = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    const expiresAt = typeof claims === "object" && claims !== null && "e" in claims ? (claims as { e: unknown }).e : null;
+    return typeof expiresAt === "number" && expiresAt <= now;
+  } catch {
+    return false;
+  }
+}
+
+export function readToken(store: Store, code: string, now: number = localNow()): StoredToken | null {
   try {
     const parsed: unknown = JSON.parse(store.getItem(tokenKey(code)) ?? "null");
     const found = joinResponseSchema.safeParse(parsed);
-    return found.success ? found.data : null;
+    if (!found.success) return null;
+    if (isExpired(found.data.token, now)) {
+      store.removeItem(tokenKey(code));
+      return null;
+    }
+    return found.data;
   } catch {
     // Stockage inaccessible (navigation privée stricte) ou valeur corrompue : comme s'il n'y avait pas de jeton.
     return null;

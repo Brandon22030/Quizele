@@ -1,9 +1,10 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "../../../src/server/db/client";
 import { saveSessionResults } from "../../../src/server/db/results";
 import { createQuiz, NotFoundError } from "../../../src/server/db/quizzes";
-import { createGameSession, findActiveSessionByCode, generateGameCode, markSessionRunning } from "../../../src/server/db/sessions";
-import { gameSessions } from "../../../src/server/db/schema";
+import { createGameSession, findActiveSessionByCode, findJoinPreviewByCode, generateGameCode, markSessionRunning } from "../../../src/server/db/sessions";
+import { gameSessions, user } from "../../../src/server/db/schema";
 import { freshDb, insertUser } from "./helpers";
 
 let db: Db;
@@ -88,5 +89,63 @@ describe("markSessionRunning", () => {
       { id: "encours", status: "running" },
       { id: "fini", status: "ended" },
     ]);
+  });
+});
+
+describe("findJoinPreviewByCode", () => {
+  it("renvoie le titre figé et le nom de l'animateur, sans e-mail ni id de quiz", async () => {
+    await db.update(user).set({ name: "Alice Martin" }).where(eq(user.id, "alice"));
+    await insertWithCode("s1", "ABC234", "lobby");
+    const preview = await findJoinPreviewByCode(db, "ABC234");
+    expect(preview).toEqual({
+      status: "lobby",
+      quizTitle: "Quiz",
+      hostName: "Alice Martin",
+    });
+  });
+
+  it("renvoie null pour un code inconnu", async () => {
+    expect(await findJoinPreviewByCode(db, "ZZZZZZ")).toBeNull();
+  });
+
+  it("renvoie une partie terminée, la plus récente du code", async () => {
+    await db.insert(gameSessions).values({
+      ...base("vieille"),
+      code: "ABC234",
+      status: "ended",
+      quizTitle: "Ancien",
+      createdAt: new Date(1000),
+    });
+    await db.insert(gameSessions).values({
+      ...base("recente"),
+      code: "ABC234",
+      status: "ended",
+      quizTitle: "Récent",
+      createdAt: new Date(2000),
+    });
+    expect(await findJoinPreviewByCode(db, "ABC234")).toMatchObject({
+      status: "ended",
+      quizTitle: "Récent",
+    });
+  });
+
+  it("préfère la partie active à une ancienne partie terminée", async () => {
+    await db.insert(gameSessions).values({
+      ...base("vieille"),
+      code: "ABC234",
+      status: "ended",
+      createdAt: new Date(1000),
+    });
+    await db.insert(gameSessions).values({
+      ...base("active"),
+      code: "ABC234",
+      status: "running",
+      quizTitle: "En cours",
+      createdAt: new Date(2000),
+    });
+    expect(await findJoinPreviewByCode(db, "ABC234")).toMatchObject({
+      status: "running",
+      quizTitle: "En cours",
+    });
   });
 });

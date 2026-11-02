@@ -91,3 +91,42 @@ describe("joinGame", () => {
     for (const message of Object.values(JOIN_MESSAGES)) expect(message).not.toContain("—");
   });
 });
+
+describe("jeton expiré", () => {
+  const jetonExpirantA = (e: number) =>
+    `${btoa(JSON.stringify({ c: "K7Q2MB", s: "s1", r: "player", p: "p1", e })).replace(/=+$/, "")}.signature`;
+
+  it("traite un jeton expiré comme absent et supprime sa clé", () => {
+    const store = fakeStore();
+    writeToken(store, "K7Q2MB", {
+      playerId: "p1",
+      token: jetonExpirantA(1000),
+    });
+    expect(readToken(store, "K7Q2MB", 2000)).toBeNull();
+    expect(store.getItem(tokenKey("K7Q2MB"))).toBeNull();
+  });
+  it("traite l'échéance atteinte comme expirée", () => {
+    const store = fakeStore();
+    writeToken(store, "K7Q2MB", {
+      playerId: "p1",
+      token: jetonExpirantA(2000),
+    });
+    expect(readToken(store, "K7Q2MB", 2000)).toBeNull();
+  });
+  it("garde un jeton encore valide", () => {
+    const store = fakeStore();
+    const token = jetonExpirantA(5000);
+    writeToken(store, "K7Q2MB", { playerId: "p1", token });
+    expect(readToken(store, "K7Q2MB", 2000)).toEqual({ playerId: "p1", token });
+    expect(store.getItem(tokenKey("K7Q2MB"))).not.toBeNull();
+  });
+  it("lit l'échéance en base64url", () => {
+    const store = fakeStore();
+    const payload = btoa(JSON.stringify({ e: 1000, note: "???>>>" }))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    writeToken(store, "K7Q2MB", { playerId: "p1", token: `${payload}.sig` });
+    expect(readToken(store, "K7Q2MB", 2000)).toBeNull();
+  });
+});
