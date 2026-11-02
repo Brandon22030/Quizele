@@ -2,9 +2,10 @@ import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyPrivateCacheHeaders } from "../../../src/server/auth/routes";
-import { isCrossSiteRequest } from "../../../src/server/auth/sign-out";
+import { createAuth, type AuthEnv } from "../../../src/server/auth/auth";
+import { isCrossSiteRequest, SIGN_OUT_FAILED_LOCATION, signOutResponse } from "../../../src/server/auth/sign-out";
 import { freshDb } from "../db/helpers";
-import { authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
+import { authEnv, authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
 
 beforeEach(async () => {
   await freshDb();
@@ -101,6 +102,81 @@ describe("POST /deconnexion", () => {
   });
 });
 
+describe("déconnexion en panne côté serveur", () => {
+  const post = (origin: string, cookie: string) =>
+    new Request(`${origin}/deconnexion`, { method: "POST", headers: { origin, cookie, "content-type": "application/x-www-form-urlencoded" } });
+  // Better Auth avale les erreurs D1 de signOut : la panne est simulée sur l'appel lui-même.
+  const failingAuth = (failure: () => Promise<Response>) => (e: AuthEnv, r: Request) => {
+    const real = createAuth(e, r);
+    return { $context: real.$context, api: { ...real.api, signOut: failure } as unknown as typeof real.api };
+  };
+  const failures: [string, () => Promise<Response>][] = [
+    ["réponse 500", async () => new Response(null, { status: 500 })],
+    ["réponse 503", async () => new Response(null, { status: 503 })],
+    ["exception", async () => Promise.reject(new Error("D1_ERROR: base indisponible pour panne@example.test"))],
+  ];
+
+  it.each(failures)("%s : cookies du navigateur expirés et redirection vers /connexion?error=deconnexion", async (_cas, failure) => {
+    const cookie = await signIn("panne@example.test");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await signOutResponse(authEnv(), post(ORIGIN, cookie), failingAuth(failure));
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/connexion?error=deconnexion");
+    expect(SIGN_OUT_FAILED_LOCATION).toBe("/connexion?error=deconnexion");
+    const setCookies = res.headers.getSetCookie();
+    for (const name of ["better-auth.session_token", "better-auth.session_data"]) {
+      const header = setCookies.find((c) => c.startsWith(`${name}=;`));
+      expect(header, name).toBe(`${name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`);
+    }
+    // Le navigateur, qui applique ces cookies, ne présente plus de session.
+    expect(applySetCookies(cookie, res)).not.toContain("session_token");
+    const journal = errors.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(journal).toMatch(/déconnexion non confirmée/);
+    expect(journal).not.toContain("panne@example.test");
+  });
+
+  it("en https, les cookies expirés reprennent le préfixe __Secure- et l'attribut Secure de Better Auth", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const https = "https://quiz.example";
+    const res = await signOutResponse(
+      authEnv({ BETTER_AUTH_URL: https, MAIL_TRANSPORT: "resend" }),
+      post(https, "__Secure-better-auth.session_token=x.y"),
+      failingAuth(async () => new Response(null, { status: 500 })),
+    );
+    expect(res.headers.get("location")).toBe(SIGN_OUT_FAILED_LOCATION);
+    const setCookies = res.headers.getSetCookie();
+    for (const name of ["__Secure-better-auth.session_token", "__Secure-better-auth.session_data"]) {
+      expect(setCookies.find((c) => c.startsWith(`${name}=;`)), name).toBe(`${name}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
+    }
+  });
+
+  it("témoin : les cookies expirés ont les mêmes attributs que ceux qu'efface Better Auth lui-même", async () => {
+    const cookie = await signIn("temoin-panne@example.test");
+    const ok = await signOutResponse(authEnv(), post(ORIGIN, cookie));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const ko = await signOutResponse(authEnv(), post(ORIGIN, cookie), failingAuth(async () => new Response(null, { status: 500 })));
+    const attrs = (res: Response, name: string) => {
+      const header = res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))!;
+      return header.split(";").slice(1).map((a) => a.trim().toLowerCase()).filter((a) => !a.startsWith("expires=")).sort();
+    };
+    expect(attrs(ko, "better-auth.session_token")).toEqual(attrs(ok, "better-auth.session_token"));
+  });
+
+  it("une base indisponible n'empêche pas Better Auth d'effacer les cookies du navigateur", async () => {
+    const cookie = await signIn("base-ko@example.test");
+    const brokenDb = {
+      prepare: () => {
+        throw new Error("D1_ERROR");
+      },
+      batch: () => Promise.reject(new Error("D1_ERROR")),
+    } as unknown as D1Database;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await signOutResponse(authEnv({ DB: brokenDb }), post(ORIGIN, cookie));
+    expect(res.status).toBe(303);
+    expect(applySetCookies(cookie, res)).not.toContain("session_token");
+  });
+});
+
 describe("isCrossSiteRequest", () => {
   const req = (headers: Record<string, string>) => new Request(`${ORIGIN}/deconnexion`, { method: "POST", headers });
 
@@ -146,12 +222,18 @@ describe("Cache-Control des pages privées", () => {
 
   // Les pages protégées (tableau de bord, éditeur) ne sont pas encore construites sur cette branche : la règle
   // appliquée par le middleware à leur réponse est vérifiée sur la fonction qu'il appelle.
-  it("une réponse de page protégée reçoit private, no-store, sauf si la page a fixé sa politique", () => {
+  it("une page protégée reçoit toujours private, no-store ; /connexion* garde sa propre politique", () => {
     for (const path of ["/tableau-de-bord", "/quiz/abc/editer", "/partie/x/animer", "/connexion"]) {
       expect(applyPrivateCacheHeaders(path, new Response("ok")).headers.get("cache-control"), path).toBe("private, no-store");
     }
-    const own = new Response("ok", { headers: { "Cache-Control": "no-cache" } });
-    expect(applyPrivateCacheHeaders("/quiz/x", own).headers.get("cache-control")).toBe("no-cache");
+    for (const path of ["/quiz/x", "/tableau-de-bord", "/partie/x"]) {
+      const own = new Response("ok", { headers: { "Cache-Control": "public, max-age=3600" } });
+      expect(applyPrivateCacheHeaders(path, own).headers.get("cache-control"), path).toBe("private, no-store");
+    }
+    for (const path of ["/connexion", "/connexion/verifier"]) {
+      const own = new Response("ok", { headers: { "Cache-Control": "no-cache" } });
+      expect(applyPrivateCacheHeaders(path, own).headers.get("cache-control"), path).toBe("no-cache");
+    }
     const player = new Response("ok", { headers: { "Cache-Control": "private, max-age=30" } });
     expect(applyPrivateCacheHeaders("/j/ABC234", player).headers.get("cache-control")).toBe("private, max-age=30");
     for (const path of ["/", "/j/ABC234", "/quizz", "/connexionx"]) {
