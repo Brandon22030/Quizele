@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
 import { consumeDailyMailQuota } from "../../../src/server/auth/email-quota";
-import { closeStaleSessions, STALE_SESSION_MS } from "../../../src/server/cron";
+import { closeStaleSessions, purgeStaleQuota, STALE_SESSION_MS } from "../../../src/server/cron";
 import { getDb } from "../../../src/server/db/client";
 import { createQuiz } from "../../../src/server/db/quizzes";
 import { createGameSession, findActiveSessionByCode } from "../../../src/server/db/sessions";
@@ -80,5 +80,18 @@ describe("cron : clôture des parties abandonnées", () => {
     expect(await findActiveSessionByCode(db, old.code)).toBeNull();
     expect((await sessionRow("recente"))?.status).toBe("lobby");
     expect(await findActiveSessionByCode(db, recent.code)).not.toBeNull();
+  });
+});
+
+describe("cron : purge des compteurs de quota", () => {
+  it("supprime les compteurs de plus d'un jour et garde les récents", async () => {
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO quota (key, count, updated_at) VALUES ('partie-lancer:vieux:h', 5, ?)").bind(now - 25 * 60 * 60 * 1000),
+      env.DB.prepare("INSERT INTO quota (key, count, updated_at) VALUES ('partie-lancer:recent:h', 5, ?)").bind(now - 60 * 60 * 1000),
+    ]);
+    await purgeStaleQuota(getDb(env.DB));
+    const keys = (await env.DB.prepare("SELECT key FROM quota WHERE key IN ('partie-lancer:vieux:h', 'partie-lancer:recent:h')").all<{ key: string }>()).results;
+    expect(keys.map((r) => r.key)).toEqual(["partie-lancer:recent:h"]);
   });
 });

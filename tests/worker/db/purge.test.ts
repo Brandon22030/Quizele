@@ -91,8 +91,9 @@ describe("purge à 90 jours", () => {
       env.DB.prepare = originalPrepare;
     }
     expect(batches).toBe(1);
-    // Trois suppressions du batch + la clôture des parties abandonnées depuis plus de 48 h (QZ-002-07).
-    expect(calls).toBeLessThanOrEqual(4);
+    // Trois suppressions du batch + la clôture des parties abandonnées depuis plus de 48 h et la purge des compteurs de
+    // quota périmés (QZ-002-07) : un seul batch, cinq instructions en tout.
+    expect(calls).toBeLessThanOrEqual(5);
     expect((await counts())?.sessions).toBe(0);
   });
 });

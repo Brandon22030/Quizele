@@ -1,6 +1,6 @@
 import { and, lt, ne } from "drizzle-orm";
 import { getDb, type Db } from "./db/client";
-import { gameSessions } from "./db/schema";
+import { gameSessions, quota } from "./db/schema";
 import { purgeOldSessions } from "./db/purge";
 
 // Une partie dure quelques heures au plus : passé ce délai le Durable Object l'a normalement clôturée lui-même.
@@ -15,10 +15,19 @@ export async function closeStaleSessions(db: Db, now: Date = new Date()): Promis
     .where(and(ne(gameSessions.status, "ended"), lt(gameSessions.createdAt, new Date(now.getTime() - STALE_SESSION_MS))));
 }
 
-// Deux appels D1 (clôture, puis un batch de trois suppressions) : très en dessous des 50 requêtes et des 10 ms CPU
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Les compteurs horaires de lancement ne se nettoient que lorsque leur animateur relance une partie : ceux des
+// animateurs disparus s'accumulaient. Une fenêtre dure une heure, un jour d'ancienneté est donc très large.
+export async function purgeStaleQuota(db: Db, now: Date = new Date()): Promise<void> {
+  await db.delete(quota).where(lt(quota.updatedAt, now.getTime() - DAY_MS));
+}
+
+// Trois appels D1 (clôture, purge des compteurs, puis un batch de trois suppressions) : très en dessous des 50 requêtes et des 10 ms CPU
 // de l'offre gratuite.
 export async function runScheduled(env: Env): Promise<void> {
   const db = getDb(env.DB);
   await closeStaleSessions(db);
+  await purgeStaleQuota(db);
   await purgeOldSessions(db);
 }
