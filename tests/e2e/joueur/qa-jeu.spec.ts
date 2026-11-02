@@ -488,3 +488,98 @@ test("reduced-motion : aucune animation en boucle sur l'attente ni la correction
   hote.fermer();
   await j.contexte.close();
 });
+
+test("salle d'attente en direct : pastilles des derniers arrivés et « + N autres »", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const partie = await lancerPartie({ questions: [unique("Salle ?")] });
+  const premier = await ouvrirJoueur(browser, partie.code, "Premier");
+  await expect(premier.page.getByText("Tu es le premier arrivé")).toBeVisible();
+  const liste = premier.page.getByRole("list", { name: "Derniers arrivés" });
+  await rejoindre(partie.code, "Deuxieme");
+  await expect(premier.page.getByText("Tu es le premier arrivé")).toHaveCount(0);
+  await expect(liste.getByText("Deuxieme")).toBeVisible();
+  const compteur = premier.page.locator("span:has(> span.sr-only)").filter({ hasText: "Joueurs dans la salle" });
+  await expect(compteur).toContainText("2");
+  // Au-delà de 8 joueurs la liste se résume : pastilles + « + N autres » couvrent tout le monde.
+  for (let i = 3; i <= 12; i += 1) await rejoindre(partie.code, `Joueur${i}`);
+  await expect(compteur).toContainText("12", { timeout: 30_000 });
+  await expect(liste.getByText(/\+ \d+ autres/)).toBeVisible();
+  const autres = Number(/\+ (\d+) autres/.exec(await liste.innerText())?.[1]);
+  const pastilles = await liste.getByRole("listitem").count();
+  expect(autres + pastilles - 1).toBe(12);
+  await expect(liste.getByText("Joueur12")).toBeVisible();
+  await mobileOk(premier.page);
+  await sansViolation(premier.page);
+  await premier.contexte.close();
+});
+
+test("annonces vocales dans l'ordre, rangs du serveur et total correct pour un joueur qui se reconnecte en fin de partie", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const partie = await lancerPartie({ questions: [unique("Annonce un ?"), unique("Annonce deux ?")] });
+  const hote = new Hote(partie.code, partie.hostToken);
+  const a = await ouvrirJoueur(browser, partie.code, "Anna");
+  const b = await ouvrirJoueur(browser, partie.code, "Boaz");
+  await pret(a.page);
+  const recus: { type: string; [k: string]: unknown }[] = [];
+  a.page.on("websocket", (ws) =>
+    ws.on("framereceived", (f) => {
+      try {
+        recus.push(JSON.parse(String(f.payload)));
+      } catch {
+        // trame de service
+      }
+    }),
+  );
+  await a.page.reload();
+  await pret(a.page);
+  await a.page.evaluate(() => {
+    const w = window as unknown as { __annonces: string[] };
+    w.__annonces = [];
+    const region = document.querySelector("p[aria-live=polite]")!;
+    const noter = () => {
+      const t = region.textContent ?? "";
+      if (t && w.__annonces.at(-1) !== t) w.__annonces.push(t);
+    };
+    new MutationObserver(noter).observe(region, { childList: true, characterData: true, subtree: true });
+  });
+  await hote.envoyer({ type: "start" });
+  await a.page.getByRole("button", { name: /Alpha/ }).click();
+  await b.page.getByRole("button", { name: /Bravo/ }).click();
+  await hote.envoyer({ type: "reveal" });
+  await expect(a.page.getByRole("heading", { name: "JUSTE !" })).toBeVisible();
+  await hote.envoyer({ type: "next" });
+  await expect(a.page.getByRole("heading", { name: "Annonce deux ?" })).toBeVisible();
+  await a.page.getByRole("button", { name: /Alpha/ }).click();
+  await b.page.getByRole("button", { name: /Alpha/ }).click();
+  await hote.envoyer({ type: "reveal" });
+  await expect(a.page.getByRole("heading", { name: "JUSTE !" })).toBeVisible();
+  await hote.envoyer({ type: "end" });
+  await expect(a.page.getByText(/Rang : 1 \/ 2/)).toBeVisible();
+
+  const annonces = await a.page.evaluate(() => (window as unknown as { __annonces: string[] }).__annonces);
+  const ordre = ["Question 1 sur 2", "Réponse bien enregistrée", "Juste !", "Question 2 sur 2", "Réponse bien enregistrée", "Juste !", "Résultats"];
+  let curseur = 0;
+  for (const attendu of ordre) {
+    const trouve = annonces.indexOf(attendu, curseur);
+    expect(trouve, `annonce « ${attendu} » dans ${JSON.stringify(annonces)}`).toBeGreaterThanOrEqual(0);
+    curseur = trouve + 1;
+  }
+
+  // Le rang affiché est celui du serveur, pas la position dans la liste.
+  const fin = recus.find((m) => m.type === "finished") as { total: number; you: { rank: number }; ranking: { pseudo: string; rank: number }[] } | undefined;
+  expect(fin?.total).toBe(2);
+  await expect(a.page.getByText(`Rang : ${fin!.you.rank} / 2`)).toBeVisible();
+  for (const ligne of fin!.ranking) expect(ligne.rank).toBeGreaterThanOrEqual(1);
+  await expect(a.page.getByText(/sur 2/).first()).toBeVisible();
+  await expect(a.page.getByText(/sur 0/)).toHaveCount(0);
+
+  // Reconnexion après la fin : le total vient du serveur, pas de la dernière question vue (aucune dans ce nouvel onglet).
+  const retour = await a.contexte.newPage();
+  await retour.goto(`${URL_JEU}/j/${partie.code}/jouer`);
+  await expect(retour.getByRole("heading", { name: /Résultat final|Partie terminée/ })).toBeAttached({ timeout: 30_000 });
+  await expect(retour.getByText(/sur 0/)).toHaveCount(0);
+  if (await retour.getByText(/Rang :/).count()) await expect(retour.getByText(/sur 2/).first()).toBeVisible();
+  hote.fermer();
+  await a.contexte.close();
+  await b.contexte.close();
+});
