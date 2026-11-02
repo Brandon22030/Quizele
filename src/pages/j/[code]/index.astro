@@ -1,0 +1,33 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { ArrowLeft } from "lucide-react";
+import { Marque } from "../../../components/ui/marque";
+import { TitreAffiche } from "../../../components/ui/titre-affiche";
+import { TraitsEnergie } from "../../../components/ui/traits-energie";
+import { sanitizeCode } from "../../../components/jeu/code-input";
+import Rejoindre from "../../../islands/rejoindre/Rejoindre";
+
+// Un code mal formé ne mène nulle part : on garde ce qui est valide et le joueur complète à la main (état vide).
+const code = sanitizeCode(Astro.params.code ?? "").slice(0, 6);
+---
+
+<Base title="Rejoindre une partie - Quizdeszeles">
+  <div class="flex min-h-dvh flex-col pb-10">
+    <header class="flex items-center gap-3 px-4 py-2">
+      <a href="/" aria-label="Retour à l'accueil" class="grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret bg-creme text-vert-foret shadow-relief-sm">
+        <ArrowLeft aria-hidden="true" className="size-5" />
+      </a>
+      <Marque />
+    </header>
+    <main class="flex flex-1 flex-col">
+      <section class="relative px-5 pt-8 text-center">
+        <TraitsEnergie className="absolute top-5 left-5" />
+        <TitreAffiche as="h1" className="-rotate-3 text-4xl">REJOINDRE</TitreAffiche>
+        <p class="mt-5 font-bold">Saisis le code à 6 caractères affiché par l'animateur.</p>
+      </section>
+      <div class="mt-8">
+        <Rejoindre client:load initialCode={code} />
+      </div>
+    </main>
+  </div>
+</Base>

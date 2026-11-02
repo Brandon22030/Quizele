@@ -1,10 +1,85 @@
 ---
 import Base from "../layouts/Base.astro";
+import { BadgeEtoile } from "../components/ui/badge-etoile";
+import { Button } from "../components/ui/button";
+import { Forme } from "../components/ui/forme";
+import { Marque } from "../components/ui/marque";
+import { Papier } from "../components/ui/papier";
+import { Pilule } from "../components/ui/pilule";
+import { TitreAffiche } from "../components/ui/titre-affiche";
+import { TraitsEnergie } from "../components/ui/traits-energie";
+import { BookOpen, Pencil } from "lucide-react";
+import CodeAccueil from "../islands/rejoindre/CodeAccueil";
+
+const etapes = [
+  { titre: "Créer", texte: "Tu écris tes questions, les propositions et les explications. Tout s'enregistre au fur et à mesure." },
+  { titre: "Partager", texte: "Tu lances la session et tu donnes le code à tes participants. Ils rejoignent avec un pseudo." },
+  { titre: "Jouer", texte: "Les questions arrivent en temps réel, le chrono tourne et les scores s'affichent à la fin." },
+];
 ---
 
-<Base title="Quizdeszeles">
-  <main class="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
-    <h1 class="font-affiche text-4xl text-vert-foret">Quizdeszeles</h1>
-    <p class="text-base">Le socle est en place.</p>
-  </main>
+<Base title="Quizdeszeles - quiz bibliques en direct">
+  <div class="flex min-h-dvh flex-col">
+    <header class="flex items-center justify-between px-4 py-2">
+      <Marque aria-label="Accueil Quizdeszeles" />
+      <Button taille="petit" variante="creme" href="#code-accueil">Rejoindre</Button>
+    </header>
+
+    <main class="flex flex-1 flex-col">
+      <section class="relative px-5 pt-8 pb-6 text-center">
+        <TraitsEnergie className="absolute top-8 left-4" />
+        <TraitsEnergie className="absolute top-20 right-4 -scale-x-100" />
+        <p class="font-affiche text-lg tracking-wide text-creme text-shadow-affiche-sm">
+          QUIZ BIBLIQUES <span class="text-jaune-soleil">EN DIRECT</span>
+        </p>
+        <TitreAffiche as="h1" className="mt-4 -rotate-4 text-5xl">QUIZ<br />DES ZÈLES</TitreAffiche>
+        <BadgeEtoile className="absolute top-16 right-2 size-20 rotate-6" variante="creme">
+          <span class="text-xl">ON<br />JOUE{"\u202f"}!</span>
+        </BadgeEtoile>
+        <div class="mt-8 flex flex-wrap justify-center gap-2">
+          <Pilule inclinaison="gauche">Jouer</Pilule>
+          <Pilule variante="soleil" inclinaison="droite">Apprendre</Pilule>
+          <Pilule inclinaison="gauche">Partager</Pilule>
+        </div>
+      </section>
+
+      <CodeAccueil client:load />
+
+      <section id="comment-ca-marche" class="px-5 pt-12 pb-4" aria-labelledby="titre-comment">
+        <h2 id="titre-comment" class="text-center font-affiche text-2xl">Comment ça marche</h2>
+        <ol class="mt-6 flex flex-col gap-6">
+          {
+            etapes.map((etape, i) => (
+              <li>
+                <Papier incline={i !== 1} className={`py-4 pr-5 pl-20 ${i === 1 ? "rotate-1" : ""}`}>
+                  <Forme forme="etoile" variante="soleil" className="absolute top-1/2 left-2 size-16 -translate-y-1/2" aria-hidden="true">
+                    <span class="font-affiche text-xl">{i + 1}</span>
+                  </Forme>
+                  <h3 class="font-affiche text-xl">{etape.titre}</h3>
+                  <p class="text-sm font-semibold">{etape.texte}</p>
+                </Papier>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section class="relative px-5 pt-10 pb-8 text-center">
+        <p class="inline-block -rotate-3 rounded-lg rounded-bl-sm border-trait border-vert-foret bg-creme px-4 py-2 font-note text-xl">
+          Pas d'installation, pas de compte pour jouer{"\u202f"}!
+        </p>
+        <h2 class="mt-6 font-affiche text-2xl">Envie d'animer ?</h2>
+        <p class="mt-2 font-semibold">Crée un compte gratuit pour rédiger ton premier quiz.</p>
+        <Button href="/connexion" className="mt-5">
+          <Pencil aria-hidden="true" className="size-5" />
+          Créer un compte
+        </Button>
+      </section>
+    </main>
+
+    <footer class="bg-vert-foret p-5 text-center text-sm font-semibold text-creme">
+      <BookOpen aria-hidden="true" className="mr-2 inline size-5 align-text-bottom text-jaune-soleil" />
+      Quizdeszeles - quiz bibliques pour groupes, écoles du dimanche et soirées.
+    </footer>
+  </div>
 </Base>
