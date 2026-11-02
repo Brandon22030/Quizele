@@ -227,6 +227,8 @@ export const gameSessions = sqliteTable(
     uniqueIndex("game_sessions_active_code_idx")
       .on(t.code)
       .where(sql`${t.status} <> 'ended'`),
+    // Lecture par code toutes parties confondues (page /j/<code>) : l'index partiel ci-dessus exclut les parties terminées.
+    index("game_sessions_code_created_idx").on(t.code, t.createdAt),
     index("game_sessions_owner_idx").on(t.ownerId, t.createdAt),
     index("game_sessions_created_idx").on(t.createdAt),
     index("game_sessions_ended_idx").on(t.endedAt),

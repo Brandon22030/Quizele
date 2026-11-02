@@ -29,6 +29,13 @@
       "when": 1793575903284,
       "tag": "0003_quota",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793601674750,
+      "tag": "0004_game_code_index",
+      "breakpoints": true
     }
   ]
 }

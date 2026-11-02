@@ -129,6 +129,8 @@ export default function Rejoindre({ initialCode, apercu, echecInitial }: Props) 
   }
 
   const envoi = phase === "envoi";
+  // Un code déjà annoncé inconnu ou terminé ne mène nulle part : le pseudo n'a pas de sens tant que le code n'est pas corrigé.
+  const codeInutilisable = echecInitial !== undefined && failure === echecInitial && code === initialCode;
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-6">
@@ -160,26 +162,30 @@ export default function Rejoindre({ initialCode, apercu, echecInitial }: Props) 
         {failure ? (
           <EtatErreur onRetry={failure === "network" ? () => void submit() : undefined}>{JOIN_MESSAGES[failure]}</EtatErreur>
         ) : null}
-        <FormField label="Pseudo" aide={`${PSEUDO_MAX_LENGTH} caractères maximum. C'est ce nom qui s'affiche au classement.`} erreur={pseudoError ?? undefined}>
-          {(control) => (
-            <Input
-              {...control}
-              value={pseudo}
-              onChange={(e) => {
-                setPseudo(e.target.value);
-                setPseudoError(null);
-              }}
-              disabled={envoi}
-              autoComplete="nickname"
-              autoCapitalize="none"
-              autoFocus={isCompleteCode(initialCode)}
-              placeholder="Ton pseudo"
-            />
-          )}
-        </FormField>
-        <Button type="submit" bloc chargement={envoi} libelleChargement="Inscription en cours">
-          Rejoindre
-        </Button>
+        {codeInutilisable ? null : (
+          <>
+            <FormField label="Pseudo" aide={`${PSEUDO_MAX_LENGTH} caractères maximum. C'est ce nom qui s'affiche au classement.`} erreur={pseudoError ?? undefined}>
+              {(control) => (
+                <Input
+                  {...control}
+                  value={pseudo}
+                  onChange={(e) => {
+                    setPseudo(e.target.value);
+                    setPseudoError(null);
+                  }}
+                  disabled={envoi}
+                  autoComplete="nickname"
+                  autoCapitalize="none"
+                  autoFocus={isCompleteCode(initialCode)}
+                  placeholder="Ton pseudo"
+                />
+              )}
+            </FormField>
+            <Button type="submit" bloc chargement={envoi} libelleChargement="Inscription en cours">
+              Rejoindre
+            </Button>
+          </>
+        )}
       </div>
     </form>
   );
