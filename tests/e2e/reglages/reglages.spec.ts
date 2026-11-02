@@ -166,6 +166,37 @@ test.describe("réglages et aperçu du quiz (vraie session)", () => {
     await expect(page.getByRole("switch", { name: /Montrer la bonne réponse/ })).not.toBeChecked();
   });
 
+  test("réglages : séparateur visible, hors ligne on peut quitter, saisie envoyée à la fermeture", async ({ page }) => {
+    await connecter(page, serveur);
+    await page.goto(`${serveur.url}/quiz/${quizId}/reglages`);
+    await hydrate(page);
+    const separateur = await page.evaluate(() => {
+      const interrupteur = document.querySelector('[role="switch"]')!.closest("label")!;
+      return getComputedStyle(interrupteur.nextElementSibling!).borderTopWidth;
+    });
+    expect(separateur).toBe("3px");
+
+    // Saisie encore dans son délai de 600 ms au moment de quitter : pagehide l'envoie.
+    if (!(await page.getByLabel("Catégorie").isVisible())) await page.getByText("Plus d'options").click();
+    await page.getByLabel("Catégorie").fill("Envoyée à la sortie");
+    await page.goto("about:blank");
+    await page.waitForTimeout(500);
+    await page.goto(`${serveur.url}/quiz/${quizId}/reglages`);
+    await hydrate(page);
+    await expect(page.getByLabel("Catégorie")).toHaveValue("Envoyée à la sortie");
+
+    // Hors ligne : le premier clic échoue et reste sur la page, le second quitte.
+    await page.route(/_actions\/quiz\.majReglages/, (route) => route.abort());
+    await page.getByRole("switch", { name: /Mélanger l'ordre/ }).setChecked(false, { force: true });
+    await expect(page.getByRole("alert").filter({ hasText: "Réglage non enregistré" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Quitter sans enregistrer" })).toHaveAttribute("href", `/quiz/${quizId}`);
+    await page.getByRole("link", { name: "Retour à l'éditeur" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Réglage non enregistré" })).toBeVisible();
+    await expect(page).toHaveURL(/\/reglages$/);
+    await page.getByRole("link", { name: "Retour à l'éditeur" }).click();
+    await expect(page).toHaveURL(new RegExp(`/quiz/${quizId}$`));
+  });
+
   test("aperçu (k6) : bandeau, verdict, explication, navigation, focus, axe propre", async ({ page }) => {
     await connecter(page, serveur);
     await page.goto(`${serveur.url}/quiz/${quizId}/apercu`);
@@ -176,6 +207,8 @@ test.describe("réglages et aperçu du quiz (vraie session)", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Qui a construit l'arche ?" })).toBeVisible();
     await expect(page.getByRole("timer")).toBeVisible();
     await expect(page.getByRole("button", { name: "Précédente" })).toBeDisabled();
+    const filet = await page.evaluate(() => getComputedStyle(document.querySelector("nav")!).borderTopWidth);
+    expect(filet).toBe("3px");
     await ciblesTactilesAssezGrandes(page);
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k6-question");
