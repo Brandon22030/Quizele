@@ -18,6 +18,20 @@ export function shouldResolveSession(pathname: string): boolean {
   return isProtectedPath(pathname) || USER_AWARE_PATHS.includes(pathname) || pathname.startsWith(ACTIONS_RPC_PREFIX);
 }
 
+// Pages qui affichent l'e-mail de l'animateur (props des îlots) : après une déconnexion, un retour arrière
+// ne doit pas les réafficher depuis le cache du navigateur.
+export function isPrivateNoStorePath(pathname: string): boolean {
+  return isProtectedPath(pathname) || pathname === "/connexion" || pathname.startsWith("/connexion/");
+}
+
+// Une page qui fixe elle-même sa politique de cache garde la main.
+export function applyPrivateCacheHeaders(pathname: string, response: Response): Response {
+  if (isPrivateNoStorePath(pathname) && !response.headers.has("cache-control")) {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
+  return response;
+}
+
 export function loginRedirectUrl(url: URL): string {
   return `/connexion?retour=${encodeURIComponent(url.pathname + url.search)}`;
 }
