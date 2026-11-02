@@ -17,6 +17,9 @@ interface MenuCarteProps {
 
 const boutonMenu = (racine: HTMLElement | null) => racine?.querySelector<HTMLButtonElement>("button[aria-controls]") ?? null;
 
+// Couvre le délai des événements souris émulés après un appui tactile (jusqu'à environ 300 ms sur mobile).
+const DUREE_GESTE_MS = 1000;
+
 const lienMenu = "flex min-h-11 w-full items-center gap-3 rounded-sm px-3 text-left font-bold no-underline hover:bg-jaune-soleil";
 
 // Menu en divulgation (bouton + liste d'actions) plutôt que role="menu" : pas de gestion de flèches à maintenir, et
@@ -25,6 +28,9 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
   const [ouvert, setOuvert] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
   const panneauId = useId();
+  const geste = useRef<AbortController | null>(null);
+
+  useEffect(() => () => geste.current?.abort(), []);
 
   function basculer(valeur: boolean) {
     setOuvert(valeur);
@@ -41,6 +47,8 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
 
   useEffect(() => {
     if (!ouvert) return;
+    // Réouverture : l'écouteur laissé par la fermeture précédente ne doit plus agir.
+    geste.current?.abort();
     const surTouche = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setOuvert(false);
@@ -57,15 +65,22 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
       bouton.focus();
       // Le clic qui suit déplace le focus : on le laisse partir vers un élément focalisable, mais un clic dans le vide
       // le ferait tomber sur body, d'où le retour sur « … ». La vérification attend la fin de ce déplacement.
+      // L'écouteur ne vaut que pour ce geste : sans focusout (glissement tactile), il est retiré après le délai, pour
+      // qu'un clic dans le vide bien plus tard ne ramène pas le focus sur « … ».
+      const controleur = new AbortController();
+      geste.current = controleur;
+      const delai = setTimeout(() => controleur.abort(), DUREE_GESTE_MS);
+      controleur.signal.addEventListener("abort", () => clearTimeout(delai), { once: true });
       bouton.addEventListener(
         "focusout",
         (sortie) => {
+          controleur.abort();
           if (sortie.relatedTarget !== null) return;
           setTimeout(() => {
             if (document.activeElement === document.body) bouton.focus();
           }, 0);
         },
-        { once: true },
+        { signal: controleur.signal },
       );
     };
     document.addEventListener("keydown", surTouche);
