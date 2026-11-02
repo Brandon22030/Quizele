@@ -22,6 +22,18 @@ export class ErreurApi extends Error {
   }
 }
 
+export const DELAI_REQUETE_MS = 15_000;
+
+// Une requête sans réponse (réseau mobile qui décroche sans erreur) bloquerait la file pour toujours : passé le délai, elle
+// compte comme une coupure réseau et la reprise automatique prend le relais.
+export function avecDelaiMax<T>(requete: Promise<T>, message: string, delaiMs: number = DELAI_REQUETE_MS): Promise<T> {
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  const expiration = new Promise<never>((_, reject) => {
+    minuterie = setTimeout(() => reject(new ErreurApi(message, { reseau: true })), delaiMs);
+  });
+  return Promise.race([requete, expiration]).finally(() => clearTimeout(minuterie));
+}
+
 // Les Actions vues de l'éditeur. Le vrai transport (astro:actions) vit dans api.ts, hors de portée des tests node.
 export interface EditeurApi {
   creer(title: string): Promise<{ quizId: string }>;
@@ -34,12 +46,21 @@ export interface EditeurApi {
 
 export type StatutEnreg = "enregistre" | "en_cours" | "echec" | "attente";
 
+// Information qui ne bloque pas la file : le quiz a changé ailleurs, un rechargement montre la version du serveur.
+export interface Avis {
+  message: string;
+  recharger: boolean;
+}
+
+export const AVIS_AUTRE_ONGLET = "Ce quiz est ouvert dans un autre onglet. Recharge pour voir ses changements.";
+
 export interface Instantane {
   brouillon: Brouillon;
   statut: StatutEnreg;
   message: string | null;
   horsLigne: boolean;
   code: string | null;
+  avis: Avis | null;
 }
 
 interface Options {
@@ -48,8 +69,12 @@ interface Options {
   brouillon: Brouillon;
   delaiMs?: number;
   delaiRepriseMs?: number;
+  // Identifiant de l'onglet pour un quiz pas encore créé : range le brouillon sous une clé propre à cet onglet.
+  session?: string | null;
   // Appelé une fois, quand le quiz vient d'être créé côté serveur (l'écran remplace /quiz/nouveau par /quiz/<id>).
   surCreation?: (quizId: string) => void;
+  // Appelé après chaque écriture confirmée par le serveur : les autres onglets ouverts sur ce quiz en sont prévenus.
+  surEcriture?: () => void;
 }
 
 const sans = (sale: MarquesAEnvoyer, cle: string): MarquesAEnvoyer => ({ ...sale, questions: sale.questions.filter((k) => k !== cle) });
@@ -63,7 +88,9 @@ export class FileEnregistrement {
   private readonly stockage: Stockage | null;
   private readonly delaiMs: number;
   private readonly delaiRepriseMs: number;
+  private readonly session: string | null;
   private readonly surCreation?: (quizId: string) => void;
+  private readonly surEcriture?: () => void;
   private readonly ecouteurs = new Set<() => void>();
   private minuterie: ReturnType<typeof setTimeout> | null = null;
   private reprise: ReturnType<typeof setTimeout> | null = null;
@@ -78,7 +105,9 @@ export class FileEnregistrement {
     this.delaiMs = options.delaiMs ?? DELAI_ENREGISTREMENT_MS;
     this.delaiRepriseMs = options.delaiRepriseMs ?? DELAI_REPRISE_MS;
     this.surCreation = options.surCreation;
-    this.snap = { brouillon: this.b, statut: "enregistre", message: null, horsLigne: false, code: null };
+    this.surEcriture = options.surEcriture;
+    this.session = options.session ?? null;
+    this.snap = { brouillon: this.b, statut: "enregistre", message: null, horsLigne: false, code: null, avis: null };
   }
 
   // Fonctions fléchées : passées telles quelles à useSyncExternalStore.
@@ -104,7 +133,7 @@ export class FileEnregistrement {
     if (suivant === this.b) return;
     this.b = suivant;
     // Le disque d'abord : le réseau peut tomber ou la page se fermer avant la réponse du serveur.
-    ecrireBrouillon(this.stockage, this.b);
+    this.ecrire(this.b);
     this.encore = true;
     this.publier({ statut: "en_cours", message: null, horsLigne: false, code: null });
     this.planifier();
@@ -129,11 +158,26 @@ export class FileEnregistrement {
     return this.vider();
   }
 
+  signaler(avis: Avis | null): void {
+    if (avis?.message === this.snap.avis?.message && avis?.recharger === this.snap.avis?.recharger) return;
+    this.publier({ avis });
+  }
+
   arreter(): void {
     this.arrete = true;
     this.annulerMinuterie();
     this.annulerReprise();
     this.ecouteurs.clear();
+  }
+
+  private ecrire(b: Brouillon): void {
+    ecrireBrouillon(this.stockage, b, b.quizId === null ? this.session : null);
+  }
+
+  private async ecrireServeur<T>(envoi: () => Promise<T>): Promise<T> {
+    const resultat = await envoi();
+    this.surEcriture?.();
+    return resultat;
   }
 
   private publier(partiel: Partial<Omit<Instantane, "brouillon">> = {}): void {
@@ -170,7 +214,7 @@ export class FileEnregistrement {
   // Remplace le brouillon sans relancer d'envoi : utilisé pour consigner une réussite.
   private consigner(b: Brouillon): void {
     this.b = b;
-    if (aDesMarques(b)) ecrireBrouillon(this.stockage, b);
+    if (aDesMarques(b)) this.ecrire(b);
     this.publier();
   }
 
@@ -188,7 +232,7 @@ export class FileEnregistrement {
         this.encore = true;
         return true;
       }
-      effacerBrouillon(this.stockage, this.b.quizId);
+      effacerBrouillon(this.stockage, this.b.quizId, this.session);
       this.publier({ statut: "enregistre", message: null, horsLigne: false, code: null });
       return true;
     } catch (erreur) {
@@ -217,16 +261,17 @@ export class FileEnregistrement {
     if (this.b.quizId === null) {
       if (!titreValide) return bloque;
       const titre = this.b.title.trim();
-      const { quizId } = await this.api.creer(titre);
+      const { quizId } = await this.ecrireServeur(() => this.api.creer(titre));
       // La clé de stockage change avec l'identifiant : l'ancien brouillon « nouveau » ne doit pas ressusciter au prochain passage.
-      effacerBrouillon(this.stockage, null);
+      effacerBrouillon(this.stockage, null, this.session);
       this.b = { ...this.b, quizId, sale: { ...this.b.sale, titre: this.b.title.trim() !== titre } };
-      ecrireBrouillon(this.stockage, this.b);
+      this.ecrire(this.b);
       this.publier();
       this.surCreation?.(quizId);
     } else if (this.b.sale.titre && titreValide) {
+      const quizId = this.b.quizId;
       const envoye = this.b.title.trim();
-      await this.api.majTitre(this.b.quizId, envoye);
+      await this.ecrireServeur(() => this.api.majTitre(quizId, envoye));
       this.consigner({ ...this.b, sale: { ...this.b.sale, titre: this.b.title.trim() !== envoye } });
     }
 
@@ -235,7 +280,7 @@ export class FileEnregistrement {
 
     for (const id of [...this.b.sale.supprimees]) {
       try {
-        await this.api.supprimerQuestion(id);
+        await this.ecrireServeur(() => this.api.supprimerQuestion(id));
       } catch (erreur) {
         // Déjà supprimée ailleurs : le résultat voulu est atteint.
         if (!(erreur instanceof ErreurApi && erreur.code === "NOT_FOUND")) throw erreur;
@@ -257,9 +302,26 @@ export class FileEnregistrement {
       }
       let id = q.id;
       if (id === null) {
-        ({ questionId: id } = await this.api.ajouterQuestion(quizId, validation.question));
+        ({ questionId: id } = await this.ecrireServeur(() => this.api.ajouterQuestion(quizId, validation.question)));
+        if (!this.b.questions.some((x) => x.key === cle)) {
+          // Supprimée pendant l'envoi : elle existe maintenant sur le serveur, la suppression part au tour suivant.
+          this.consigner({ ...this.b, sale: { ...sans(this.b.sale, cle), supprimees: [...this.b.sale.supprimees, id] } });
+          continue;
+        }
       } else {
-        await this.api.majQuestion(id, validation.question);
+        const questionId = id;
+        try {
+          await this.ecrireServeur(() => this.api.majQuestion(questionId, validation.question));
+        } catch (erreur) {
+          if (!(erreur instanceof ErreurApi && erreur.code === "NOT_FOUND")) throw erreur;
+          // Supprimée ailleurs (autre onglet, autre appareil) : la renvoyer échouerait toujours, le reste de la file continue.
+          const rang = this.b.questions.findIndex((x) => x.key === cle) + 1;
+          this.consigner({ ...this.b, sale: sans(this.b.sale, cle) });
+          this.publier({
+            avis: { message: `La question ${rang} a été supprimée ailleurs. Recharge pour voir le quiz à jour.`, recharger: true },
+          });
+          continue;
+        }
       }
       // Même référence = rien n'a changé pendant l'envoi ; sinon la marque reste et la boucle renverra la version récente.
       const inchangee = this.b.questions.find((x) => x.key === cle) === q;
@@ -272,7 +334,15 @@ export class FileEnregistrement {
     // L'API exige la liste complète : tant qu'une question n'a pas d'identifiant, l'ordre attend.
     if (this.b.sale.ordre && this.b.questions.every((q) => q.id !== null) && this.b.sale.supprimees.length === 0) {
       const ids = this.b.questions.map((q) => q.id as string);
-      await this.api.reordonner(quizId, ids);
+      try {
+        await this.ecrireServeur(() => this.api.reordonner(quizId, ids));
+      } catch (erreur) {
+        if (!(erreur instanceof ErreurApi && erreur.code === "BAD_REQUEST")) throw erreur;
+        // La liste du serveur a changé ailleurs : renvoyer le même ordre échouerait toujours. On l'abandonne et on le dit.
+        this.consigner({ ...this.b, sale: { ...this.b.sale, ordre: false } });
+        this.publier({ avis: { message: erreur.message, recharger: true } });
+        return bloque;
+      }
       const inchange = this.b.questions.map((q) => q.id).join("|") === ids.join("|");
       this.consigner({ ...this.b, sale: { ...this.b.sale, ordre: !inchange } });
     }

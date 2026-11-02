@@ -1,5 +1,5 @@
 import { actions } from "astro:actions";
-import { ErreurApi, type EditeurApi } from "./file-enregistrement";
+import { ErreurApi, avecDelaiMax, type EditeurApi } from "./file-enregistrement";
 import type { QuizServeur } from "./modele";
 
 const MESSAGE_RESEAU = "Connexion perdue. Vérifie ton réseau puis réessaie.";
@@ -13,7 +13,7 @@ interface Resultat<T> {
 async function appeler<T>(requete: Promise<Resultat<T>>): Promise<T> {
   let resultat: Resultat<T>;
   try {
-    resultat = await requete;
+    resultat = await avecDelaiMax(requete, MESSAGE_RESEAU);
   } catch {
     throw new ErreurApi(MESSAGE_RESEAU, { reseau: true });
   }
