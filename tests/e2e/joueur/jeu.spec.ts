@@ -42,7 +42,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await serveur?.arreter();
 });
-test.beforeEach((_fixtures, info) => {
+test.beforeEach(({ browserName }, info) => {
+  void browserName;
   test.skip(info.project.name !== "mobile", "écran de jeu conçu pour 390 px");
 });
 
