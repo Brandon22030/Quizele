@@ -11,8 +11,9 @@ import { FormulaireQuestion } from "./FormulaireQuestion";
 import { LienIcone } from "./LienIcone";
 import { ListeQuestions } from "./ListeQuestions";
 import { NavQuestions } from "./NavQuestions";
-import { MessageEnregistrement, StatutEnregistrement } from "./StatutEnregistrement";
+import { AnnonceEnregistrement, AvisEditeur, MessageEnregistrement, StatutEnregistrement } from "./StatutEnregistrement";
 import type { FileEnregistrement } from "./file-enregistrement";
+import { useBureau } from "./useBureau";
 import {
   aDesMarques,
   ajouterQuestion,
@@ -32,7 +33,8 @@ interface Props {
 }
 
 export function EditeurPret({ file, question }: Props) {
-  const { brouillon: b, statut, message, code } = useSyncExternalStore(file.abonner, file.instantane, file.instantane);
+  const { brouillon: b, statut, message, code, avis } = useSyncExternalStore(file.abonner, file.instantane, file.instantane);
+  const bureau = useBureau();
   const [disposition, setDisposition] = useState<"creation" | "edition">(b.quizId === null && b.questions.length <= 1 ? "creation" : "edition");
   const [courante, setCourante] = useState<string | null>(() => b.questions[(question ?? 1) - 1]?.key ?? b.questions[0]?.key ?? null);
   const [feuille, setFeuille] = useState(false);
@@ -102,6 +104,12 @@ export function EditeurPret({ file, question }: Props) {
     if (ok && !aDesMarques(file.instantane().brouillon)) window.location.assign(href);
   }
 
+  // Ce qui attend encore part d'abord : le rechargement relirait sinon le brouillon local à la place du serveur.
+  async function recharger() {
+    await file.vider();
+    window.location.reload();
+  }
+
   const quizId = b.quizId;
   const urlApercu = quizId ? `/quiz/${quizId}/apercu` : null;
   const urlLancer = quizId ? `/quiz/${quizId}/lancer` : null;
@@ -164,7 +172,9 @@ export function EditeurPret({ file, question }: Props) {
         ) : null}
       </header>
 
+      <AnnonceEnregistrement statut={statut} />
       <MessageEnregistrement statut={statut} message={message} code={code} retour={retour} onRetry={() => void file.relancer()} />
+      <AvisEditeur avis={avis} onRecharger={() => void recharger()} onFermer={() => file.signaler(null)} />
 
       {creation && q ? (
         <div className="flex flex-1 flex-col gap-8 pb-4">
@@ -188,26 +198,32 @@ export function EditeurPret({ file, question }: Props) {
       ) : (
         <div className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-4">
           <aside aria-label="Liste des questions" className="hidden min-h-0 flex-col gap-3 overflow-y-auto border-trait border-y-0 border-l-0 border-vert-foret p-5 lg:flex">
-            <p className="font-affiche text-lg">Questions ({total})</p>
-            <ListeQuestions questions={b.questions} courante={q?.key ?? null} onSelect={setCourante} onOrdre={(cles) => modifier((courant) => ordonner(courant, cles))} onAjouter={ajouter} peutAjouter={peutAjouter} />
+            {bureau ? (
+              <>
+                <p className="font-affiche text-lg">Questions ({total})</p>
+                <ListeQuestions questions={b.questions} courante={q?.key ?? null} onSelect={setCourante} onOrdre={(cles) => modifier((courant) => ordonner(courant, cles))} onAjouter={ajouter} peutAjouter={peutAjouter} />
+              </>
+            ) : null}
           </aside>
 
           <section aria-label="Question" className="flex min-h-0 flex-1 flex-col gap-1 lg:col-span-2 lg:overflow-y-auto lg:px-8 lg:py-6">
             {q ? (
               <>
-                <div className="flex items-center gap-2 lg:hidden">
-                  <div className="min-w-0 flex-1">
-                    <NavQuestions questions={b.questions} courante={q.key} onSelect={setCourante} onAjouter={ajouter} peutAjouter={peutAjouter} />
+                {bureau ? null : (
+                  <div className="flex items-start gap-2 lg:hidden">
+                    <div className="min-w-0 flex-1">
+                      <NavQuestions questions={b.questions} courante={q.key} onSelect={setCourante} onAjouter={ajouter} peutAjouter={peutAjouter} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFeuille(true)}
+                      aria-label="Voir et réorganiser les questions"
+                      className="mt-3 mr-4 grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret bg-creme text-vert-foret"
+                    >
+                      <List aria-hidden="true" className="size-5" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setFeuille(true)}
-                    aria-label="Voir et réorganiser les questions"
-                    className="mr-4 grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret bg-creme text-vert-foret"
-                  >
-                    <List aria-hidden="true" className="size-5" />
-                  </button>
-                </div>
+                )}
                 <div className="px-4 pb-6 lg:px-0">
                   <FormulaireQuestion
                     key={q.key}
@@ -245,7 +261,7 @@ export function EditeurPret({ file, question }: Props) {
               <Eye aria-hidden="true" className="size-5" />
               Ce que voit le joueur
             </p>
-            {q ? <ApercuJoueur question={q} numero={index + 1} total={total} /> : null}
+            {q && bureau ? <ApercuJoueur question={q} numero={index + 1} total={total} /> : null}
             {urlApercu ? (
               <Button href={urlApercu} variante="soleil" taille="petit" onClick={(e) => void naviguer(e, urlApercu)}>
                 {icone(Eye)}
@@ -268,19 +284,22 @@ export function EditeurPret({ file, question }: Props) {
         {lien(urlLancer, lancerActif, "primaire", "Lancer", icone(Play), "normal", "flex-1")}
       </div>
 
+      {/* Monté seulement ouvert : un <dialog> fermé garde son contenu dans le DOM, en double de la liste de bureau. */}
       <Feuille open={feuille} onClose={() => setFeuille(false)} titre={`Tes questions (${total})`}>
-        <ListeQuestions
-          enFeuille
-          questions={b.questions}
-          courante={q?.key ?? null}
-          onSelect={(key) => {
-            setCourante(key);
-            setFeuille(false);
-          }}
-          onOrdre={(cles) => modifier((courant) => ordonner(courant, cles))}
-          onAjouter={ajouter}
-          peutAjouter={peutAjouter}
-        />
+        {feuille ? (
+          <ListeQuestions
+            enFeuille
+            questions={b.questions}
+            courante={q?.key ?? null}
+            onSelect={(key) => {
+              setCourante(key);
+              setFeuille(false);
+            }}
+            onOrdre={(cles) => modifier((courant) => ordonner(courant, cles))}
+            onAjouter={ajouter}
+            peutAjouter={peutAjouter}
+          />
+        ) : null}
       </Feuille>
 
       <Modal open={aSupprimer !== null} onClose={() => setASupprimer(null)} titre="Supprimer cette question ?">

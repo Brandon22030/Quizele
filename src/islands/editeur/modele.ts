@@ -184,6 +184,8 @@ export function changerType(b: Brouillon, key: string, type: QuestionType): Brou
   });
 }
 
+export const AIDE_LIMITE_QUESTIONS = `Un quiz compte ${MAX_QUESTIONS} questions au plus.`;
+
 export function peutAjouterQuestion(b: Brouillon): boolean {
   return b.questions.length < MAX_QUESTIONS;
 }

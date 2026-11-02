@@ -1,7 +1,10 @@
-import { Check, LoaderCircle, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, LoaderCircle, RotateCw, TriangleAlert, X } from "lucide-react";
+import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
 import { cn } from "../../components/ui/cn";
-import type { StatutEnreg } from "./file-enregistrement";
+import { ANNONCE_INITIALE, annoncerStatut } from "./annonces";
+import type { Avis, StatutEnreg } from "./file-enregistrement";
 
 const LIBELLES: Record<StatutEnreg, string> = {
   enregistre: "Enregistré",
@@ -10,11 +13,10 @@ const LIBELLES: Record<StatutEnreg, string> = {
   attente: "En attente",
 };
 
-// Région status : un lecteur d'écran annonce chaque changement sans voler le focus.
+// Indicateur visuel seulement : il change à chaque frappe, AnnonceEnregistrement dit ce qui compte au lecteur d'écran.
 export function StatutEnregistrement({ statut, className }: { statut: StatutEnreg; className?: string }) {
   return (
     <span
-      role="status"
       className={cn(
         "inline-flex items-center gap-1 rounded-pill border-trait px-2 text-xs font-extrabold whitespace-nowrap",
         statut === "echec" ? "border-piment bg-piment text-creme" : "border-vert-foret bg-creme text-vert-foret",
@@ -65,3 +67,49 @@ export function MessageEnregistrement({ statut, message, code, retour, onRetry }
   );
 }
 
+
+// Région présente dès le montage : une région live insérée en même temps que son texte n'est pas annoncée partout.
+export function AnnonceEnregistrement({ statut }: { statut: StatutEnreg }) {
+  const [etat, setEtat] = useState(ANNONCE_INITIALE);
+  useEffect(() => setEtat((precedent) => annoncerStatut(precedent, statut)), [statut]);
+  return (
+    <p role="status" className="sr-only">
+      {etat.texte}
+    </p>
+  );
+}
+
+interface AvisProps {
+  avis: Avis | null;
+  onRecharger: () => void;
+  onFermer: () => void;
+}
+
+// Le quiz a changé ailleurs : rien n'est bloqué, la file continue. Région persistante pour la même raison qu'au-dessus.
+export function AvisEditeur({ avis, onRecharger, onFermer }: AvisProps) {
+  return (
+    <div role="status" className={avis ? "mx-4 my-3" : undefined}>
+      {avis ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border-trait border-vert-foret bg-creme p-3 text-vert-foret">
+          <p className="min-w-0 flex-1 text-sm font-extrabold">{avis.message}</p>
+          <div className="flex items-center gap-2">
+            {avis.recharger ? (
+              <Button taille="petit" variante="primaire" onClick={onRecharger}>
+                <RotateCw aria-hidden="true" className="size-5" />
+                Recharger
+              </Button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onFermer}
+              aria-label="Masquer ce message"
+              className="grid size-11 shrink-0 place-items-center rounded-sm text-vert-foret"
+            >
+              <X aria-hidden="true" className="size-5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}

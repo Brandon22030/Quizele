@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { cn } from "../../components/ui/cn";
 import { OPTION_LABEL_MAX } from "../../shared/quiz-schema";
@@ -18,6 +19,16 @@ export const LETTRES = ["A", "B", "C", "D"] as const;
 // Bonne réponse d'un tap : le rond de 44 px est un bouton à bascule (aria-pressed), l'état coché ne repose pas que sur la couleur.
 export function TuileReponseEditable({ index, label, isCorrect, libelleFige = false, onLabel, onToggle, onRetirer }: Props) {
   const lettre = LETTRES[index] ?? String(index + 1);
+  const champ = useRef<HTMLTextAreaElement>(null);
+
+  // Sans field-sizing (Firefox, anciens Safari), la hauteur suit le contenu à la main.
+  useLayoutEffect(() => {
+    const el = champ.current;
+    if (!el || CSS.supports("field-sizing", "content")) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [label]);
+
   return (
     <div
       className={cn(
@@ -37,13 +48,22 @@ export function TuileReponseEditable({ index, label, isCorrect, libelleFige = fa
       {libelleFige ? (
         <span className="min-w-0 flex-1 px-1 text-lg font-extrabold">{label}</span>
       ) : (
-        <input
+        // Un libellé tient sur une ligne logique mais peut en occuper plusieurs à l'écran : rien n'est masqué, Entrée ne casse rien.
+        <textarea
+          ref={champ}
+          rows={1}
           value={label}
           maxLength={OPTION_LABEL_MAX}
-          onChange={(e) => onLabel(e.target.value)}
+          onChange={(e) => onLabel(e.target.value.replace(/[\r\n]+/g, " "))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.preventDefault();
+          }}
           placeholder={`Réponse ${lettre}`}
           aria-label={`Réponse ${lettre}`}
-          className="min-h-11 min-w-0 flex-1 bg-transparent px-1 text-lg font-extrabold text-inherit placeholder:font-semibold placeholder:text-vert-mousse"
+          className={cn(
+            "field-sizing-content min-h-11 min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-lg leading-tight font-extrabold text-inherit placeholder:font-semibold",
+            isCorrect ? "placeholder:text-vert-nuit" : "placeholder:text-vert-mousse",
+          )}
         />
       )}
       {onRetirer ? (

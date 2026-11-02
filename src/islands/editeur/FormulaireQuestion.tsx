@@ -89,7 +89,8 @@ export function FormulaireQuestion({ question: q, numero, modifier, variante, on
           </p>
         ) : null}
       </div>
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2">
+      {/* Une seule colonne, bureau compris : deux tuiles côte à côte tronquaient les libellés dès une vingtaine de caractères. */}
+      <div className="flex flex-col gap-3">
         {q.options.map((o, i) => (
           <TuileReponseEditable
             key={i}

@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { GripVertical, Plus } from "lucide-react";
-import { Button } from "../../components/ui/button";
+import { buttonClasses } from "../../components/ui/button";
 import { cn } from "../../components/ui/cn";
-import { estComplete, libelleQuestion, problemeQuestion, type QuestionBrouillon } from "./modele";
-import { annonceDeplacement, decalerCle, deplacer, indexSousPointeur } from "./ordre";
+import { AIDE_LIMITE_QUESTIONS, estComplete, libelleQuestion, problemeQuestion, type QuestionBrouillon } from "./modele";
+import { annonceDeplacement, decalerCle, deplacer, indexSousPointeur, vitesseDefilement } from "./ordre";
 
 interface Props {
   questions: readonly QuestionBrouillon[];
@@ -20,6 +20,8 @@ interface Props {
 // déplacer : glisser la poignée (souris, doigt) ou, poignée au focus, flèches haut et bas.
 export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjouter, peutAjouter, enFeuille = false }: Props) {
   const aideId = useId();
+  const limiteId = useId();
+  const listeRef = useRef<HTMLOListElement>(null);
   const lignes = useRef(new Map<string, HTMLLIElement>());
   const poignees = useRef(new Map<string, HTMLButtonElement>());
   const aRefocaliser = useRef<string | null>(null);
@@ -39,21 +41,44 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
 
   useEffect(() => {
     if (!glisse) return;
-    const suivre = (e: globalThis.PointerEvent) => {
+    const zone = zoneDefilante(listeRef.current);
+    let y: number | null = null;
+    let image = 0;
+    const placer = () => {
+      if (y === null) return;
       const courant = clesRef.current;
       const bandes = courant.map((k) => {
         const r = lignes.current.get(k)?.getBoundingClientRect();
         return { top: r?.top ?? 0, bottom: r?.bottom ?? 0 };
       });
-      const cible = indexSousPointeur(bandes, e.clientY);
+      const cible = indexSousPointeur(bandes, y);
       const depart = courant.indexOf(glisse);
       if (cible !== -1 && depart !== -1 && cible !== depart) onOrdre(deplacer(courant, depart, cible));
+    };
+    // Tant que le pointeur reste près d'un bord, la zone défile à chaque image ; les lignes passent sous le pointeur immobile.
+    const defiler = () => {
+      image = 0;
+      if (y === null || !zone) return;
+      const { top, bottom } = zone === document.scrollingElement ? { top: 0, bottom: window.innerHeight } : zone.getBoundingClientRect();
+      const vitesse = vitesseDefilement(y, top, bottom);
+      if (vitesse === 0) return;
+      const avant = zone.scrollTop;
+      zone.scrollTop += vitesse;
+      if (zone.scrollTop === avant) return;
+      placer();
+      image = requestAnimationFrame(defiler);
+    };
+    const suivre = (e: globalThis.PointerEvent) => {
+      y = e.clientY;
+      placer();
+      if (!image) image = requestAnimationFrame(defiler);
     };
     const finir = () => setGlisse(null);
     window.addEventListener("pointermove", suivre);
     window.addEventListener("pointerup", finir);
     window.addEventListener("pointercancel", finir);
     return () => {
+      cancelAnimationFrame(image);
       window.removeEventListener("pointermove", suivre);
       window.removeEventListener("pointerup", finir);
       window.removeEventListener("pointercancel", finir);
@@ -78,7 +103,7 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
 
   return (
     <div className="flex flex-col gap-3">
-      <ol className="flex flex-col gap-3">
+      <ol ref={listeRef} className="flex flex-col gap-3">
         {questions.map((q, i) => {
           const active = q.key === courante;
           const probleme = problemeQuestion(q);
@@ -145,17 +170,39 @@ export function ListeQuestions({ questions, courante, onSelect, onOrdre, onAjout
       <p role="status" className="sr-only">
         {annonce}
       </p>
-      <Button
-        bloc
-        taille={enFeuille ? "normal" : "petit"}
-        variante={enFeuille ? "primaire" : "creme"}
-        onClick={onAjouter}
-        disabled={!peutAjouter}
-        className={enFeuille ? undefined : "border-dashed"}
+      {/* aria-disabled plutôt que disabled : le bouton reste au focus et son aide est lue avec lui. */}
+      <button
+        type="button"
+        onClick={peutAjouter ? onAjouter : undefined}
+        aria-disabled={peutAjouter ? undefined : true}
+        aria-describedby={peutAjouter ? undefined : limiteId}
+        className={buttonClasses({
+          bloc: true,
+          taille: enFeuille ? "normal" : "petit",
+          variante: enFeuille ? "primaire" : "creme",
+          inactif: !peutAjouter,
+          className: enFeuille ? undefined : "border-dashed",
+        })}
       >
         <Plus aria-hidden="true" className="size-5" />
         Ajouter une question
-      </Button>
+      </button>
+      {peutAjouter ? null : (
+        <p id={limiteId} className="text-sm font-extrabold">
+          {AIDE_LIMITE_QUESTIONS}
+        </p>
+      )}
     </div>
   );
+}
+
+// Le glisser fait défiler le premier ancêtre qui défile vraiment : la colonne de bureau, la feuille mobile, sinon la page.
+// Feuille ouverte, la page est verrouillée (overflow hidden) : elle ne doit pas bouger derrière le voile.
+function zoneDefilante(depart: HTMLElement | null): HTMLElement | null {
+  for (let el = depart?.parentElement ?? null; el; el = el.parentElement) {
+    const { overflowY } = getComputedStyle(el);
+    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) return el;
+  }
+  const page = document.scrollingElement as HTMLElement | null;
+  return page && getComputedStyle(document.documentElement).overflowY !== "hidden" ? page : null;
 }

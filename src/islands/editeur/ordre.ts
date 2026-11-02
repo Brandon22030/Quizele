@@ -37,3 +37,16 @@ export function indexSousPointeur(bandes: readonly Bande[], y: number): number {
 export function annonceDeplacement(position: number, total: number): string {
   return `Question déplacée en position ${position} sur ${total}.`;
 }
+
+export const MARGE_DEFILEMENT_PX = 48;
+export const VITESSE_DEFILEMENT_MAX_PX = 16;
+
+// Pendant un glisser, le doigt ne peut pas faire défiler la liste : près d'un bord de la zone visible, la liste défile seule,
+// d'autant plus vite que le pointeur s'approche du bord (ou le dépasse). Négatif vers le haut, positif vers le bas.
+export function vitesseDefilement(y: number, haut: number, bas: number, marge: number = MARGE_DEFILEMENT_PX, max: number = VITESSE_DEFILEMENT_MAX_PX): number {
+  if (bas - haut <= 2 * marge) return 0;
+  const proportion = (distance: number) => Math.min(1, (marge - distance) / marge);
+  if (y < haut + marge) return -Math.ceil(max * proportion(y - haut));
+  if (y > bas - marge) return Math.ceil(max * proportion(bas - y));
+  return 0;
+}
