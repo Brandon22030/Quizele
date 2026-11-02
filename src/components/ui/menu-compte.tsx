@@ -5,11 +5,11 @@ import { cn } from "./cn";
 interface MenuCompteProps {
   nom: string;
   email: string;
-  deconnexionHref: string;
+  deconnexionHref?: string;
   className?: string;
 }
 
-export function MenuCompte({ nom, email, deconnexionHref, className }: MenuCompteProps) {
+export function MenuCompte({ nom, email, deconnexionHref = "/deconnexion", className }: MenuCompteProps) {
   const [ouvert, setOuvert] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
