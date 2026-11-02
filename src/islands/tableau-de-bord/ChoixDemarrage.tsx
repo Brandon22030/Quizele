@@ -27,7 +27,7 @@ export function ChoixDemarrage({ modeles, modeleEnCours, erreur, onChoisir, avec
     <section aria-labelledby="demarrage-titre" className="flex flex-col gap-4 px-4">
       {avecTitre ? (
         <div className="pt-4 text-center">
-          <TitreAffiche id="demarrage-titre" className="-rotate-3 text-4xl">
+          <TitreAffiche id="demarrage-titre" tabIndex={-1} className="-rotate-3 text-4xl outline-none">
             TON 1ER
             <br />
             QUIZ
@@ -52,9 +52,12 @@ export function ChoixDemarrage({ modeles, modeleEnCours, erreur, onChoisir, avec
             <li key={modele.id}>
               <button
                 type="button"
-                disabled={modeleEnCours !== null}
+                // aria-disabled plutôt que disabled : le bouton cliqué garde le focus pendant la création.
+                aria-disabled={modeleEnCours !== null || undefined}
                 aria-busy={enCours || undefined}
-                onClick={() => onChoisir(modele.id)}
+                onClick={() => {
+                  if (modeleEnCours === null) onChoisir(modele.id);
+                }}
                 data-papier=""
                 className="flex min-h-14 w-full items-center gap-3 rounded-md border-trait border-vert-foret bg-creme p-3 text-left text-vert-foret shadow-relief-sm"
               >

@@ -8,7 +8,6 @@ import { Onglets } from "../../components/ui/onglets";
 import { Squelette } from "../../components/ui/squelette";
 import { Toast, ZoneToasts } from "../../components/ui/toast";
 import { TitreAffiche } from "../../components/ui/titre-affiche";
-import { DeconnexionJson } from "./Deconnexion";
 import { CarteQuiz } from "./CarteQuiz";
 import { ChoixDemarrage } from "./ChoixDemarrage";
 import { ListeParties } from "./ListeParties";
@@ -53,7 +52,6 @@ export interface VueProps {
   onChoisirModele: (modeleId: string) => void;
   toast: MessageToast | null;
   onFermerToast: () => void;
-  onErreurDeconnexion: () => void;
 }
 
 function SqueletteListe() {
@@ -85,9 +83,7 @@ export function TableauDeBordVue(props: VueProps) {
         <header className="flex items-center gap-2 px-4 pt-4">
           <Marque />
           <span className="flex-1" />
-          <DeconnexionJson onErreur={props.onErreurDeconnexion}>
-            <MenuCompte nom={utilisateur.nom} email={utilisateur.email} deconnexionHref="/api/auth/sign-out" />
-          </DeconnexionJson>
+          <MenuCompte nom={utilisateur.nom} email={utilisateur.email} />
         </header>
         <main>
           {premiereVisite ? (
@@ -117,7 +113,7 @@ export function TableauDeBordVue(props: VueProps) {
                 ]}
               >
                 {(actif, panneau) => (
-                  <div {...panneau} className="outline-none">
+                  <div {...panneau}>
                     {actif === "parties" ? (
                       <ListeParties parties={parties} onReessayer={props.onReessayerParties} />
                     ) : quiz.etat === "chargement" ? (

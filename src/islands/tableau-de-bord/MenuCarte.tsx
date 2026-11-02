@@ -15,6 +15,8 @@ interface MenuCarteProps {
   onOuverture?: (ouvert: boolean) => void;
 }
 
+const boutonMenu = (racine: HTMLElement | null) => racine?.querySelector<HTMLButtonElement>("button[aria-controls]") ?? null;
+
 const lienMenu = "flex min-h-11 w-full items-center gap-3 rounded-sm px-3 text-left font-bold no-underline hover:bg-jaune-soleil";
 
 // Menu en divulgation (bouton + liste d'actions) plutôt que role="menu" : pas de gestion de flèches à maintenir, et
@@ -29,19 +31,42 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
     onOuverture?.(valeur);
   }
 
+  // Le focus passe sur « … » avant la fermeture : sinon il reste sur une action masquée et retombe sur body,
+  // et une modale ouverte par l'action rendrait plus tard le focus à ce bouton invisible.
+  function agir(action: () => void) {
+    boutonMenu(racine.current)?.focus();
+    basculer(false);
+    action();
+  }
+
   useEffect(() => {
     if (!ouvert) return;
     const surTouche = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setOuvert(false);
       onOuverture?.(false);
-      racine.current?.querySelector("button")?.focus();
+      boutonMenu(racine.current)?.focus();
     };
     const surClic = (e: PointerEvent) => {
-      if (racine.current && !racine.current.contains(e.target as Node)) {
-        setOuvert(false);
-        onOuverture?.(false);
-      }
+      if (!racine.current || racine.current.contains(e.target as Node)) return;
+      const bouton = boutonMenu(racine.current);
+      const focusDansMenu = racine.current.contains(document.activeElement);
+      setOuvert(false);
+      onOuverture?.(false);
+      if (!bouton || !focusDansMenu) return;
+      bouton.focus();
+      // Le clic qui suit déplace le focus : on le laisse partir vers un élément focalisable, mais un clic dans le vide
+      // le ferait tomber sur body, d'où le retour sur « … ». La vérification attend la fin de ce déplacement.
+      bouton.addEventListener(
+        "focusout",
+        (sortie) => {
+          if (sortie.relatedTarget !== null) return;
+          setTimeout(() => {
+            if (document.activeElement === document.body) bouton.focus();
+          }, 0);
+        },
+        { once: true },
+      );
     };
     document.addEventListener("keydown", surTouche);
     document.addEventListener("pointerdown", surClic);
@@ -58,6 +83,7 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
         icone={<Ellipsis className="size-5" />}
         aria-expanded={ouvert}
         aria-controls={panneauId}
+        data-menu-quiz={quizId}
         onClick={() => basculer(!ouvert)}
       />
       <ul
@@ -83,10 +109,7 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
             <button
               type="button"
               className={lienMenu}
-              onClick={() => {
-                basculer(false);
-                onLancer();
-              }}
+              onClick={() => agir(onLancer)}
             >
               <Play aria-hidden="true" className="size-5" />
               Lancer
@@ -97,10 +120,7 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
           <button
             type="button"
             className={lienMenu}
-            onClick={() => {
-              basculer(false);
-              onDupliquer();
-            }}
+            onClick={() => agir(onDupliquer)}
           >
             <Copy aria-hidden="true" className="size-5" />
             Dupliquer
@@ -113,10 +133,7 @@ export function MenuCarte({ quizId, titre, onLancer, onDupliquer, onSupprimer, o
           <button
             type="button"
             className={cn(lienMenu, "text-piment")}
-            onClick={() => {
-              basculer(false);
-              onSupprimer();
-            }}
+            onClick={() => agir(onSupprimer)}
           >
             <Trash2 aria-hidden="true" className="size-5" />
             Supprimer

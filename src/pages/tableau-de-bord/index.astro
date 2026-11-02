@@ -2,20 +2,32 @@
 import { env } from "cloudflare:workers";
 import Base from "../../layouts/Base.astro";
 import TableauDeBord from "../../islands/tableau-de-bord/TableauDeBord";
-import type { PartieJouee } from "../../islands/tableau-de-bord/logique";
+import type { EtatListe, PartieJouee, QuizCarte } from "../../islands/tableau-de-bord/logique";
 import { MODELES } from "../../contenu/modeles";
 import { getDb } from "../../server/db/client";
 import { listPlayedSessions } from "../../server/db/results";
+import { actionFailure, lister } from "../../server/quiz/handlers";
 
 // Le middleware redirige déjà vers /connexion : ce garde sert au typage et à une exécution hors middleware.
 const user = Astro.locals.user;
 if (!user) return Astro.redirect("/connexion?retour=%2Ftableau-de-bord");
 
+const db = getDb(env.DB);
+
+// Même lecture que l'action quiz.lister, faite ici pour que la liste arrive avec la page. Un échec garde le message
+// français de l'action et laisse « Réessayer » repasser par elle.
+let quizInitial: EtatListe<QuizCarte>;
+try {
+  quizInitial = { etat: "pret", elements: (await lister(db, user)).quizzes };
+} catch (error) {
+  quizInitial = { etat: "erreur", message: actionFailure("lister", error).message };
+}
+
 // Aucune action n'expose les parties jouées : lecture serveur directe, filtrée par propriétaire. Un échec (null) devient
 // l'état d'erreur de l'onglet plutôt qu'une page 500 qui masquerait aussi la liste des quiz.
 let parties: PartieJouee[] | null;
 try {
-  const lignes = await listPlayedSessions(getDb(env.DB), user.id);
+  const lignes = await listPlayedSessions(db, user.id);
   parties = lignes.map((ligne) => ({
     id: ligne.id,
     quizTitle: ligne.quizTitle,
@@ -35,5 +47,5 @@ const modeles = MODELES.map((modele) => ({
 ---
 
 <Base title="Tes quiz - Quizdeszeles">
-  <TableauDeBord client:load utilisateur={{ nom: user.name ?? user.email, email: user.email }} parties={parties} modeles={modeles} />
+  <TableauDeBord client:load utilisateur={{ nom: user.name ?? user.email, email: user.email }} quizInitial={quizInitial} parties={parties} modeles={modeles} />
 </Base>

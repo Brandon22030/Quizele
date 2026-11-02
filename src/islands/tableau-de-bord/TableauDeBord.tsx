@@ -16,14 +16,18 @@ import { TableauDeBordVue, type MessageToast, type Utilisateur } from "./Vue";
 
 interface TableauDeBordProps {
   utilisateur: Utilisateur;
+  /** Lue par la page serveur : la liste s'affiche dès le premier rendu, sans squelette ni aller-retour. */
+  quizInitial: EtatListe<QuizCarte>;
   parties: PartieJouee[] | null;
   modeles: ModeleCarte[];
 }
 
 const MESSAGE_RESEAU = "Connexion impossible. Vérifie ta connexion puis réessaie.";
 
-export default function TableauDeBord({ utilisateur, parties, modeles }: TableauDeBordProps) {
-  const [quiz, setQuiz] = useState<EtatListe<QuizCarte>>({ etat: "chargement" });
+const selecteurMenu = (quizId: string) => `[data-menu-quiz="${CSS.escape(quizId)}"]`;
+
+export default function TableauDeBord({ utilisateur, quizInitial, parties, modeles }: TableauDeBordProps) {
+  const [quiz, setQuiz] = useState<EtatListe<QuizCarte>>(quizInitial);
   const [onglet, setOnglet] = useState<OngletId>("quiz");
   const [lancementEnCours, setLancementEnCours] = useState<string | null>(null);
   const [erreurLance, setErreurLance] = useState<ErreurLancement | null>(null);
@@ -35,22 +39,43 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
   const [toast, setToast] = useState<MessageToast | null>(null);
   // Évite qu'une réponse tardive d'un ancien chargement écrase le résultat d'un plus récent.
   const generation = useRef(0);
+  // Cibles du focus après un ajout ou un retrait de carte, essayées dans l'ordre une fois la liste rendue.
+  const focusApresRendu = useRef<string[] | null>(null);
+  const [demandeFocus, setDemandeFocus] = useState(0);
 
-  async function charger() {
-    const courante = ++generation.current;
-    setQuiz({ etat: "chargement" });
-    try {
-      const { data, error } = await actions.quiz.lister();
-      if (courante !== generation.current) return;
-      setQuiz(error ? { etat: "erreur", message: error.message } : { etat: "pret", elements: data.quizzes });
-    } catch {
-      if (courante === generation.current) setQuiz({ etat: "erreur", message: MESSAGE_RESEAU });
+  // L'effet du parent passe après ceux des enfants : la modale est déjà fermée (et a rendu son focus) quand il s'exécute.
+  useEffect(() => {
+    const selecteurs = focusApresRendu.current;
+    if (!selecteurs) return;
+    focusApresRendu.current = null;
+    for (const selecteur of selecteurs) {
+      const cible = document.querySelector<HTMLElement>(selecteur);
+      if (cible) {
+        cible.focus();
+        return;
+      }
     }
+  }, [demandeFocus]);
+
+  function focaliserApresRendu(selecteurs: string[]) {
+    focusApresRendu.current = selecteurs;
+    setDemandeFocus((n) => n + 1);
   }
 
-  useEffect(() => {
-    void charger();
-  }, []);
+  // silencieux : la liste reste affichée pendant l'actualisation, pour que le focus ne soit pas perdu dans un squelette.
+  async function charger({ silencieux = false } = {}): Promise<boolean> {
+    const courante = ++generation.current;
+    if (!silencieux) setQuiz({ etat: "chargement" });
+    try {
+      const { data, error } = await actions.quiz.lister();
+      if (courante !== generation.current) return false;
+      setQuiz(error ? { etat: "erreur", message: error.message } : { etat: "pret", elements: data.quizzes });
+      return !error;
+    } catch {
+      if (courante === generation.current) setQuiz({ etat: "erreur", message: MESSAGE_RESEAU });
+      return false;
+    }
+  }
 
   async function lancer(quizId: string) {
     if (lancementEnCours) return;
@@ -79,13 +104,13 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
 
   async function dupliquer(quizId: string) {
     try {
-      const { error } = await actions.quiz.dupliquer({ quizId });
+      const { data, error } = await actions.quiz.dupliquer({ quizId });
       if (error) {
         setToast({ variante: "erreur", texte: error.message });
         return;
       }
       setToast({ variante: "succes", texte: "Quiz dupliqué." });
-      await charger();
+      if (await charger({ silencieux: true })) focaliserApresRendu([selecteurMenu(data.quizId), selecteurMenu(quizId)]);
     } catch {
       setToast({ variante: "erreur", texte: MESSAGE_RESEAU });
     }
@@ -101,11 +126,14 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
         setErreurSuppression(error.message);
         return;
       }
+      // Le dialogue rendrait le focus au « … » d'une carte disparue : il va à la carte suivante (ou précédente), sinon au titre.
+      const elements = quiz.etat === "pret" ? quiz.elements : [];
+      const index = elements.findIndex((q) => q.id === aSupprimer.id);
+      const voisine = elements[index + 1] ?? elements[index - 1];
       setQuiz((courant) => (courant.etat === "pret" ? { etat: "pret", elements: courant.elements.filter((q) => q.id !== aSupprimer.id) } : courant));
       setASupprimer(null);
       setToast({ variante: "succes", texte: "Quiz supprimé." });
-      // Le dialogue rend le focus à une carte qui n'existe plus : on le pose sur le titre de la page.
-      document.getElementById("titre-tableau")?.focus();
+      focaliserApresRendu([...(voisine ? [selecteurMenu(voisine.id)] : []), "#titre-tableau", "#demarrage-titre"]);
     } catch {
       setErreurSuppression(MESSAGE_RESEAU);
     } finally {
@@ -155,7 +183,6 @@ export default function TableauDeBord({ utilisateur, parties, modeles }: Tableau
       onChoisirModele={(id) => void choisirModele(id)}
       toast={toast}
       onFermerToast={() => setToast(null)}
-      onErreurDeconnexion={() => setToast({ variante: "erreur", texte: "Déconnexion impossible pour le moment. Réessaie." })}
     />
   );
 }
