@@ -33,6 +33,9 @@ export function messageErreurRedirection(code: string | null | undefined): strin
     case "invalid_token":
     case "expired_token":
       return "Ce lien a expiré ou a déjà servi. Demande-en un nouveau.";
+    case "state_mismatch":
+    case "state_not_found":
+      return "La connexion avec Google a expiré ou a été interrompue. Relance-la.";
     case "access_denied":
       return "La connexion avec Google a été refusée. Tu peux réessayer ou choisir une autre méthode.";
     default:
@@ -51,8 +54,56 @@ export function urlErreurConnexion(retour: string): string {
   return `/connexion?retour=${encodeURIComponent(retour)}`;
 }
 
-export function urlVerification(email: string, retour: string): string {
-  return `/connexion/verifier?email=${encodeURIComponent(email)}&retour=${encodeURIComponent(retour)}`;
+// L'adresse ne figure jamais dans l'URL (historique, journaux) : elle voyage par sessionStorage.
+export function urlVerification(retour: string): string {
+  return `/connexion/verifier?retour=${encodeURIComponent(retour)}`;
+}
+
+export const CLE_EMAIL = "quizdeszeles:connexion-email";
+export const CLE_ENVOI = "quizdeszeles:connexion-envoi";
+
+// b***@gmail.com : assez pour reconnaître sa boîte, sans exposer l'adresse entière à l'écran.
+export function masquerEmail(email: string): string {
+  const arobase = email.lastIndexOf("@");
+  if (arobase < 1) return "***";
+  return `${email[0]}***${email.slice(arobase)}`;
+}
+
+type Stockage = Pick<Storage, "getItem" | "setItem">;
+
+// Le stockage peut être indisponible (navigation privée, quota) : la page de confirmation sait s'en passer.
+function essayer<T>(action: () => T, repli: T): T {
+  try {
+    return action();
+  } catch {
+    return repli;
+  }
+}
+
+export function memoriserEnvoi(stockage: Stockage, maintenant: number, email?: string): void {
+  essayer(() => {
+    if (email) stockage.setItem(CLE_EMAIL, email);
+    stockage.setItem(CLE_ENVOI, String(maintenant));
+  }, undefined);
+}
+
+export function lireEmail(stockage: Stockage): string | null {
+  const valeur = essayer(() => stockage.getItem(CLE_EMAIL), null);
+  if (!valeur) return null;
+  const verification = validerEmail(valeur);
+  return verification.ok ? verification.email : null;
+}
+
+export function lireEnvoi(stockage: Stockage): number | null {
+  const brut = essayer(() => stockage.getItem(CLE_ENVOI), null);
+  const valeur = brut === null ? NaN : Number(brut);
+  return Number.isFinite(valeur) ? valeur : null;
+}
+
+// Un horodatage dans le futur (horloge reculée) est borné : le délai ne dépasse jamais DELAI_RENVOI_SECONDES.
+export function secondesRestantes(envoiMs: number, maintenantMs: number): number {
+  const ecoule = Math.max(0, Math.floor((maintenantMs - envoiMs) / 1000));
+  return Math.max(0, DELAI_RENVOI_SECONDES - ecoule);
 }
 
 type Fetcher = typeof fetch;

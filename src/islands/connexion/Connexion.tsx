@@ -4,7 +4,8 @@ import { EtatErreur } from "../../components/ui/etat-erreur";
 import { FormField } from "../../components/ui/form-field";
 import { Input } from "../../components/ui/input";
 import { Papier } from "../../components/ui/papier";
-import { demanderLienMagique, demanderUrlGoogle, urlVerification, validerEmail } from "./logique";
+import { localNow } from "../../shared/clock";
+import { demanderLienMagique, demanderUrlGoogle, memoriserEnvoi, urlVerification, validerEmail } from "./logique";
 
 interface Props {
   google: boolean;
@@ -50,7 +51,8 @@ export default function Connexion({ google, magicLink, retour, erreurInitiale }:
     setAttente("mail");
     const resultat = await demanderLienMagique(verification.email, retour);
     if (resultat.ok) {
-      window.location.assign(urlVerification(verification.email, retour));
+      memoriserEnvoi(sessionStorage, localNow(), verification.email);
+      window.location.assign(urlVerification(retour));
       return;
     }
     setErreur(resultat.message);

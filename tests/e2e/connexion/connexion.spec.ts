@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { lancerServeur, type ServeurLocal } from "./serveur-local";
+import { arreterTout, lancerServeur, type ServeurLocal } from "./serveur-local";
 
 // CAPTURES_DIR : dossier des captures de revue ; sans lui, aucune image n'est écrite.
 async function capturer(page: Page, nom: string) {
@@ -18,6 +18,11 @@ async function hydrate(page: Page) {
     return ilots.length > 0 && [...ilots].every((i) => !i.hasAttribute("ssr"));
   });
   await page.evaluate(() => document.fonts.ready);
+}
+
+// La page de confirmation lit l'adresse en sessionStorage (jamais dans l'URL) : on la pose comme le fait le formulaire.
+async function adresseEnvoyee(page: Page, email: string) {
+  await page.addInitScript((valeur) => sessionStorage.setItem("quizdeszeles:connexion-email", valeur), email);
 }
 
 async function axe(page: Page) {
@@ -60,10 +65,12 @@ test.describe("confirmation d'envoi (serveur partagé)", () => {
   test("renvoi temporisé : bouton inactif puis actif, nouvel envoi confirmé", async ({ page }) => {
     await page.clock.install();
     await page.route("**/api/auth/sign-in/magic-link", (route) => route.fulfill({ status: 200, json: { status: true } }));
-    await page.goto("/connexion/verifier?email=esther%40exemple.fr&retour=%2Fquiz%2Fabc");
+    await adresseEnvoyee(page, "esther@exemple.fr");
+    await page.goto("/connexion/verifier?retour=%2Fquiz%2Fabc");
     await hydrate(page);
     await expect(page.getByRole("heading", { level: 1, name: "Regarde ta boîte mail" })).toBeVisible();
-    await expect(page.getByText("esther@exemple.fr")).toBeVisible();
+    await expect(page.getByText("e***@exemple.fr")).toBeVisible();
+    await expect(page.getByText("esther@exemple.fr")).toHaveCount(0);
     const renvoi = page.getByRole("button", { name: /Renvoyer le lien/ });
     await expect(renvoi).toBeDisabled();
     await expect(renvoi).toContainText("dans 60 s");
@@ -80,7 +87,8 @@ test.describe("confirmation d'envoi (serveur partagé)", () => {
   test("un refus 429 au renvoi affiche le message neutre", async ({ page }) => {
     await page.clock.install();
     await page.route("**/api/auth/sign-in/magic-link", (route) => route.fulfill({ status: 429, json: { message: "Too many requests." } }));
-    await page.goto("/connexion/verifier?email=esther%40exemple.fr");
+    await adresseEnvoyee(page, "esther@exemple.fr");
+    await page.goto("/connexion/verifier");
     await hydrate(page);
     await page.clock.runFor(61_000);
     await page.getByRole("button", { name: "Renvoyer le lien" }).click();
@@ -91,18 +99,36 @@ test.describe("confirmation d'envoi (serveur partagé)", () => {
     await capturer(page, "verifier-erreur");
   });
 
-  test("sans adresse valide, retour au formulaire en gardant le retour interne", async ({ page }) => {
-    await page.goto("/connexion/verifier?email=pas-un-mail&retour=https%3A%2F%2Fevil.example");
-    await expect(page).toHaveURL(/\/connexion\?retour=%2Ftableau-de-bord$/);
+  test("sans adresse en mémoire : confirmation sans renvoi, avec « Changer d'adresse »", async ({ page }) => {
+    await page.goto("/connexion/verifier?retour=https%3A%2F%2Fevil.example");
+    await hydrate(page);
+    await expect(page.getByRole("heading", { level: 1, name: "Regarde ta boîte mail" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Changer d'adresse" })).toHaveAttribute("href", "/connexion?retour=%2Ftableau-de-bord");
+    expect(await axe(page)).toEqual([]);
+  });
+
+  test("le décompte survit à un rechargement de la page", async ({ page }) => {
+    await page.clock.install();
+    await adresseEnvoyee(page, "esther@exemple.fr");
+    await page.goto("/connexion/verifier");
+    await hydrate(page);
+    await page.clock.runFor(20_000);
+    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toContainText("dans 40 s");
+    await page.reload();
+    await hydrate(page);
+    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toContainText(/dans (39|40) s/);
   });
 });
 
 test.describe("connexion, lien magique seul", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
+    test.setTimeout(180_000);
     serveur = await lancerServeur(2);
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   test("état vide : formulaire initial, aucun bouton Google, axe propre", async ({ page }) => {
     await page.goto(`${serveur.url}/connexion?retour=%2Fquiz%2Fabc`);
@@ -162,7 +188,7 @@ test.describe("connexion, lien magique seul", () => {
     await page.getByLabel("Ton adresse e-mail").fill(email);
     await page.getByRole("button", { name: "Recevoir un lien par e-mail" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Regarde ta boîte mail" })).toBeVisible();
-    await expect(page).toHaveURL(/\/connexion\/verifier\?email=parcours%40exemple\.fr&retour=%2Fquiz%2Fabc/);
+    await expect(page).toHaveURL(/\/connexion\/verifier\?retour=%2Fquiz%2Fabc$/);
 
     const lien = await serveur.lienMagique(email);
     await page.goto(lien);
@@ -177,11 +203,13 @@ test.describe("connexion, lien magique seul", () => {
 });
 
 test.describe("connexion, Google et lien magique", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
+    test.setTimeout(180_000);
     serveur = await lancerServeur(3, { GOOGLE_CLIENT_ID: "id-factice.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "secret-factice" });
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   test("Google est l'action principale et lance la redirection avec le retour", async ({ page }) => {
     await page.goto(`${serveur.url}/connexion?retour=%2Fquiz%2Fabc`);
@@ -228,11 +256,13 @@ test.describe("connexion, Google et lien magique", () => {
 });
 
 test.describe("connexion, aucune méthode active", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
+    test.setTimeout(180_000);
     serveur = await lancerServeur(4, { MAGIC_LINK_ENABLED: "false" });
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   test("état d'erreur explicite, retour à l'accueil, axe propre", async ({ page }) => {
     await page.goto(`${serveur.url}/connexion`);

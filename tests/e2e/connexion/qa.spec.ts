@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { lancerServeur, type ServeurLocal } from "./serveur-local";
+import { arreterTout, lancerServeur, type ServeurLocal } from "./serveur-local";
 
 async function hydrate(page: Page) {
   await page.waitForFunction(() => {
@@ -45,13 +45,14 @@ async function focusToujoursVisible(page: Page, maxTab = 8) {
 }
 
 test.describe("connexion : Google seul", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
     // Démarrage de wrangler (migrations puis serveur) : plus de 30 s sur une machine chargée.
     test.setTimeout(180_000);
     serveur = await lancerServeur(5, { GOOGLE_CLIENT_ID: "id-factice.apps.googleusercontent.com", GOOGLE_CLIENT_SECRET: "secret-factice", MAGIC_LINK_ENABLED: "false" });
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   test("bouton Google seul : formulaire masqué, pas de séparateur « ou », axe, 44 px, focus, pas de débordement", async ({ page }) => {
     await page.goto(`${serveur.url}/connexion`);
@@ -80,13 +81,14 @@ test.describe("connexion : Google seul", () => {
 });
 
 test.describe("connexion : lien magique, comportements du formulaire", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
     // Démarrage de wrangler (migrations puis serveur) : plus de 30 s sur une machine chargée.
     test.setTimeout(180_000);
     serveur = await lancerServeur(6);
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   const envoyer = async (page: Page, email: string) => {
     await page.getByLabel("Ton adresse e-mail").fill(email);
@@ -209,7 +211,9 @@ test.describe("connexion : lien magique, comportements du formulaire", () => {
       appel += 1;
       return appel === 1 ? route.abort() : route.fulfill({ status: 200, json: { status: true } });
     });
-    await page.goto(`${serveur.url}/connexion/verifier?email=renvoi%40exemple.fr`);
+    // L'adresse vit en sessionStorage, jamais dans l'URL.
+    await page.addInitScript(() => sessionStorage.setItem("quizdeszeles:connexion-email", "renvoi@exemple.fr"));
+    await page.goto(`${serveur.url}/connexion/verifier`);
     await hydrate(page);
     await page.clock.runFor(61_000);
     const renvoi = page.getByRole("button", { name: "Renvoyer le lien" });
@@ -221,8 +225,11 @@ test.describe("connexion : lien magique, comportements du formulaire", () => {
   });
 
   test("l'adresse affichée dans la confirmation est échappée (pas d'injection HTML)", async ({ page }) => {
-    await page.goto(`${serveur.url}/connexion/verifier?email=${encodeURIComponent("<img src=x onerror=alert(1)>@exemple.fr")}`);
-    await expect(page).toHaveURL(/\/connexion(\?|$)/);
+    // Adresse invalide en sessionStorage : ignorée, la page reste sans renvoi (l'adresse n'est plus lue dans l'URL).
+    await page.addInitScript(() => sessionStorage.setItem("quizdeszeles:connexion-email", "<img src=x onerror=alert(1)>@exemple.fr"));
+    await page.goto(`${serveur.url}/connexion/verifier`);
+    await hydrate(page);
+    await expect(page.getByRole("button", { name: /Renvoyer le lien/ })).toHaveCount(0);
     expect(await page.locator("img[src='x']").count()).toBe(0);
   });
 
@@ -261,7 +268,7 @@ test.describe("connexion : lien magique, comportements du formulaire", () => {
     await page.goto(`${serveur.url}/connexion?retour=%2Fquiz%2Fx`);
     await hydrate(page);
     await envoyer(page, email);
-    await expect(page).toHaveURL(/\/connexion\/verifier\?email=valide%40exemple\.fr&retour=%2Fquiz%2Fx$/);
+    await expect(page).toHaveURL(/\/connexion\/verifier\?retour=%2Fquiz%2Fx$/);
     expect(corps.callbackURL).toBe("/quiz/x");
     await page.goto(await serveur.lienMagique(email));
     await expect(page).toHaveURL(/\/quiz\/x$/);
@@ -323,6 +330,7 @@ test.describe("connexion : lien magique, comportements du formulaire", () => {
 });
 
 test.describe("500 réel : erreur serveur pendant le rendu", () => {
+  test.describe.configure({ mode: "serial" });
   let serveur: ServeurLocal;
   test.beforeAll(async () => {
     // Démarrage de wrangler (migrations puis serveur) : plus de 30 s sur une machine chargée.
@@ -330,7 +338,7 @@ test.describe("500 réel : erreur serveur pendant le rendu", () => {
     // Sans secret, résoudre une session (cookie présent) lève une erreur dans le middleware.
     serveur = await lancerServeur(7, { BETTER_AUTH_SECRET: "" });
   });
-  test.afterAll(() => serveur?.arreter());
+  test.afterAll(() => arreterTout());
 
   test("statut 500, page française, ni stack ni message interne", async ({ page, request }) => {
     const reponse = await request.get(`${serveur.url}/connexion`, { headers: { cookie: "better-auth.session_token=x.y" } });

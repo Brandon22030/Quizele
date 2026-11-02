@@ -4,39 +4,60 @@ import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
 import { Explosion } from "../../components/ui/explosion";
 import { TitreAffiche } from "../../components/ui/titre-affiche";
-import { DELAI_RENVOI_SECONDES, demanderLienMagique, urlErreurConnexion } from "./logique";
+import { localNow } from "../../shared/clock";
+import {
+  demanderLienMagique,
+  lireEmail,
+  lireEnvoi,
+  masquerEmail,
+  memoriserEnvoi,
+  secondesRestantes,
+  urlErreurConnexion,
+} from "./logique";
 
 interface Props {
-  email: string;
   retour: string;
   validiteMinutes: number;
 }
 
-export default function Verifier({ email, retour, validiteMinutes }: Props) {
-  const [reste, setReste] = useState(DELAI_RENVOI_SECONDES);
+export default function Verifier({ retour, validiteMinutes }: Props) {
+  // La lecture du stockage se fait après l'hydratation : le rendu serveur n'a pas accès à sessionStorage.
+  const [email, setEmail] = useState<string | null>(null);
+  const [reste, setReste] = useState(0);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
 
-  // Compte à rebours en secondes entières : l'intervalle ne sert qu'à décompter, aucune heure n'est comparée.
-  // Il ne dépend que de `relance` : le relancer à chaque seconde ferait glisser le décompte.
-  const [relance, setRelance] = useState(0);
+  // Le décompte se déduit de l'horodatage d'envoi gardé en sessionStorage : il survit à un rechargement.
   useEffect(() => {
-    setReste(DELAI_RENVOI_SECONDES);
-    const minuteur = setInterval(() => setReste((n) => Math.max(0, n - 1)), 1000);
+    setEmail(lireEmail(sessionStorage));
+    let depart = lireEnvoi(sessionStorage);
+    if (depart === null) {
+      depart = localNow();
+      memoriserEnvoi(sessionStorage, depart);
+    }
+    const debut = depart;
+    const maj = () => {
+      const dernier = lireEnvoi(sessionStorage) ?? debut;
+      setReste(secondesRestantes(dernier, localNow()));
+    };
+    maj();
+    const minuteur = setInterval(maj, 1000);
     return () => clearInterval(minuteur);
-  }, [relance]);
+  }, []);
 
   async function renvoyer() {
-    if (envoi || reste > 0) return;
+    if (!email || envoi || reste > 0) return;
     setErreur(null);
     setConfirmation(null);
     setEnvoi(true);
     const resultat = await demanderLienMagique(email, retour);
     setEnvoi(false);
     if (resultat.ok) {
+      const maintenant = localNow();
+      memoriserEnvoi(sessionStorage, maintenant);
+      setReste(secondesRestantes(maintenant, maintenant));
       setConfirmation("Un nouveau lien vient de partir.");
-      setRelance((n) => n + 1);
       return;
     }
     setErreur(resultat.message);
@@ -49,23 +70,31 @@ export default function Verifier({ email, retour, validiteMinutes }: Props) {
       </Explosion>
       <TitreAffiche className="text-3xl">Regarde ta boîte mail</TitreAffiche>
       <p className="text-base font-bold text-vert-foret">
-        Nous avons envoyé un lien de connexion à <span className="break-words">{email}</span>. Il est valable {validiteMinutes} minutes. Pense à
-        regarder dans les courriers indésirables.
+        {email ? (
+          <>
+            Nous avons envoyé un lien de connexion à <span className="break-words">{masquerEmail(email)}</span>.
+          </>
+        ) : (
+          "Si ton adresse est valide, un lien de connexion vient de partir."
+        )}{" "}
+        Il est valable {validiteMinutes} minutes. Pense à regarder dans les courriers indésirables.
       </p>
       <p role="status" className="min-h-6 text-base font-extrabold text-vert-foret">
         {confirmation}
       </p>
       {erreur ? <EtatErreur titre="Envoi impossible" className="w-full text-left">{erreur}</EtatErreur> : null}
-      <Button
-        bloc
-        variante="soleil"
-        disabled={reste > 0}
-        chargement={envoi}
-        libelleChargement="Envoi du lien en cours"
-        onClick={renvoyer}
-      >
-        {reste > 0 ? `Renvoyer le lien dans ${reste} s` : "Renvoyer le lien"}
-      </Button>
+      {email ? (
+        <Button
+          bloc
+          variante="soleil"
+          disabled={reste > 0}
+          chargement={envoi}
+          libelleChargement="Envoi du lien en cours"
+          onClick={renvoyer}
+        >
+          {reste > 0 ? `Renvoyer le lien dans ${reste} s` : "Renvoyer le lien"}
+        </Button>
+      ) : null}
       <Button href={urlErreurConnexion(retour)} bloc variante="creme" taille="petit">
         Changer d'adresse
       </Button>

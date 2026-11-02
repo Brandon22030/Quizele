@@ -159,6 +159,8 @@ export function createAuth(env: AuthEnv, request?: Request) {
           }),
         ]
       : [],
+    // Les erreurs OAuth sans errorCallbackURL (état perdu, par exemple) arrivent sur /connexion?error=..., pas sur la page brute de Better Auth.
+    onAPIError: { errorURL: "/connexion" },
     rateLimit: { enabled: true, storage: "database" },
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
   });

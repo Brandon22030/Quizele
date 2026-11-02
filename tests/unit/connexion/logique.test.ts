@@ -3,7 +3,12 @@ import {
   demanderLienMagique,
   demanderUrlGoogle,
   messageDepuisStatut,
+  lireEmail,
+  lireEnvoi,
+  masquerEmail,
+  memoriserEnvoi,
   messageErreurRedirection,
+  secondesRestantes,
   MESSAGE_TROP_DE_DEMANDES,
   retourBrut,
   urlErreurConnexion,
@@ -58,7 +63,7 @@ describe("retour", () => {
 
   it("les URL construites encodent le retour et l'adresse", () => {
     expect(urlErreurConnexion("/quiz/a?x=1")).toBe("/connexion?retour=%2Fquiz%2Fa%3Fx%3D1");
-    expect(urlVerification("a+b@exemple.fr", "/quiz/a")).toBe("/connexion/verifier?email=a%2Bb%40exemple.fr&retour=%2Fquiz%2Fa");
+    expect(urlVerification("/quiz/a")).toBe("/connexion/verifier?retour=%2Fquiz%2Fa");
   });
 });
 
@@ -71,6 +76,12 @@ describe("messages d'erreur", () => {
   it("refus Google et codes inconnus", () => {
     expect(messageErreurRedirection("access_denied")).toMatch(/Google/);
     expect(messageErreurRedirection("failed_to_create_session")).toMatch(/échoué/);
+  });
+
+  it("état OAuth perdu : message français dédié", () => {
+    for (const code of ["state_mismatch", "state_not_found"]) {
+      expect(messageErreurRedirection(code)).toMatch(/Google.*(expiré|interrompue)/);
+    }
   });
 
   it("aucun message sans code", () => {
@@ -129,5 +140,63 @@ describe("appels Better Auth", () => {
     expect((await demanderUrlGoogle("/quiz/a", vide as unknown as typeof fetch)).ok).toBe(false);
     const refus = async () => new Response("{}", { status: 500 });
     expect((await demanderUrlGoogle("/quiz/a", refus as unknown as typeof fetch)).ok).toBe(false);
+  });
+});
+
+describe("confirmation d'envoi : stockage et décompte", () => {
+  const faux = () => {
+    const données = new Map<string, string>();
+    return { getItem: (k: string) => données.get(k) ?? null, setItem: (k: string, v: string) => void données.set(k, v) };
+  };
+
+  it("masque l'adresse sans la perdre", () => {
+    expect(masquerEmail("brandon@gmail.com")).toBe("b***@gmail.com");
+    expect(masquerEmail("a@b.fr")).toBe("a***@b.fr");
+    expect(masquerEmail("pas-une-adresse")).toBe("***");
+  });
+
+  it("mémorise l'adresse et l'horodatage, et les relit", () => {
+    const stockage = faux();
+    memoriserEnvoi(stockage, 1234, "a@exemple.fr");
+    expect(lireEmail(stockage)).toBe("a@exemple.fr");
+    expect(lireEnvoi(stockage)).toBe(1234);
+  });
+
+  it("un renvoi met à jour l'horodatage sans toucher à l'adresse", () => {
+    const stockage = faux();
+    memoriserEnvoi(stockage, 1, "a@exemple.fr");
+    memoriserEnvoi(stockage, 99);
+    expect(lireEmail(stockage)).toBe("a@exemple.fr");
+    expect(lireEnvoi(stockage)).toBe(99);
+  });
+
+  it("ignore une adresse corrompue ou un horodatage illisible", () => {
+    const stockage = faux();
+    stockage.setItem("quizdeszeles:connexion-email", "<img src=x>@exemple.fr");
+    stockage.setItem("quizdeszeles:connexion-envoi", "abc");
+    expect(lireEmail(stockage)).toBeNull();
+    expect(lireEnvoi(stockage)).toBeNull();
+  });
+
+  it("un stockage indisponible ne casse rien", () => {
+    const casse = {
+      getItem: () => {
+        throw new Error("indisponible");
+      },
+      setItem: () => {
+        throw new Error("indisponible");
+      },
+    };
+    expect(() => memoriserEnvoi(casse, 1, "a@exemple.fr")).not.toThrow();
+    expect(lireEmail(casse)).toBeNull();
+    expect(lireEnvoi(casse)).toBeNull();
+  });
+
+  it("calcule le délai restant, borné entre 0 et 60 s", () => {
+    expect(secondesRestantes(0, 0)).toBe(60);
+    expect(secondesRestantes(0, 20_500)).toBe(40);
+    expect(secondesRestantes(0, 60_000)).toBe(0);
+    expect(secondesRestantes(0, 600_000)).toBe(0);
+    expect(secondesRestantes(10_000, 0)).toBe(60);
   });
 });
