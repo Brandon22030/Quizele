@@ -5,6 +5,9 @@ import { createAuth } from "../../../src/server/auth/auth";
 import { freshDb } from "../db/helpers";
 import { authEnv, authFetch, captureConsoleMail, captureResendMail, ORIGIN, RESEND_ENV, requestMagicLink, sessionCookie } from "./helpers";
 
+// Requête légitime de l'encart de /j/X : statut, titre du quiz et nom de l'animateur, rien d'autre de la table user.
+const APERCU_PARTIE = /^select "game_sessions"\."status", "game_sessions"\."quiz_title", "user"\."name" from "game_sessions" inner join "user" on/;
+
 beforeEach(async () => {
   await freshDb();
   await env.DB.batch([env.DB.prepare("DELETE FROM rate_limit"), env.DB.prepare("DELETE FROM mail_quota")]);
@@ -54,13 +57,16 @@ describe("middleware sur le bundle réel (SELF.fetch)", () => {
     expect((await bundle("/")).status).toBe(200);
   });
 
-  it("sans cookie, aucune requête D1", async () => {
+  it("sans cookie, aucune requête D1 hors /j/X, et jamais les tables session, user ou account", async () => {
     const proto = Object.getPrototypeOf(env.DB) as D1Database;
     const prepare = vi.spyOn(proto, "prepare");
     const batch = vi.spyOn(proto, "batch");
-    for (const path of ["/", "/tableau-de-bord", "/quiz/x", "/j/ABC234"]) await bundle(path);
+    for (const path of ["/", "/tableau-de-bord", "/quiz/x", "/api/parties/ABC234/joueurs"]) await bundle(path);
     expect(prepare).not.toHaveBeenCalled();
     expect(batch).not.toHaveBeenCalled();
+    // /j/X lit D1 (encart titre et animateur) mais sans résolution de session.
+    await bundle("/j/ABC234");
+    expect(prepare.mock.calls.map((c) => String(c[0])).filter((sql) => /\b(session|user|account)\b/i.test(sql) && !APERCU_PARTIE.test(sql))).toEqual([]);
   });
 
   it("témoin : avec un cookie de session, D1 est bien interrogé (le test précédent n'est pas vide)", async () => {

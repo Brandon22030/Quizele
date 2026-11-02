@@ -5,6 +5,9 @@ import { shouldResolveSession } from "../../../src/server/auth/routes";
 import { freshDb } from "../db/helpers";
 import { authFetch, captureConsoleMail, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
 
+// Requête légitime de l'encart de /j/X : statut, titre du quiz et nom de l'animateur, rien d'autre de la table user.
+const APERCU_PARTIE = /^select "game_sessions"\."status", "game_sessions"\."quiz_title", "user"\."name" from "game_sessions" inner join "user" on/;
+
 beforeEach(async () => {
   await freshDb();
   await env.DB.batch([env.DB.prepare("DELETE FROM rate_limit"), env.DB.prepare("DELETE FROM mail_quota")]);
@@ -59,14 +62,24 @@ describe("Astro Actions et session", () => {
     expect(await res.text()).toMatch(/UNAUTHORIZED/);
   });
 
-  it("aucune requête D1 sur /j/X, même avec un cookie de session valide", async () => {
+  it("aucune requête ne touche les tables session, user ou account sur /j/X, même avec un cookie valide", async () => {
     const cookie = await signIn("joueur-actions@example.test");
     const proto = Object.getPrototypeOf(env.DB) as D1Database;
     const prepare = vi.spyOn(proto, "prepare");
     const batch = vi.spyOn(proto, "batch");
+    // /j/X lit D1 pour l'encart titre et animateur (seule jointure autorisée : le nom de l'animateur), sans résoudre de session.
     await SELF.fetch(`${ORIGIN}/j/ABC234`, { redirect: "manual", headers: { cookie } });
-    expect(prepare).not.toHaveBeenCalled();
+    const touched = prepare.mock.calls.map((c) => String(c[0])).filter((sql) => /\b(session|user|account)\b/i.test(sql) && !APERCU_PARTIE.test(sql));
+    expect(touched).toEqual([]);
     expect(batch).not.toHaveBeenCalled();
+    // Témoin : sur `/`, le même cookie provoque bien la lecture de la session.
+    prepare.mockClear();
+    await SELF.fetch(`${ORIGIN}/`, { redirect: "manual", headers: { cookie } });
+    expect(prepare.mock.calls.map((c) => String(c[0])).some((sql) => /\b(session|user)\b/i.test(sql))).toBe(true);
+    // Chemin qui ne lit rien : aucune requête D1 du tout.
+    prepare.mockClear();
+    await SELF.fetch(`${ORIGIN}/api/parties/ABC234/joueurs`, { redirect: "manual", headers: { cookie } });
+    expect(prepare).not.toHaveBeenCalled();
   });
 
   describe("CSRF : envoi d'un autre site avec un cookie valide", () => {

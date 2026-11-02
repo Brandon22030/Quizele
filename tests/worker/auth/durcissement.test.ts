@@ -9,6 +9,9 @@ import { magicLinkMail } from "../../../src/server/mail/templates";
 import { freshDb } from "../db/helpers";
 import { authEnv, authFetch, captureConsoleMail, freshIp, ORIGIN, requestMagicLink, sessionCookie } from "./helpers";
 
+// Requête légitime de l'encart de /j/X : statut, titre du quiz et nom de l'animateur, rien d'autre de la table user.
+const APERCU_PARTIE = /^select "game_sessions"\."status", "game_sessions"\."quiz_title", "user"\."name" from "game_sessions" inner join "user" on/;
+
 beforeEach(async () => {
   await freshDb();
   await env.DB.batch([env.DB.prepare("DELETE FROM rate_limit"), env.DB.prepare("DELETE FROM mail_quota")]);
@@ -427,17 +430,24 @@ describe("middleware : résolution de session ciblée", () => {
     }
   });
 
-  it("aucune requête D1 sur /j/X, même avec un cookie de session valide", async () => {
+  it("aucune requête ne touche les tables session, user ou account sur /j/X, même avec un cookie valide", async () => {
     const { cookie } = await signIn("joueur@example.test");
     const proto = Object.getPrototypeOf(env.DB) as D1Database;
     const prepare = vi.spyOn(proto, "prepare");
     const batch = vi.spyOn(proto, "batch");
+    // /j/X lit D1 pour l'encart titre et animateur (seule jointure autorisée : le nom de l'animateur), sans résoudre de session.
     await SELF.fetch(`${ORIGIN}/j/ABC234`, { redirect: "manual", headers: { cookie } });
-    expect(prepare).not.toHaveBeenCalled();
+    const touched = prepare.mock.calls.map((c) => String(c[0])).filter((sql) => /\b(session|user|account)\b/i.test(sql) && !APERCU_PARTIE.test(sql));
+    expect(touched).toEqual([]);
     expect(batch).not.toHaveBeenCalled();
     // Témoin : la même session interroge bien D1 sur une page qui la résout.
+    prepare.mockClear();
     await SELF.fetch(`${ORIGIN}/`, { redirect: "manual", headers: { cookie } });
-    expect(prepare).toHaveBeenCalled();
+    expect(prepare.mock.calls.some((c) => /\b(session|user)\b/i.test(String(c[0])))).toBe(true);
+    // Chemin qui ne lit rien : aucune requête D1 du tout.
+    prepare.mockClear();
+    await SELF.fetch(`${ORIGIN}/api/parties/ABC234/joueurs`, { redirect: "manual", headers: { cookie } });
+    expect(prepare).not.toHaveBeenCalled();
   });
 });
 
