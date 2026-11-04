@@ -12,6 +12,13 @@ describe("CSV : pseudos hostiles (QA)", () => {
     }
   });
 
+  it("neutralise aussi une formule précédée d'espaces, en gardant la valeur d'origine après l'apostrophe", () => {
+    for (const p of [" =1+1", " @x", "  -2", "\u00a0+1", "\u3000=1"]) {
+      expect(echapperCellule(p)).toBe(`'${p}`);
+    }
+    expect(echapperCellule("  Grâce")).toBe("  Grâce");
+  });
+
   it("garde une ligne par joueur même avec guillemet, point-virgule et retour à la ligne", () => {
     const csv = construireCsv([j(1, 'a"b'), j(2, "c;d"), j(3, "e\nf"), j(4, "g\r\nh")], 3);
     // Un parseur CSV minimal : les cellules citées peuvent contenir ; et sauts de ligne.
@@ -74,9 +81,10 @@ describe("À revoir : cas limites (QA)", () => {
     expect(questionsARevoir(stats).map((q) => q.position)).toEqual([1, 2, 3]);
   });
 
-  it("la référence blanche est absente ; un taux arrondi à 100 % (199 sur 200) sort de la liste", () => {
+  it("la référence blanche est absente ; 199 sur 200 reste à revoir, sans jamais s'afficher à 100 %", () => {
     const [q] = questionsARevoir([{ position: 1, prompt: "a", correctLabels: ["x"], answerCount: 10, correctCount: 9, reference: "   " }]);
     expect(q?.reference).toBeNull();
-    expect(questionsARevoir([{ position: 1, prompt: "a", correctLabels: ["x"], answerCount: 200, correctCount: 199 }])).toEqual([]);
+    expect(questionsARevoir([{ position: 1, prompt: "a", correctLabels: ["x"], answerCount: 200, correctCount: 199 }]).map((x) => x.taux)).toEqual([99]);
+    expect(questionsARevoir([{ position: 1, prompt: "a", correctLabels: ["x"], answerCount: 200, correctCount: 200 }])).toEqual([]);
   });
 });

@@ -5,8 +5,10 @@ const BOM = "﻿";
 const SEPARATEUR = ";";
 const FIN_DE_LIGNE = "\r\n";
 
-// Une cellule qui commence par l'un de ces caractères serait lue comme une formule par un tableur (injection CSV).
-const DECLENCHEURS_FORMULE = /^[=+\-@\t\r]/;
+// Une cellule dont le premier caractère utile est l'un de ceux-ci serait lue comme une formule par un tableur
+// (injection CSV). Les espaces de tête sont ignorés par Excel, d'où le préfixe de blancs, y compris insécable et
+// idéographique.
+const DECLENCHEURS_FORMULE = /^[\s\u00a0\u3000]*[=+\-@\t\r\n]/u;
 
 export function neutraliserFormule(valeur: string): string {
   return DECLENCHEURS_FORMULE.test(valeur) ? `'${valeur}` : valeur;

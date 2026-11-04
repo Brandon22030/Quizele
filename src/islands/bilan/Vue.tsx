@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ArrowLeft, Download, Share2, Users } from "lucide-react";
+import { ArrowLeft, Download, Play, Share2, Users } from "lucide-react";
 import { Classement, Podium, type LigneClassement, type PlacePodium } from "../../components/jeu";
 import { Button } from "../../components/ui/button";
 import { EtatErreur } from "../../components/ui/etat-erreur";
@@ -16,6 +16,7 @@ import {
   formaterMoyenne,
   libelleJoueurs,
   urlExport,
+  urlPilotage,
   urlRetour,
   type DonneesBilan,
 } from "./logique";
@@ -66,12 +67,33 @@ export function VueChargement() {
 export function VueErreur({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <Cadre>
-      <EtatErreur titre="Bilan indisponible" onRetry={onRetry}>
+      <h1 className="mb-4 font-affiche text-2xl leading-tight">Bilan indisponible</h1>
+      <EtatErreur onRetry={onRetry}>
         {message}
       </EtatErreur>
       <Button href={urlRetour} variante="creme" taille="petit" className="mt-4">
         Retour aux parties jouées
       </Button>
+    </Cadre>
+  );
+}
+
+// Le bilan n'existe qu'une fois la partie terminée : d'ici là, le pilotage est la bonne page.
+export function VueEnCours({ sessionId, quizTitle }: { sessionId: string; quizTitle: string }) {
+  return (
+    <Cadre>
+      <h1 className="font-affiche text-2xl leading-tight break-words">{quizTitle}</h1>
+      <EtatVide
+        icone={<Play className="size-10" />}
+        titre="Partie en cours"
+        action={
+          <Button href={urlPilotage(sessionId)} taille="petit" className="w-full">
+            Reprendre le pilotage
+          </Button>
+        }
+      >
+        Le bilan sera disponible quand la partie sera terminée.
+      </EtatVide>
     </Cadre>
   );
 }
@@ -128,9 +150,16 @@ export function VueBilan({ donnees, image, annonce, onPartager, onReessayerImage
     <Cadre jouee={donnees.jouee} barre={barre}>
       <h1 className="font-affiche text-2xl leading-tight break-words">{donnees.quizTitle}</h1>
       {vide ? (
-        <EtatVide icone={<Users className="size-10" />} titre="Personne n'a joué cette partie">
-          Aucun joueur n'a rejoint : il n'y a ni classement ni question à revoir.
-        </EtatVide>
+        // Des statistiques sans joueur : la partie a été clôturée par le cron de secours, les scores n'ont pas été gardés.
+        total > 0 ? (
+          <EtatVide icone={<Users className="size-10" />} titre="Aucun résultat enregistré pour cette partie">
+            La partie a été clôturée automatiquement : ni classement ni question à revoir n'ont pu être gardés.
+          </EtatVide>
+        ) : (
+          <EtatVide icone={<Users className="size-10" />} titre="Personne n'a joué cette partie">
+            Aucun joueur n'a rejoint : il n'y a ni classement ni question à revoir.
+          </EtatVide>
+        )
       ) : (
         <>
           <div className="mt-3 flex flex-wrap gap-2">

@@ -15,7 +15,9 @@ if (!user) return Astro.redirect(`/connexion?retour=${encodeURIComponent(`/parti
 let initial: EtatBilan;
 try {
   const rapport = await getSessionReport(getDb(env.DB), user.id, sessionId);
-  if (rapport) {
+  if (rapport && rapport.session.status !== "ended") {
+    initial = { etat: "en-cours", sessionId, quizTitle: rapport.session.quizTitle };
+  } else if (rapport) {
     initial = { etat: "pret", donnees: construireDonnees(rapport.session, rapport.players, rapport.stats) };
   } else {
     Astro.response.status = 404;

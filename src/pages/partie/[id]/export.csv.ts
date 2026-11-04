@@ -24,6 +24,11 @@ export const GET: APIRoute = async ({ locals, params }) => {
     return new Response("Export indisponible.", { status: 500, headers: { ...PRIVE, "Content-Type": "text/plain; charset=utf-8" } });
   }
   if (!rapport) return introuvable();
+  // Pas d'export avant la fin : les lignes de résultats n'existent pas encore. Le propriétaire connaît déjà la partie,
+  // un 409 ne révèle rien à un tiers (le filtre de propriété a déjà renvoyé la 404 uniforme).
+  if (rapport.session.status !== "ended") {
+    return new Response("La partie n'est pas terminée.", { status: 409, headers: { ...PRIVE, "Content-Type": "text/plain; charset=utf-8" } });
+  }
 
   const donnees = construireDonnees(rapport.session, rapport.players, rapport.stats);
   return new Response(construireCsv(donnees.joueurs, donnees.total), {

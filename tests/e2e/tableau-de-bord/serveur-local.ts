@@ -1,5 +1,5 @@
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -89,6 +89,12 @@ export async function lancerServeur(decalage: number, vars: Record<string, strin
   actifs.add(serveur);
 
   try {
+    // Un build lancé en parallèle supprime dist/server/wrangler.json pendant environ 2 s : démarrer à ce moment échoue.
+    const attente = Date.now();
+    while (!existsSync(CONFIG)) {
+      if (Date.now() - attente > 60_000) throw new Error(`${CONFIG} est introuvable : le build est-il terminé ?`);
+      await new Promise((r) => setTimeout(r, 200));
+    }
     execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG, "--persist-to", dossier], {
       env,
       stdio: "ignore",
@@ -109,6 +115,9 @@ export async function lancerServeur(decalage: number, vars: Record<string, strin
       if (Date.now() - debut > 120_000) throw new Error(`wrangler dev n'a pas démarré sur ${port} :\n${sortie}`);
       await new Promise((r) => setTimeout(r, 200));
     }
+
+    // Requête de chauffe : la première compile le worker, elle ne doit pas retomber sur un test chronométré.
+    await fetch(`http://localhost:${port}/connexion`).catch(() => undefined);
 
     return {
       url: `http://localhost:${port}`,

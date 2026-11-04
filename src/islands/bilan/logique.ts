@@ -41,6 +41,7 @@ export interface DonneesBilan {
 export type EtatBilan =
   | { etat: "chargement" }
   | { etat: "erreur"; message: string; reessayable: boolean }
+  | { etat: "en-cours"; sessionId: string; quizTitle: string }
   | { etat: "pret"; donnees: DonneesBilan };
 
 export const MESSAGE_INTROUVABLE = "Ce bilan est introuvable. Il a peut-être été supprimé, car les bilans sont gardés 90 jours.";
@@ -48,6 +49,7 @@ export const MESSAGE_INDISPONIBLE = "Impossible de charger ce bilan pour le mome
 export const MENTION_PURGE = "Ce bilan sera supprimé automatiquement 90 jours après la partie.";
 
 export const urlRetour = "/tableau-de-bord?onglet=parties";
+export const urlPilotage = (sessionId: string): string => `/partie/${encodeURIComponent(sessionId)}`;
 export const urlExport = (sessionId: string): string => `/partie/${encodeURIComponent(sessionId)}/export.csv`;
 
 export function tauxReussite(stat: Pick<StatQuestion, "answerCount" | "correctCount">): number | null {
@@ -55,16 +57,18 @@ export function tauxReussite(stat: Pick<StatQuestion, "answerCount" | "correctCo
   return Math.round((stat.correctCount / stat.answerCount) * 100);
 }
 
-// Une question sans réponse n'a pas de taux, une question réussie par tous n'a rien à revoir : les deux sont écartées.
+// Une question sans réponse n'a pas de taux, une question sans aucune mauvaise réponse n'a rien à revoir : les deux
+// sont écartées d'après les comptes réels, pas le taux arrondi (199 sur 200 reste à revoir).
 export function questionsARevoir(stats: StatQuestion[]): QuestionARevoir[] {
   const lignes: QuestionARevoir[] = [];
   for (const stat of stats) {
     const taux = tauxReussite(stat);
-    if (taux === null || taux >= 100) continue;
+    if (taux === null || stat.correctCount >= stat.answerCount) continue;
     lignes.push({
       position: stat.position,
       prompt: stat.prompt,
-      taux,
+      // Une question ratée ne s'affiche jamais à 100 % : l'arrondi de 199 sur 200 donnerait 100.
+      taux: Math.min(taux, 99),
       bonneReponse: stat.correctLabels.join(", "),
       reference: stat.reference?.trim() ? stat.reference : null,
     });

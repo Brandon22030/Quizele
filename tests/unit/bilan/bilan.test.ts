@@ -11,7 +11,8 @@ import {
   type JoueurBilan,
   type StatQuestion,
 } from "../../../src/islands/bilan/logique";
-import { VueBilan, VueChargement, VueErreur } from "../../../src/islands/bilan/Vue";
+import { CarteARevoir } from "../../../src/islands/bilan/CarteARevoir";
+import { VueBilan, VueChargement, VueEnCours, VueErreur } from "../../../src/islands/bilan/Vue";
 
 const stat = (position: number, answerCount: number, correctCount: number, extra: Partial<StatQuestion> = {}): StatQuestion => ({
   position,
@@ -116,11 +117,31 @@ describe("états de la vue", () => {
     expect(rendu(createElement(VueErreur, { message: "Panne", onRetry: () => {} }))).toContain("Réessayer");
   });
 
-  it("rend l'état vide pour une partie sans joueur", () => {
-    const vide = { ...donnees, joueurs: [], moyenne: null, aRevoir: [] };
+  it("rend l'état vide pour une partie sans joueur ni statistique", () => {
+    const vide = { ...donnees, total: 0, joueurs: [], moyenne: null, aRevoir: [] };
     const html = rendu(createElement(VueBilan, { donnees: vide, image: "preparation", annonce: "", onPartager() {}, onReessayerImage() {} }));
     expect(html).toContain("Personne n&#x27;a joué cette partie");
     expect(html).not.toContain("Exporter");
+  });
+
+  it("nuance l'état vide quand des statistiques existent sans joueur (clôture de secours)", () => {
+    const vide = { ...donnees, joueurs: [], moyenne: null, aRevoir: [] };
+    const html = rendu(createElement(VueBilan, { donnees: vide, image: "preparation", annonce: "", onPartager() {}, onReessayerImage() {} }));
+    expect(html).toContain("Aucun résultat enregistré pour cette partie");
+    expect(html).not.toContain("Personne n&#x27;a joué");
+  });
+
+  it("rend l'erreur avec un titre de niveau 1 et la partie en cours avec le lien du pilotage", () => {
+    expect(rendu(createElement(VueErreur, { message: "Panne" }))).toContain("<h1");
+    const html = rendu(createElement(VueEnCours, { sessionId: "s1", quizTitle: "Camp" }));
+    expect(html).toContain("Partie en cours");
+    expect(html).toContain('href="/partie/s1"');
+  });
+
+  it("annonce le taux d'une carte d'un seul tenant pour les lecteurs d'écran", () => {
+    const html = rendu(createElement(CarteARevoir, { question: { position: 1, prompt: "Q", taux: 33, bonneReponse: "Six", reference: null } }));
+    expect(html).toContain("pour cent");
+    expect(html).toContain("de bonnes réponses");
   });
 
   it("rend le bilan avec la mention de purge, l'export et les cartes", () => {

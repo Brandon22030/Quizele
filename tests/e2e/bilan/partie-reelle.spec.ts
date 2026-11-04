@@ -36,9 +36,9 @@ async function ouvrir(browser: Browser, serveur: ServeurLocal, email: string) {
   await hydrate(page);
   await page.getByLabel("Ton adresse e-mail").fill(email);
   await page.getByRole("button", { name: "Recevoir un lien par e-mail" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Regarde ta boîte mail" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Regarde ta boîte mail" })).toBeVisible({ timeout: 30_000 });
   await page.goto(await serveur.lienMagique(email));
-  await expect(page).toHaveURL(/\/tableau-de-bord$/);
+  await expect(page).toHaveURL(/\/tableau-de-bord$/, { timeout: 30_000 });
   cookies.set(email, await contexte.cookies());
   return { contexte, page };
 }
