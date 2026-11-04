@@ -1,0 +1,32 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../../../layouts/Base.astro";
+import Bilan from "../../../islands/bilan/Bilan";
+import { MESSAGE_INDISPONIBLE, MESSAGE_INTROUVABLE, construireDonnees, type EtatBilan } from "../../../islands/bilan/logique";
+import { getDb } from "../../../server/db/client";
+import { getSessionReport } from "../../../server/db/results";
+
+// Le middleware redirige déjà vers /connexion : ce garde sert au typage.
+const user = Astro.locals.user;
+const sessionId = Astro.params.id ?? "";
+if (!user) return Astro.redirect(`/connexion?retour=${encodeURIComponent(`/partie/${sessionId}/bilan`)}`);
+
+// getSessionReport filtre sur le propriétaire : partie absente, purgée ou d'un autre animateur, c'est la même 404.
+let initial: EtatBilan;
+try {
+  const rapport = await getSessionReport(getDb(env.DB), user.id, sessionId);
+  if (rapport) {
+    initial = { etat: "pret", donnees: construireDonnees(rapport.session, rapport.players, rapport.stats) };
+  } else {
+    Astro.response.status = 404;
+    initial = { etat: "erreur", message: MESSAGE_INTROUVABLE, reessayable: false };
+  }
+} catch {
+  Astro.response.status = 500;
+  initial = { etat: "erreur", message: MESSAGE_INDISPONIBLE, reessayable: true };
+}
+---
+
+<Base title="Bilan de la partie - Quizdeszeles">
+  <Bilan client:load initial={initial} />
+</Base>
