@@ -9,3 +9,5 @@ MAIL_FROM=Quizdeszeles <local@example.invalid>
 MAIL_TRANSPORT=console
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+# LOCAL_TOOLS=true  # outils locaux (partie de démonstration) : jamais en preview ni en production
+# MAGIC_LINK_ENABLED=true  # false tant qu'aucun domaine d'envoi n'est vérifié

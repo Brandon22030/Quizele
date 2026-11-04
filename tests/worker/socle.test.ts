@@ -25,9 +25,8 @@ describe("socle : Worker Astro", () => {
     expect(res.status).toBe(404);
   });
 
-  it("expose les bindings D1, DO et R2 et les vars de test", async () => {
+  it("expose les bindings D1 et DO et les vars de test", async () => {
     expect(env.DB).toBeDefined();
-    expect(env.MEDIA).toBeDefined();
     expect(env.GAME_SESSION).toBeDefined();
     expect(env.MAIL_TRANSPORT).toBe("console");
     expect(env.PLAYER_TOKEN_SECRET?.length ?? 0).toBeGreaterThanOrEqual(32);
@@ -36,12 +35,6 @@ describe("socle : Worker Astro", () => {
   it("D1 local répond à une requête", async () => {
     const row = await env.DB.prepare("SELECT 1 AS un").first<{ un: number }>();
     expect(row?.un).toBe(1);
-  });
-
-  it("R2 local accepte une écriture puis une lecture", async () => {
-    await env.MEDIA.put("test/ok.txt", "bonjour");
-    expect(await (await env.MEDIA.get("test/ok.txt"))?.text()).toBe("bonjour");
-    await env.MEDIA.delete("test/ok.txt");
   });
 
   it("le Durable Object GameSession est adressable", async () => {

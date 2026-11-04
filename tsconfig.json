@@ -7,5 +7,5 @@
     "noEmit": true
   },
   "include": [".astro/types.d.ts", "worker-configuration.d.ts", "src/**/*", "tests/**/*", "scripts/**/*", "astro.config.mjs"],
-  "exclude": ["node_modules", "dist", "app", "lib", "components", "types", "sql", "middleware.ts", "next.config.ts"]
+  "exclude": ["node_modules", "dist"]
 }

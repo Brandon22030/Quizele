@@ -12,7 +12,7 @@
   "triggers": { "crons": ["0 3 * * *"] },
 
   // Niveau supérieur = développement local uniquement : valeurs factices, aucun secret réel.
-  // Les identifiants A_REMPLACER (ou a-remplacer-*, imposé par le format des noms R2) sont fournis par QZ-002-21.
+  // Les identifiants A_REMPLACER sont fournis par QZ-002-21.
   // Les environnements nommés n'héritent ni des bindings ni des vars, d'où la répétition.
   "d1_databases": [
     {
@@ -22,7 +22,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "quizdeszeles-media-local" }],
   "durable_objects": {
     "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
   },
@@ -34,6 +33,8 @@
     "RESEND_API_KEY": "",
     "MAIL_FROM": "Quizdeszeles <local@example.invalid>",
     "MAIL_TRANSPORT": "console",
+    "LOCAL_TOOLS": "true",
+    "MAGIC_LINK_ENABLED": "true",
     "GOOGLE_CLIENT_ID": "",
     "GOOGLE_CLIENT_SECRET": ""
   },
@@ -50,7 +51,6 @@
           "migrations_dir": "migrations"
         }
       ],
-      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "a-remplacer-media-preview" }],
       "durable_objects": {
         "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
       },
@@ -59,6 +59,7 @@
         "BETTER_AUTH_URL": "A_REMPLACER",
         "MAIL_FROM": "A_REMPLACER",
         "MAIL_TRANSPORT": "resend",
+        "MAGIC_LINK_ENABLED": "false",
         "GOOGLE_CLIENT_ID": ""
       }
     },
@@ -73,7 +74,6 @@
           "migrations_dir": "migrations"
         }
       ],
-      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "a-remplacer-media-production" }],
       "durable_objects": {
         "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
       },
@@ -82,6 +82,7 @@
         "BETTER_AUTH_URL": "A_REMPLACER",
         "MAIL_FROM": "A_REMPLACER",
         "MAIL_TRANSPORT": "resend",
+        "MAGIC_LINK_ENABLED": "false",
         "GOOGLE_CLIENT_ID": ""
       }
     }
