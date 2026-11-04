@@ -1,6 +1,6 @@
 import { exports } from "cloudflare:workers";
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS, WS_SUBPROTOCOL } from "../../../src/shared/protocol";
 import {
   closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
@@ -9,6 +9,8 @@ import {
 
 const opened: Client[] = [];
 afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   for (const client of opened.splice(0)) client.close();
 });
 
@@ -282,6 +284,33 @@ describe("regroupement du compteur de réponses", () => {
     // Réponses resserrées (moins de 2,5 s d'étalement) : le regroupement doit toujours économiser des diffusions.
     if (span! < 2_500) expect(counts.length).toBeLessThan(12);
     expect(counts.at(-1)).toMatchObject({ count: 12, total: 12 });
+  });
+
+  it("un minuteur en retard ne double pas un compteur déjà envoyé par une réponse arrivée après l'intervalle", async () => {
+    const { code, host } = await game(1);
+    host.send({ type: "start" });
+    await host.waitFor("question");
+    // Minuteurs et horloge du Durable Object simulés : on reproduit exactement la charge qui retarde le minuteur.
+    const calls = await runInDurableObject(stubFor(code), (instance) => {
+      const session = instance as unknown as { notifyCount(): void; sendCount(): void };
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const sendCount = vi.spyOn(session, "sendCount");
+      const t0 = Date.now();
+      session.notifyCount();
+      vi.setSystemTime(t0 + 10);
+      session.notifyCount();
+      // Le minuteur armé pour t0 + 250 ne s'est pas encore déclenché quand la réponse suivante arrive à t0 + 300.
+      vi.setSystemTime(t0 + 300);
+      session.notifyCount();
+      vi.runAllTimers();
+      const afterLateTimer = sendCount.mock.calls.length;
+      // Le regroupement normal reste actif : une réponse dans l'intervalle arme un minuteur qui envoie le compteur.
+      vi.setSystemTime(t0 + 310);
+      session.notifyCount();
+      vi.runAllTimers();
+      return [afterLateTimer, sendCount.mock.calls.length];
+    });
+    expect(calls).toEqual([2, 3]);
   });
 });
 
