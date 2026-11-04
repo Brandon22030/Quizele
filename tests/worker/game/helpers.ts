@@ -1,6 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import { getDb } from "../../../src/server/db/client";
 import { gameSessions, user } from "../../../src/server/db/schema";
@@ -226,6 +226,18 @@ export async function setup(playerCount: number, quiz?: QuizDefinition) {
   const players: Player[] = [];
   for (let i = 0; i < playerCount; i += 1) players.push(await addPlayer(code, `Joueur ${i}`));
   return { code, host, players };
+}
+
+// Le Durable Object tourne dans le même isolat que les tests : remplacer Date.now fige aussi son horloge. Les délais,
+// seaux à jetons et recharges ne dépendent alors plus de la durée réelle du test, donc plus de la charge de la machine.
+// Les minuteurs restent réels : l'attente d'un message ne change pas. À annuler par restore() (ou vi.restoreAllMocks).
+export function freezeClock(at: number = Date.now()) {
+  let now = at;
+  const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+  return {
+    set: (value: number) => void (now = value),
+    restore: () => spy.mockRestore(),
+  };
 }
 
 // Simule le temps écoulé en reculant l'horodatage de départ stocké : le DO juge le délai à partir de lui.
