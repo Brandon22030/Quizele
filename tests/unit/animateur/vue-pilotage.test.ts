@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SessionState } from "../../../src/client/realtime/session-state";
+import { TelecommandeQuestion } from "../../../src/islands/animateur/Telecommande";
 import { ChargementPilotage, EchecPilotage, VuePilotage } from "../../../src/islands/animateur/VuePilotage";
 import { VueProjection } from "../../../src/islands/animateur/VueProjection";
 import { CODE, etat, instantane, question, revelation } from "./aide";
@@ -67,11 +68,23 @@ describe("télécommande (k8)", () => {
     expect(desactive(html, "Terminer et afficher les résultats")).toBe(false);
   });
 
-  it("correction : bonne réponse visible par l'animateur, suivante active, révéler inactif", () => {
+  it("correction : bonne réponse repliée par défaut, suivante active, révéler inactif", () => {
     const html = pilotage(etat([instantane(), question(), revelation]));
-    expect(html).toContain("B. Noé");
+    expect(html).toContain("Voir la bonne réponse");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("B. Noé");
+    expect(html).not.toContain("visible par toi seul");
     expect(desactive(html, "Révéler la réponse")).toBe(true);
     expect(desactive(html, "Question suivante")).toBe(false);
+  });
+
+  it("correction : la bonne réponse n'apparaît dans la télécommande qu'une fois le repli ouvert", () => {
+    const state = etat([instantane(), question(), revelation]);
+    const ferme = renderToStaticMarkup(createElement(TelecommandeQuestion, { state }));
+    expect(ferme).not.toContain("Noé");
+    const ouvert = renderToStaticMarkup(createElement(TelecommandeQuestion, { state, reponseVisible: true, onBasculerReponse: rien }));
+    expect(ouvert).toContain('aria-expanded="true"');
+    expect(ouvert).toContain("B. Noé");
   });
 
   it("hors connexion, toutes les commandes sont inactives", () => {
@@ -153,6 +166,19 @@ describe("projection (i)", () => {
     const c = projeter(etat([instantane({ role: "screen" }), question(), { type: "reveal", questionId: "q3" }]));
     expect(c).toContain("La bonne réponse n&#x27;est pas montrée");
     expect(c).not.toContain("Bonne réponse<");
+  });
+
+  it("partie introuvable : lien secondaire vers le bilan, absent sans identifiant de partie", () => {
+    const avec = renderToStaticMarkup(createElement(EchecPilotage, { echec: "introuvable", onReessayer: rien, sessionId: "s1" }));
+    expect(avec).toContain('href="/partie/s1/bilan"');
+    expect(avec).toContain("Voir le bilan");
+    const sans = renderToStaticMarkup(createElement(EchecPilotage, { echec: "reseau", onReessayer: rien, sessionId: "s1" }));
+    expect(sans).not.toContain("Voir le bilan");
+  });
+
+  it("connexion requise : le retour ramène sur la partie", () => {
+    const html = renderToStaticMarkup(createElement(EchecPilotage, { echec: "connexion", onReessayer: rien, sessionId: "s1" }));
+    expect(html).toContain("retour=%2Fpartie%2Fs1");
   });
 
   it("chargement et jeton refusé", () => {

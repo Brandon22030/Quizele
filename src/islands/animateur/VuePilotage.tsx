@@ -13,7 +13,7 @@ import { FocusTitre } from "../joueur/FocusTitre";
 import { PartageCode, TicketCode } from "./CodeEtLien";
 import { ParticipantsHote } from "./ParticipantsHote";
 import { BarreCommandes, TelecommandeLibre, TelecommandeQuestion } from "./Telecommande";
-import { annoncePhase, messageErreurServeur, messageEchec, urlBilan, vueHote, type EchecAcces, type VueHote } from "./logique";
+import { annoncePhase, messageErreurServeur, messageEchec, urlBilan, urlPilotage, vueHote, type EchecAcces, type VueHote } from "./logique";
 
 export interface VuePilotageProps {
   sessionId: string;
@@ -25,6 +25,8 @@ export interface VuePilotageProps {
   onTerminer: () => void;
   onRetirer: (playerId: string) => void;
   onProjeter: () => void;
+  // Sert à refermer la bonne réponse et les notifications quand la projection s'ouvre ou se ferme.
+  projectionOuverte?: boolean;
 }
 
 interface Message {
@@ -49,10 +51,12 @@ export function ChargementPilotage({ status = "connecting" }: { status?: Session
 interface EchecProps {
   echec: EchecAcces;
   onReessayer: () => void;
+  sessionId?: string;
 }
 
-export function EchecPilotage({ echec, onReessayer }: EchecProps) {
+export function EchecPilotage({ echec, onReessayer, sessionId }: EchecProps) {
   const message = messageEchec(echec);
+  const retour = sessionId ? urlPilotage(sessionId) : "/tableau-de-bord";
   return (
     <div className="mx-auto w-full max-w-xl px-4 pt-6">
       <FocusTitre selecteur="h1" />
@@ -60,9 +64,14 @@ export function EchecPilotage({ echec, onReessayer }: EchecProps) {
       <EtatErreur titre={message.titre} onRetry={message.reessayer ? onReessayer : undefined}>
         {message.texte}
       </EtatErreur>
-      <Button bloc variante="creme" href={echec === "connexion" ? "/connexion?retour=%2Ftableau-de-bord" : "/tableau-de-bord"} className="mt-4">
+      <Button bloc variante="creme" href={echec === "connexion" ? `/connexion?retour=${encodeURIComponent(retour)}` : "/tableau-de-bord"} className="mt-4">
         {echec === "connexion" ? "Me connecter" : "Retour au tableau de bord"}
       </Button>
+      {echec === "introuvable" && sessionId ? (
+        <a href={urlBilan(sessionId)} className="mt-2 inline-flex min-h-11 items-center font-extrabold underline decoration-trait underline-offset-4">
+          Voir le bilan
+        </a>
+      ) : null}
     </div>
   );
 }
@@ -70,8 +79,17 @@ export function EchecPilotage({ echec, onReessayer }: EchecProps) {
 // Partie finie (ou socket fermée par le serveur à la fin) : classement et lien vers le bilan, construit par QZ-002-17.
 function FinPartie({ state, sessionId, termine }: { state: SessionState; sessionId: string; termine: boolean }) {
   const classement = state.ranking;
-  const places: PlacePodium[] = classement.slice(0, 3).map((l) => ({ playerId: l.playerId, rank: l.rank as 1 | 2 | 3, pseudo: l.pseudo }));
-  const lignes: LigneClassement[] = classement.slice(3).map((l) => ({ playerId: l.playerId, rank: l.rank, pseudo: l.pseudo, score: l.score }));
+  const places: PlacePodium[] = classement.slice(0, 3).map((l) => ({
+    playerId: l.playerId,
+    rank: l.rank as 1 | 2 | 3,
+    pseudo: l.pseudo,
+  }));
+  const lignes: LigneClassement[] = classement.slice(3).map((l) => ({
+    playerId: l.playerId,
+    rank: l.rank,
+    pseudo: l.pseudo,
+    score: l.score,
+  }));
   const total = state.totalQuestions ?? 0;
   return (
     <section className="px-4 pt-3">
@@ -137,6 +155,15 @@ export function VuePilotage(props: VuePilotageProps) {
   const [message, setMessage] = useState<Message | null>(null);
   const [retraitDemande, setRetraitDemande] = useState<string | null>(null);
   const finRetrait = useCallback(() => setRetraitDemande(null), []);
+  const [reponse, setReponse] = useState({ ouverte: false, cle: "" });
+  const cleReponse = `${state.question?.questionId ?? ""}-${props.projectionOuverte ? "p" : "t"}`;
+  // La clé change à chaque question et à chaque ouverture ou fermeture de la projection : le repli se referme sans effet différé.
+  const reponseVisible = reponse.ouverte && reponse.cle === cleReponse;
+
+  // Une erreur affichée en toast ne doit pas rester sur le grand écran.
+  useEffect(() => {
+    if (props.projectionOuverte) setMessage(null);
+  }, [props.projectionOuverte]);
 
   // Hors des phases de jeu, la fenêtre de confirmation de fin n'a plus d'objet (partie finie par le serveur entre-temps).
   useEffect(() => {
@@ -151,7 +178,10 @@ export function VuePilotage(props: VuePilotageProps) {
       await navigator.clipboard.writeText(url);
       setMessage({ variante: "succes", texte: "Lien copié." });
     } catch {
-      setMessage({ variante: "erreur", texte: "Copie impossible. Sélectionne le lien affiché pour le copier." });
+      setMessage({
+        variante: "erreur",
+        texte: "Copie impossible. Sélectionne le lien affiché pour le copier.",
+      });
     }
   }, [code]);
 
@@ -165,7 +195,7 @@ export function VuePilotage(props: VuePilotageProps) {
     contenu = (
       <>
         <FocusTitre key={`${state.question?.questionId}-${vue}`} selecteur="[data-focus-titre]" />
-        <TelecommandeQuestion state={state} />
+        <TelecommandeQuestion state={state} reponseVisible={reponseVisible} onBasculerReponse={() => setReponse({ ouverte: !reponseVisible, cle: cleReponse })} />
       </>
     );
   else if (vue === "libre")
@@ -249,8 +279,20 @@ export function VuePilotage(props: VuePilotageProps) {
       </Modal>
 
       <ZoneToasts
-        statuts={message?.variante === "succes" ? <Toast variante="succes" duree={3000} onClose={() => setMessage(null)}>{message.texte}</Toast> : null}
-        alertes={message?.variante === "erreur" ? <Toast variante="erreur" onClose={() => setMessage(null)}>{message.texte}</Toast> : null}
+        statuts={
+          message?.variante === "succes" ? (
+            <Toast variante="succes" duree={3000} onClose={() => setMessage(null)}>
+              {message.texte}
+            </Toast>
+          ) : null
+        }
+        alertes={
+          message?.variante === "erreur" ? (
+            <Toast variante="erreur" onClose={() => setMessage(null)}>
+              {message.texte}
+            </Toast>
+          ) : null
+        }
       />
     </div>
   );

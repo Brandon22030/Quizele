@@ -151,6 +151,10 @@
   outline-style: var(--tw-outline-style, solid);
   outline-width: var(--spacing-trait);
 }
+/* Même raison : l'épaisseur du soulignement des liens vient du jeton, aucun utilitaire natif ne la lit. */
+@utility decoration-trait {
+  text-decoration-thickness: var(--spacing-trait);
+}
 
 /* Formes réutilisables, en variables CSS : clip-path et mask ne passent pas par le thème Tailwind. */
 @layer components {

@@ -4,6 +4,7 @@ import { useGameSession } from "../../client/realtime/use-game-session";
 import { Projection } from "./Projection";
 import { ChargementPilotage, EchecPilotage, VuePilotage } from "./VuePilotage";
 import { echecDepuisCode, lireJetonHote, oublierJetonHote, type EchecAcces, type JetonHote } from "./logique";
+import { memoriserHote } from "../tableau-de-bord/logique";
 
 interface Props {
   sessionId: string;
@@ -39,7 +40,17 @@ export default function Pilotage({ sessionId }: Props) {
       .jetonHote({ sessionId })
       .then(({ data, error }) => {
         if (annule) return;
-        setAcces(error ? { etat: "echec", echec: echecDepuisCode(error.code) } : { etat: "pret", source: "action", ...data });
+        if (error) {
+          setAcces({ etat: "echec", echec: echecDepuisCode(error.code) });
+          return;
+        }
+        // Un rechargement du même onglet reprend ainsi sans nouvel appel serveur.
+        memoriserHote(stockageSession(), {
+          sessionId,
+          code: data.code,
+          hostToken: data.token,
+        });
+        setAcces({ etat: "pret", source: "action", ...data });
       })
       .catch(() => !annule && setAcces({ etat: "echec", echec: "reseau" }));
     return () => {
@@ -52,8 +63,11 @@ export default function Pilotage({ sessionId }: Props) {
   const surRejet = useCallback(
     (source: "stockage" | "action") => {
       oublierJetonHote(stockageSession(), sessionId);
-      if (source === "stockage") setEssai((n) => n + 1);
-      else setAcces({ etat: "echec", echec: "expire" });
+      if (source === "stockage") {
+        // Sans cela, le jeton refusé resterait affiché le temps du nouvel essai et rouvrirait une socket avec lui.
+        setAcces({ etat: "recherche" });
+        setEssai((n) => n + 1);
+      } else setAcces({ etat: "echec", echec: "expire" });
     },
     [sessionId],
   );
@@ -63,6 +77,7 @@ export default function Pilotage({ sessionId }: Props) {
     return (
       <EchecPilotage
         echec={acces.echec}
+        sessionId={sessionId}
         onReessayer={() => {
           setEssai((n) => n + 1);
         }}
@@ -82,7 +97,10 @@ interface PartieProps {
 
 function PartieHote({ sessionId, code, token, source, onRejet }: PartieProps) {
   const getToken = useCallback(() => token, [token]);
-  const { state, start, reveal, next, end, kick } = useGameSession({ code, getToken });
+  const { state, start, reveal, next, end, kick } = useGameSession({
+    code,
+    getToken,
+  });
   const [projection, setProjection] = useState(false);
 
   useEffect(() => {
@@ -97,7 +115,8 @@ function PartieHote({ sessionId, code, token, source, onRejet }: PartieProps) {
     setProjection(false);
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
     // Le bouton Projeter reprend le focus : la projection recouvrait la page, le focus ne doit pas tomber sur body.
-    requestAnimationFrame(() => document.getElementById("bouton-projeter")?.focus());
+    // Si la partie a fini pendant la projection, ce bouton n'existe plus : le titre de la page prend le relais.
+    requestAnimationFrame(() => (document.getElementById("bouton-projeter") ?? document.querySelector<HTMLElement>("[data-focus-titre]"))?.focus());
   }, []);
 
   useEffect(() => {
@@ -140,6 +159,7 @@ function PartieHote({ sessionId, code, token, source, onRejet }: PartieProps) {
           onTerminer={end}
           onRetirer={kick}
           onProjeter={projeter}
+          projectionOuverte={projection}
         />
       </div>
       {projection ? <Projection sessionId={sessionId} onFermer={fermerProjection} /> : null}

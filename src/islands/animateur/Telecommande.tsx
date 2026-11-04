@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Play, Timer } from "lucide-react";
+import { ChevronDown, Play, Timer } from "lucide-react";
 import type { SessionState } from "../../client/realtime/session-state";
 import { Jauge } from "../../components/jeu";
 import { chronoLevel, chronoSnapshot, secondsLeft, startChronoTicker } from "../../components/jeu/chrono-state";
@@ -45,7 +45,7 @@ export function BarreCommandes({ state, onDemarrer, onReveler, onSuivante, onTer
           </>
         ) : null}
         {phase !== "finished" ? (
-          <Button bloc taille="petit" variante={ensemble && !enJeu && phase !== "lobby" ? "soleil" : "creme"} disabled={!ok.terminer} onClick={onTerminer}>
+          <Button bloc taille="petit" variante="creme" disabled={!ok.terminer} onClick={onTerminer}>
             {libelleTerminer(state)}
           </Button>
         ) : null}
@@ -113,7 +113,15 @@ export function CompteurReponses({ repondus, total, titre = "Ont répondu", labe
   );
 }
 
-export function TelecommandeQuestion({ state }: { state: SessionState }) {
+interface QuestionProps {
+  state: SessionState;
+  reponseVisible?: boolean;
+  onBasculerReponse?: () => void;
+}
+
+// La bonne réponse reste repliée par défaut : l'animateur pilote parfois en projetant son écran, et un quiz qui masque
+// la correction ne doit pas la laisser apparaître sur le grand écran.
+export function TelecommandeQuestion({ state, reponseVisible = false, onBasculerReponse }: QuestionProps) {
   const question = state.question!;
   const revele = state.phase === "revealed";
   const justes = bonnesReponses(state);
@@ -133,18 +141,28 @@ export function TelecommandeQuestion({ state }: { state: SessionState }) {
       <Papier className="mx-4 mt-6 px-4 py-4">
         <p className="font-affiche text-xl break-words">{question.prompt}</p>
         {revele && justes.length > 0 ? (
-          <p className="mt-2 text-sm font-bold text-vert-mousse">
-            {justes.length > 1 ? "Bonnes réponses : " : "Bonne réponse : "}
-            <b className="text-vert-foret">{justes.join(" ; ")}</b> (visible par toi seul)
-          </p>
+          <div className="mt-2">
+            <button
+              type="button"
+              aria-expanded={reponseVisible}
+              onClick={onBasculerReponse}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-extrabold text-vert-foret underline decoration-trait underline-offset-4"
+            >
+              <ChevronDown aria-hidden="true" className={cn("size-5 motion-safe:transition-transform", reponseVisible && "rotate-180")} />
+              {justes.length > 1 ? "Voir les bonnes réponses" : "Voir la bonne réponse"}
+            </button>
+            {reponseVisible ? (
+              <p className="text-sm font-bold text-vert-mousse">
+                <b className="text-vert-foret">{justes.join(" ; ")}</b>
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </Papier>
       <div className="px-4 pt-6">
         <CompteurReponses repondus={state.answeredCount} total={state.playerCount} />
         <p className="mt-3 text-sm font-semibold">
-          {revele
-            ? "Les joueurs voient la correction. Passe à la suite quand tu es prêt."
-            : "Le grand écran montre la question et le chrono. Les joueurs voient la correction quand tu la révèles."}
+          {revele ? "Les joueurs voient la correction. Passe à la suite quand tu es prêt." : "Le grand écran montre la question et le chrono. Les joueurs voient la correction quand tu la révèles."}
         </p>
       </div>
     </>

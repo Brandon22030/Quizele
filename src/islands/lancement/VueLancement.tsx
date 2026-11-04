@@ -97,23 +97,23 @@ export function VueLancement({ quizId, etat, lancementEnCours, erreurLancement, 
             <div className="sticky bottom-0 mt-6 bg-jaune-soleil">
               <div aria-hidden="true" className="h-trait bg-vert-foret" />
               <div className="flex flex-col gap-3 px-4 pt-4 pb-6">
-              {erreurLancement ? <EtatErreur titre="Lancement impossible">{erreurLancement}</EtatErreur> : null}
-              <Button
-                bloc
-                disabled={!peutLancer(etat.status)}
-                chargement={lancementEnCours}
-                libelleChargement="Lancement de la partie en cours"
-                onClick={onLancer}
-                aria-describedby={peutLancer(etat.status) ? undefined : "aide-lancement"}
-              >
-                <Play aria-hidden="true" className="size-5" />
-                Lancer la partie
-              </Button>
-              {peutLancer(etat.status) ? null : (
-                <p id="aide-lancement" className="text-center text-sm font-bold">
-                  Complète les points signalés ci-dessus pour lancer la partie.
-                </p>
-              )}
+                {erreurLancement ? <EtatErreur titre="Lancement impossible">{erreurLancement}</EtatErreur> : null}
+                <Button
+                  bloc
+                  disabled={!peutLancer(etat.status)}
+                  chargement={lancementEnCours}
+                  libelleChargement="Lancement de la partie en cours"
+                  onClick={onLancer}
+                  aria-describedby={peutLancer(etat.status) ? undefined : "aide-lancement"}
+                >
+                  <Play aria-hidden="true" className="size-5" />
+                  Lancer la partie
+                </Button>
+                {peutLancer(etat.status) ? null : (
+                  <p id="aide-lancement" className="text-center text-sm font-bold">
+                    Complète les points signalés ci-dessus pour lancer la partie.
+                  </p>
+                )}
               </div>
             </div>
           </>

@@ -329,6 +329,8 @@ test.describe("lancement, pilotage et projection (session réelle)", () => {
     await autreOnglet.close();
 
     await page.getByRole("button", { name: "Révéler la réponse" }).click();
+    await expect(page.getByText("B. Noé")).toHaveCount(0);
+    await page.getByRole("button", { name: "Voir la bonne réponse" }).click();
     await expect(page.getByText("B. Noé")).toBeVisible();
     await expect(page.getByRole("button", { name: "Révéler la réponse" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Question suivante" })).toBeEnabled();
