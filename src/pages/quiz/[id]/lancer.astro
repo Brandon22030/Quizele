@@ -1,0 +1,15 @@
+---
+import Base from "../../../layouts/Base.astro";
+import Lancement from "../../../islands/lancement/Lancement";
+
+// Comme l'éditeur, la page ne lit pas le quiz : l'îlot le charge par l'action `quiz.charger`, qui vérifie le propriétaire.
+// Le jeton hôte n'existe qu'après le lancement et ne passe jamais par cette page.
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/tableau-de-bord");
+---
+
+<Base title="Lancer une partie - Quizdeszeles">
+  <main>
+    <Lancement client:load quizId={id} />
+  </main>
+</Base>

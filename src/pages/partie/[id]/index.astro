@@ -1,0 +1,15 @@
+---
+import Base from "../../../layouts/Base.astro";
+import Pilotage from "../../../islands/animateur/Pilotage";
+
+// Le serveur ne rend que la coquille : le jeton hôte se récupère dans le navigateur (sessionStorage ou action jetonHote),
+// jamais dans l'URL ni dans ce HTML. La session de l'animateur est déjà exigée par le middleware.
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/tableau-de-bord");
+---
+
+<Base theme="foret" title="Pilotage de la partie - Quizdeszeles">
+  <main>
+    <Pilotage client:load sessionId={id} />
+  </main>
+</Base>
