@@ -64,17 +64,18 @@ export async function findActiveSessionByCode(db: Db, code: string) {
 // l'id du quiz. Contrairement à findActiveSessionByCode, une partie terminée est renvoyée (la plus récente du code)
 // pour dire « terminée » plutôt que « inconnue ».
 export async function findJoinPreviewByCode(db: Db, code: string) {
-  return (
-    (await db
-      .select({ status: gameSessions.status, quizTitle: gameSessions.quizTitle, hostName: user.name })
-      .from(gameSessions)
-      .innerJoin(user, eq(user.id, gameSessions.ownerId))
-      .where(eq(gameSessions.code, code))
-      .orderBy(desc(gameSessions.createdAt))
-      .limit(1)
-      .get()) ?? null
-  );
+  return (await joinPreviewQuery(db, code).get()) ?? null;
 }
+
+// Exposée pour que le test de plan de requête vérifie l'usage de l'index sur le SQL réellement exécuté.
+export const joinPreviewQuery = (db: Db, code: string) =>
+  db
+    .select({ status: gameSessions.status, quizTitle: gameSessions.quizTitle, hostName: user.name })
+    .from(gameSessions)
+    .innerJoin(user, eq(user.id, gameSessions.ownerId))
+    .where(eq(gameSessions.code, code))
+    .orderBy(desc(gameSessions.createdAt))
+    .limit(1);
 
 export async function markSessionRunning(db: Db, sessionId: string): Promise<void> {
   await db

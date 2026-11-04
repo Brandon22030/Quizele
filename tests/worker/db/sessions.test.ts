@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "../../../src/server/db/client";
 import { saveSessionResults } from "../../../src/server/db/results";
 import { createQuiz, NotFoundError } from "../../../src/server/db/quizzes";
-import { createGameSession, findActiveSessionByCode, findJoinPreviewByCode, generateGameCode, markSessionRunning } from "../../../src/server/db/sessions";
+import { createGameSession, findActiveSessionByCode, findJoinPreviewByCode, generateGameCode, joinPreviewQuery, markSessionRunning } from "../../../src/server/db/sessions";
 import { env } from "cloudflare:workers";
 import { gameSessions, user } from "../../../src/server/db/schema";
 import { freshDb, insertUser } from "./helpers";
@@ -153,10 +153,9 @@ describe("findJoinPreviewByCode", () => {
 
 describe("index de lecture par code", () => {
   it("findJoinPreviewByCode utilise game_sessions_code_created_idx, sans balayage de table", async () => {
-    const plan = await env.DB.prepare(
-      "EXPLAIN QUERY PLAN SELECT status, quiz_title FROM game_sessions WHERE code = ? ORDER BY created_at DESC LIMIT 1",
-    )
-      .bind("ABC234")
+    const { sql, params } = joinPreviewQuery(db, "ABC234").toSQL();
+    const plan = await env.DB.prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      .bind(...params)
       .all<{ detail: string }>();
     const details = plan.results.map((r) => r.detail).join(" | ");
     expect(details).toContain("game_sessions_code_created_idx");
