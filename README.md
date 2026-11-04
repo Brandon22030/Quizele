@@ -6,7 +6,7 @@ Application de quiz en direct : un animateur crée un quiz, lance une partie, le
 
 - Node 24 (le champ `engines` de `package.json` exige au moins 22.23.4)
 - npm
-- Aucun compte Cloudflare n'est nécessaire en local : D1, Durable Object et R2 sont simulés par wrangler.
+- Aucun compte Cloudflare n'est nécessaire en local : D1 et le Durable Object sont simulés par wrangler.
 
 ## Installation
 
@@ -16,6 +16,8 @@ cp .dev.vars.example .dev.vars   # facultatif
 ```
 
 `wrangler.jsonc` contient déjà des valeurs factices pour le développement local. `.dev.vars` (non versionné) sert à les surcharger : secrets Better Auth et jeton joueur, `MAIL_TRANSPORT` (`console` écrit le lien magique dans le journal, `resend` envoie réellement), identifiants Google, clé Resend. Ne jamais committer de vraie valeur.
+
+`MAGIC_LINK_ENABLED` (lu dans `src/server/auth/auth.ts`, `true` par défaut) active la connexion par lien magique. Dans `wrangler.jsonc`, il vaut `true` en local et `false` en preview et production.
 
 Préparer la base locale :
 
@@ -51,7 +53,6 @@ Navigateur (îlots React, Astro, mobile d'abord)
 Worker (src/worker.ts, Astro SSR)
    |-- Better Auth : sessions, lien magique, Google (src/server/auth)
    |-- D1 via Drizzle : quiz, comptes, sessions de jeu, résultats (src/server/db)
-   |-- R2 (binding MEDIA) : médias
    |-- Cron quotidien : purge (src/server/cron.ts)
    |
    +--> Durable Object GameSession (src/server/game)
@@ -61,7 +62,7 @@ Worker (src/worker.ts, Astro SSR)
 
 Dossiers utiles : `src/pages` (routes), `src/actions` (Actions Astro), `src/islands` (îlots par parcours), `src/components` (composants communs), `src/client` (temps réel et partage), `src/shared` (protocole, schéma de quiz, horloge), `src/styles/global.css` (jetons), `migrations/` (SQL D1), `tests/`.
 
-Le chronomètre se calcule avec `src/shared/clock.ts` à partir de l'horodatage serveur. Le PNG de partage est généré dans le navigateur (`src/client/partage`).
+Le chronomètre se calcule avec `src/shared/clock.ts` à partir de l'horodatage serveur. Pas de R2 : l'image de partage (PNG) est générée dans le navigateur (`src/client/partage`).
 
 ## Offre gratuite et limites
 
@@ -92,4 +93,4 @@ Avant une PR : `npm run check && npm run lint && npm run lint:jetons && npm test
 
 ## Déploiement
 
-Le déploiement (création des ressources Cloudflare, secrets, migrations distantes, preview puis production) est la tâche QZ-002-21. Il n'est pas fait et exige l'accord explicite du mainteneur avant chaque commande distante. Les identifiants `A_REMPLACER` de `wrangler.jsonc` sont renseignés à ce moment. La CI (`.github/workflows/ci.yml`) ne déploie rien et n'utilise aucun secret Cloudflare.
+Le déploiement (création des ressources Cloudflare, secrets, migrations distantes, preview puis production) est la tâche QZ-002-21. Il n'est pas fait et exige l'accord explicite du mainteneur avant chaque commande distante. Les identifiants `A_REMPLACER` de `wrangler.jsonc` sont renseignés à ce moment. Le lien magique est désactivé en preview et production tant qu'aucun domaine n'est vérifié chez Resend : seule la connexion Google y fonctionne. La CI (`.github/workflows/ci.yml`) ne déploie rien et n'utilise aucun secret Cloudflare.

@@ -10,7 +10,8 @@
   ou un espacement. Tout vient des jetons définis dans src/styles/global.css.
   Aucune valeur arbitraire Tailwind (pas de text-[13px], pas de bg-[#123456])
   et aucune classe utilitaire qui n'existe pas dans le CSS compilé.
-  `npm run lint:jetons` contrôle ces règles.
+  `npm run lint:jetons` contrôle les valeurs arbitraires, la grille
+  d'espacement et Date.now() ; l'existence des classes reste à vérifier à la main.
 
 - Les bonnes réponses vivent uniquement dans D1 et le Durable Object. Elles ne
   transitent jamais par une Action, un îlot ou un message avant la révélation.
@@ -43,5 +44,5 @@
 - Plusieurs worktrees en parallèle : isoler les ports e2e avec E2E_PORT_PREVIEW
   et E2E_PORT_DEV (défauts 4410 et 4411), sinon les serveurs se croisent.
 - `npm test` lance d'abord `npm run build` : le Worker testé est dist/server.
-- Certains tests worker de charge peuvent échouer sous machine chargée ; les
-  relancer seuls avant de conclure à une régression.
+- Tests instables : ne jamais les ignorer, relancer en boucle ni désactiver ;
+  passer par le debugger pour en trouver la cause.
