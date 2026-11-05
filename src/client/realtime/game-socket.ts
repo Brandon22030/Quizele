@@ -36,10 +36,12 @@ const CONNECTION_TIMEOUT_MS = 12_000;
 // Au-delà, la connexion est considérée comme zombie (réseau mobile coupé sans événement close).
 const SILENCE_LIMIT_MS = 50_000;
 // Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs
-// consécutifs en ligne sans jamais avoir ouvert le socket (environ 12 s avec le délai croissant), on abandonne.
+// consécutifs en ligne sans jamais avoir ouvert le socket (environ 12 s quand les essais échouent vite, jusqu'à environ
+// 2 min 30 si chacun est coupé à 12 s), on abandonne.
 export const MAX_FAILED_ATTEMPTS = 8;
 // Une fois la connexion établie au moins une fois, une coupure est plus probablement un réseau mobile capricieux
-// qu'un jeton refusé : on persévère environ 2 à 3 minutes (délai plafonné à 8 s) avant de conclure.
+// qu'un jeton refusé : on persévère de 2 à 3 minutes quand les essais échouent vite (délai plafonné à 8 s), jusqu'à
+// environ 6 minutes si chacun est coupé à 12 s, avant de conclure.
 export const MAX_FAILED_ATTEMPTS_AFTER_OPEN = 20;
 
 export class GameSocket {
