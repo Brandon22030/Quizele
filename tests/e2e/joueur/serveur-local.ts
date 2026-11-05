@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
-import { PORT_PREVIEW } from "../serveurs";
+import { PORT_PREVIEW, portDedie } from "../serveurs";
 
 // Port propre à ces specs (E2E_PORT_JEU l'emporte, sinon dérivé de E2E_PORT_PREVIEW comme les autres serveurs) : serveur dédié lancé avec LOCAL_TOOLS=true (requis par la route de lancement locale), sans dépendre de la config du serveur Playwright.
 // Un serveur par worker Playwright : deux fichiers de ce dossier tournent en parallèle et se disputeraient le même port
 // (le second lancement échoue à s'y lier mais le sondage de démarrage répond, d'où des tests sur une base qui n'est pas la leur).
-export const PORT_JEU = Number(process.env.E2E_PORT_JEU ?? PORT_PREVIEW + 90) + Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100;
+export const PORT_JEU = portDedie(90, process.env.E2E_PORT_JEU ? Number(process.env.E2E_PORT_JEU) - 90 : PORT_PREVIEW);
 export const URL_JEU = `http://localhost:${PORT_JEU}`;
 const CONFIG = "dist/server/wrangler.json";
 export const SOUS_PROTOCOLE = "quizdeszeles.v1";

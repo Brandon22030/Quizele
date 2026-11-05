@@ -46,8 +46,10 @@ async function creerQuizParLInterface(page: Page): Promise<string> {
   // 60 s partout : sous charge, les contrôles d'accessibilité en cours de question dépassent la durée par défaut et le
   // serveur révèle la réponse tout seul à l'échéance, ce qui désynchronise le parcours.
   await page.getByText("60 s", { exact: true }).click();
+  await expect(page.getByRole("radio", { name: "60 s" })).toBeChecked();
   await page.getByRole("button", { name: /Question 1/ }).click();
   await page.getByText("60 s", { exact: true }).click();
+  await expect(page.getByRole("radio", { name: "60 s" })).toBeChecked();
   await enregistre(page);
   await axeGrave(page, "éditeur : 2 questions");
   return new URL(page.url()).pathname.split("/").pop()!;

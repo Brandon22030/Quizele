@@ -270,26 +270,45 @@ test("chrono à zéro : aucun envoi, la correction ne vient que du serveur (ordr
   const hote = new Hote(partie.code, partie.hostToken);
   const j = await ouvrirJoueur(browser, partie.code, "Lent");
   const envoyes = espionner(j.page);
-  // Horodatages indépendants de la cadence du test : la trame serveur « reveal » vue par CDP, et dans la page le premier
-  // instant où le chrono affiche « Temps écoulé » et celui où un verdict est rendu.
+  // Tout est horodaté dans la page, sur la même horloge (performance.now) : le chrono à zéro, le verdict rendu, et l'arrivée de
+  // la trame « reveal » (écouteur posé à la construction de la socket, donc exécuté avant celui de l'application).
   const trames: number[] = [];
   j.page.on("websocket", (ws) =>
     ws.on("framereceived", (f) => {
       try {
-        if (JSON.parse(String(f.payload)).type === "reveal") trames.push(Date.now());
+        if (JSON.parse(String(f.payload)).type === "reveal") trames.push(trames.length);
       } catch {
         // trame de service (pong)
       }
     }),
   );
   await j.page.addInitScript(() => {
-    const t: { zero: number | null; verdict: number | null } = { zero: null, verdict: null };
-    (window as unknown as { __t: typeof t }).__t = t;
+    interface Horodatage {
+      zero: number | null;
+      verdict: number | null;
+      reveal: { at: number; verdictDejaLa: boolean } | null;
+    }
+    const t: Horodatage = { zero: null, verdict: null, reveal: null };
+    (window as unknown as { __t: Horodatage }).__t = t;
+    const verdictPresent = () => [...document.querySelectorAll("h1, h2, h3, h4, [role=heading]")].some((h) => /JUSTE|PAS CETTE/.test(h.textContent ?? ""));
     const lire = () => {
-      if (t.zero === null && document.querySelector('[role="timer"][aria-label="Temps écoulé"]')) t.zero = Date.now();
-      if (t.verdict === null && [...document.querySelectorAll("h1, h2, h3, h4, [role=heading]")].some((h) => /JUSTE|PAS CETTE/.test(h.textContent ?? ""))) t.verdict = Date.now();
+      if (t.zero === null && document.querySelector('[role="timer"][aria-label="Temps écoulé"]')) t.zero = performance.now();
+      if (t.verdict === null && verdictPresent()) t.verdict = performance.now();
     };
     new MutationObserver(lire).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    const Origine = window.WebSocket;
+    window.WebSocket = class extends Origine {
+      constructor(...args: ConstructorParameters<typeof WebSocket>) {
+        super(...args);
+        this.addEventListener("message", (e) => {
+          try {
+            if (JSON.parse(String(e.data)).type === "reveal" && t.reveal === null) t.reveal = { at: performance.now(), verdictDejaLa: verdictPresent() };
+          } catch {
+            // trame de service (pong)
+          }
+        });
+      }
+    } as typeof WebSocket;
   });
   await j.page.reload();
   await pret(j.page);
@@ -304,15 +323,18 @@ test("chrono à zéro : aucun envoi, la correction ne vient que du serveur (ordr
   // Aucun ordre de l'animateur : la révélation vient du serveur, à l'échéance + 2 s.
   await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible({ timeout: 30_000 });
   await expect(j.page.getByText("Tu n'as pas répondu à temps")).toBeVisible();
-  const { zero, verdict } = await j.page.evaluate(() => (window as unknown as { __t: { zero: number | null; verdict: number | null } }).__t);
+  const { zero, verdict, reveal } = await j.page.evaluate(
+    () => (window as unknown as { __t: { zero: number | null; verdict: number | null; reveal: { at: number; verdictDejaLa: boolean } | null } }).__t,
+  );
   expect(zero, "« Temps écoulé » observé").not.toBeNull();
   expect(verdict, "verdict observé").not.toBeNull();
+  expect(reveal, "trame reveal observée dans la page").not.toBeNull();
   expect(trames, "une seule trame reveal reçue").toHaveLength(1);
-  // Ni trame reveal ni verdict avant que le chrono soit à zéro ; et le verdict n'apparaît qu'après la trame (50 ms de
-  // tolérance : les deux horloges sont lues dans deux processus).
-  expect(trames[0]!).toBeGreaterThanOrEqual(zero!);
-  expect(verdict!).toBeGreaterThanOrEqual(zero!);
-  expect(verdict!).toBeGreaterThanOrEqual(trames[0]! - 50);
+  // Ni verdict ni trame reveal avant le chrono à zéro ; aucun verdict dans le DOM à l'arrivée de la trame ; le verdict
+  // n'est rendu qu'après elle.
+  expect(reveal!.verdictDejaLa).toBe(false);
+  expect(reveal!.at).toBeGreaterThanOrEqual(zero!);
+  expect(verdict!).toBeGreaterThanOrEqual(reveal!.at);
   expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
   hote.fermer();
   await j.contexte.close();

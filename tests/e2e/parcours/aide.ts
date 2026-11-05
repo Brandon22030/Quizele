@@ -15,6 +15,9 @@ export async function hydrate(page: Page) {
 
 /** Violations serious ou critical uniquement, avec les cibles pour le diagnostic. */
 export async function axeGrave(page: Page, ecran: string) {
+  // Une animation d'entrée (ex. animate-pop, qui part de opacity 0) fausse le calcul de contraste : on attend la fin de celles
+  // qui ne bouclent pas. Aucune règle axe n'est désactivée.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getComputedTiming().iterations === Infinity));
   const { violations } = await new AxeBuilder({ page }).analyze();
   const graves = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(
