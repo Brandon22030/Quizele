@@ -50,3 +50,17 @@ export async function mouvement(page: Page) {
     };
   });
 }
+
+/**
+ * Simule « la base ne répond pas » pour la lecture d'agrément de /j/<code> : la page garde alors son formulaire et c'est
+ * l'API (ici interceptée par chaque test) qui dit la vérité. Sans cela, un code fictif est annoncé inconnu dès le rendu
+ * serveur dès que la base locale est migrée, et le champ pseudo n'existe plus.
+ */
+export async function sansApercuServeur(page: Page) {
+  await page.route(/\/j\/[^/]+$/, async (route) => {
+    if (route.request().resourceType() !== "document") return route.fallback();
+    const reponse = await route.fetch();
+    const corps = (await reponse.text()).replace(/,&quot;echecInitial&quot;:\[0,&quot;game_(?:not_found|finished)&quot;\]/g, "");
+    return route.fulfill({ response: reponse, body: corps });
+  });
+}

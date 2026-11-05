@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { anneau, interactifs, mouvement, pret, reponseJson, sansViolation } from "./aide";
+import { anneau, interactifs, mouvement, pret, reponseJson, sansApercuServeur, sansViolation } from "./aide";
+
+test.beforeEach(async ({ page }) => sansApercuServeur(page));
 
 const cases = (page: Page) => page.getByRole("group", { name: "Code de la partie" }).getByRole("textbox");
 const valeurCode = async (page: Page) => (await cases(page).evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).join("");
