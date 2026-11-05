@@ -37,11 +37,13 @@ export async function connecterParLienMagique(page: Page, serveur: ServeurLocal,
   await hydrate(page);
 }
 
-export async function ouvrirJoueur(browser: Browser, serveur: ServeurLocal, code: string, pseudo: string, options: { reducedMotion?: "reduce" } = {}) {
-  const contexte = await browser.newContext({ viewport: VIEWPORT, hasTouch: true, ...options });
+export async function ouvrirJoueur(browser: Browser, serveur: ServeurLocal, code: string, pseudo: string, options: { reducedMotion?: "reduce"; axe?: boolean } = {}) {
+  const { axe, ...contexteOptions } = options;
+  const contexte = await browser.newContext({ viewport: VIEWPORT, hasTouch: true, ...contexteOptions });
   const page = await contexte.newPage();
   await page.goto(`${serveur.url}/j/${code}`);
   await hydrate(page);
+  if (axe) await axeGrave(page, "rejoindre : formulaire pseudo");
   await page.getByLabel("Pseudo").fill(pseudo);
   await page.getByRole("button", { name: "Rejoindre", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/j/${code}/jouer$`), { timeout: 30_000 });

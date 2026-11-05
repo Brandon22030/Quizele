@@ -45,9 +45,9 @@ async function creerQuizParLInterface(page: Page): Promise<string> {
   await page.getByRole("button", { name: "Marquer A comme bonne réponse" }).click();
   // 60 s partout : sous charge, les contrôles d'accessibilité en cours de question dépassent la durée par défaut et le
   // serveur révèle la réponse tout seul à l'échéance, ce qui désynchronise le parcours.
-  await page.getByRole("radio", { name: "60 s" }).check({ force: true });
+  await page.getByText("60 s", { exact: true }).click();
   await page.getByRole("button", { name: /Question 1/ }).click();
-  await page.getByRole("radio", { name: "60 s" }).check({ force: true });
+  await page.getByText("60 s", { exact: true }).click();
   await enregistre(page);
   await axeGrave(page, "éditeur : 2 questions");
   return new URL(page.url()).pathname.split("/").pop()!;
@@ -61,7 +61,10 @@ async function lancerDepuisLEditeur(page: Page, quizId: string): Promise<{ sessi
   await page.getByRole("button", { name: "Lancer la partie" }).click();
   await expect(page).toHaveURL(/\/partie\/[\w-]+$/, { timeout: 30_000 });
   const sessionId = new URL(page.url()).pathname.split("/").pop()!;
-  const code = await page.evaluate((id) => (JSON.parse(sessionStorage.getItem(`quizdeszeles:hote:${id}`) ?? "null") as { code?: string } | null)?.code, sessionId);
+  // Le code est lu là où l'animateur le voit (ticket de l'écran de pilotage), pas dans le stockage de la page.
+  const ticket = page.getByText("Code de la partie :").first().locator("xpath=..");
+  await expect(ticket).toContainText(/[A-Z0-9]{6}/);
+  const code = ((await ticket.innerText()).match(/\b[A-HJ-NP-Z2-9]{6}\b/) ?? [])[0];
   expect(code).toMatch(/^[A-Z0-9]{6}$/);
   return { sessionId, code: code! };
 }
@@ -83,7 +86,7 @@ test("animateur ensemble : lien magique, création, 3 joueurs, partie complète,
   // Trois joueurs, trois contextes isolés (stockage et sockets séparés).
   const noms = ["Esther", "Grâce", "Noémie"];
   const joueurs = [];
-  for (const nom of noms) joueurs.push(await ouvrirJoueur(browser, serveur, code, nom));
+  for (const [i, nom] of noms.entries()) joueurs.push(await ouvrirJoueur(browser, serveur, code, nom, { axe: i === 0 }));
   await axeGrave(joueurs[0]!.page, "joueur : attente");
   await expect(page.getByRole("heading", { name: "Participants (3)" })).toBeVisible({ timeout: 20_000 });
   await axeGrave(page, "pilotage : 3 participants");
@@ -251,7 +254,7 @@ test("reconnexion du joueur après une coupure réseau, dans une partie lancée 
   await fragile.page.evaluate(() => {
     for (const ws of (window as unknown as { __sockets?: WebSocket[] }).__sockets ?? []) ws.close(4999);
   });
-  await expect(fragile.page.getByText(/Connexion/).first()).toBeVisible({ timeout: 30_000 });
+  await expect(fragile.page.getByText("Connexion perdue, reprise en cours…")).toBeVisible({ timeout: 30_000 });
   await axeGrave(fragile.page, "joueur : connexion perdue");
 
   // Pendant la coupure, l'animateur révèle la réponse : le joueur doit la retrouver au retour.
@@ -259,7 +262,7 @@ test("reconnexion du joueur après une coupure réseau, dans une partie lancée 
   await page.getByRole("button", { name: /Voir la bonne réponse/ }).click();
 
   await fragile.contexte.setOffline(false);
-  await expect(fragile.page.getByText(/Connexion/)).toHaveCount(0, { timeout: 60_000 });
+  await expect(fragile.page.getByText("Connexion perdue, reprise en cours…")).toHaveCount(0, { timeout: 60_000 });
   await expect(fragile.page.getByRole("heading", { name: "JUSTE !" })).toBeVisible({ timeout: 30_000 });
   await axeGrave(fragile.page, "joueur : reconnecté");
 

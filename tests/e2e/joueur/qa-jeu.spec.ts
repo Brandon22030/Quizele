@@ -264,28 +264,56 @@ test("choix multiple : rien n'est envoyé sans « Valider la sélection », qui 
   await j.contexte.close();
 });
 
-test("chrono à zéro : « Temps écoulé », tuiles inactives, aucun envoi, la correction n'arrive que sur ordre", async ({ browser }) => {
+test("chrono à zéro : aucun envoi, la correction ne vient que du serveur (ordre ou échéance + 2 s)", async ({ browser }) => {
   test.setTimeout(90_000);
   const partie = await lancerPartie({ questions: [unique("Chrono ?", 10)] });
   const hote = new Hote(partie.code, partie.hostToken);
   const j = await ouvrirJoueur(browser, partie.code, "Lent");
   const envoyes = espionner(j.page);
+  // Horodatages indépendants de la cadence du test : la trame serveur « reveal » vue par CDP, et dans la page le premier
+  // instant où le chrono affiche « Temps écoulé » et celui où un verdict est rendu.
+  const trames: number[] = [];
+  j.page.on("websocket", (ws) =>
+    ws.on("framereceived", (f) => {
+      try {
+        if (JSON.parse(String(f.payload)).type === "reveal") trames.push(Date.now());
+      } catch {
+        // trame de service (pong)
+      }
+    }),
+  );
+  await j.page.addInitScript(() => {
+    const t: { zero: number | null; verdict: number | null } = { zero: null, verdict: null };
+    (window as unknown as { __t: typeof t }).__t = t;
+    const lire = () => {
+      if (t.zero === null && document.querySelector('[role="timer"][aria-label="Temps écoulé"]')) t.zero = Date.now();
+      if (t.verdict === null && [...document.querySelectorAll("h1, h2, h3, h4, [role=heading]")].some((h) => /JUSTE|PAS CETTE/.test(h.textContent ?? ""))) t.verdict = Date.now();
+    };
+    new MutationObserver(lire).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  });
+  await j.page.reload();
   await pret(j.page);
   await hote.envoyer({ type: "start" });
   await expect(j.page.getByRole("timer")).toBeVisible();
-  await expect(j.page.getByRole("heading", { name: "JUSTE !" })).toHaveCount(0);
   await expect(j.page.getByRole("timer")).toHaveAttribute("aria-label", "Temps écoulé", { timeout: 30_000 });
   await expect(j.page.getByText("Temps écoulé, on attend la suite.")).toBeVisible();
   // La tuile reste lisible mais n'est plus un bouton : plus rien à toucher.
   await expect(j.page.getByRole("button", { name: /Alpha/ })).toHaveCount(0);
   await expect(j.page.getByText("Alpha")).toBeVisible();
-  // Aucun verdict à l'écoulement du chrono, et aucune réponse envoyée à notre insu. Pas d'attente ajoutée : le serveur révèle
-  // seul ANSWER_TOLERANCE_MS (2 s) après l'échéance, et sous charge 1,5 s d'attente suffisaient à franchir ce délai.
-  await expect(j.page.getByRole("heading", { name: /JUSTE|PAS CETTE/ })).toHaveCount(0, { timeout: 500 });
-  expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
-  await hote.envoyer({ type: "reveal" });
-  await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible();
+
+  // Aucun ordre de l'animateur : la révélation vient du serveur, à l'échéance + 2 s.
+  await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible({ timeout: 30_000 });
   await expect(j.page.getByText("Tu n'as pas répondu à temps")).toBeVisible();
+  const { zero, verdict } = await j.page.evaluate(() => (window as unknown as { __t: { zero: number | null; verdict: number | null } }).__t);
+  expect(zero, "« Temps écoulé » observé").not.toBeNull();
+  expect(verdict, "verdict observé").not.toBeNull();
+  expect(trames, "une seule trame reveal reçue").toHaveLength(1);
+  // Ni trame reveal ni verdict avant que le chrono soit à zéro ; et le verdict n'apparaît qu'après la trame (50 ms de
+  // tolérance : les deux horloges sont lues dans deux processus).
+  expect(trames[0]!).toBeGreaterThanOrEqual(zero!);
+  expect(verdict!).toBeGreaterThanOrEqual(zero!);
+  expect(verdict!).toBeGreaterThanOrEqual(trames[0]! - 50);
+  expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
   hote.fermer();
   await j.contexte.close();
 });

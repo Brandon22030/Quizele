@@ -52,9 +52,10 @@ export async function mouvement(page: Page) {
 }
 
 /**
- * Simule « la base ne répond pas » pour la lecture d'agrément de /j/<code> : la page garde alors son formulaire et c'est
- * l'API (ici interceptée par chaque test) qui dit la vérité. Sans cela, un code fictif est annoncé inconnu dès le rendu
- * serveur dès que la base locale est migrée, et le champ pseudo n'existe plus.
+ * Ces specs simulent la PANNE de la lecture d'agrément de /j/<code> : la page garde alors son formulaire et c'est l'API
+ * (interceptée par chaque test) qui dit la vérité. Sans cela, un code fictif est annoncé inconnu dès le rendu serveur dès
+ * que la base locale est migrée, et le champ pseudo n'existe plus. Le chemin nominal (aperçu réel, code inconnu, partie
+ * terminée au rendu serveur) est couvert contre un vrai Worker dans parcours-reel.spec.ts.
  */
 export async function sansApercuServeur(page: Page) {
   await page.route(/\/j\/[^/]+$/, async (route) => {
