@@ -74,7 +74,8 @@ export async function sessionRow(sid: string) {
 
 // Envoie des rafales de `resume` bien au-dessus du rythme de recharge du seau, jusqu'à la fermeture du socket. On attend
 // l'événement plutôt qu'un nombre fixe de messages : sous machine chargée le serveur traite plus lentement, et un
-// nombre fixe pourrait rester sous la recharge de 10 jetons par seconde.
+// nombre fixe pourrait rester sous la recharge de 10 jetons par seconde. Les appelants figent l'horloge (freezeClock) :
+// c'est le seul moyen de garantir que le serveur ne traite pas le flot au rythme même de la recharge.
 // Le nombre total de messages est borné : un serveur qui ne fermerait jamais ferait échouer le test (résultat null)
 // au lieu de laisser le flot partir sans limite.
 export const FLOOD_MAX_MESSAGES = 3_000;

@@ -3,7 +3,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS, WS_SUBPROTOCOL } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
+  closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -163,6 +163,9 @@ describe("limites des messages entrants", () => {
   });
 
   it("un flot de messages épuise le seau à jetons et ferme la connexion (1008)", { timeout: 60_000 }, async () => {
+    // Horloge figée : sous machine chargée, le Durable Object traitait le flot à peine plus vite que la recharge de
+    // 10 jetons par seconde, et le seau ne se vidait jamais avant la fin du flot.
+    freezeClock();
     const { host } = await game(0);
     const closed = closeOf(host);
     expect((await floodUntilClosed(host, closed))?.code).toBe(1008);
