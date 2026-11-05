@@ -61,7 +61,7 @@
         "MAIL_FROM": "Quizdeszeles <onboarding@resend.dev>",
         "MAIL_TRANSPORT": "resend",
         "MAGIC_LINK_ENABLED": "false",
-        "GOOGLE_CLIENT_ID": ""
+        "GOOGLE_CLIENT_ID": "439791967743-88j6o41qiujsl0r9gnh29jrn404oclqj.apps.googleusercontent.com"
       }
     },
     "production": {
