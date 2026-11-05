@@ -42,24 +42,31 @@ export async function demarrerServeur(): Promise<ServeurLocal> {
   // sous charge) et dont elle changeait les réponses (un code fictif devenait « inconnu »).
   const dossier = mkdtempSync(join(tmpdir(), "qz002-11-"));
   execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG, "--persist-to", dossier], { stdio: "ignore" });
-  const enfant: ChildProcess = spawn(
-    "npx",
-    ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--persist-to", dossier, "--var", "LOCAL_TOOLS:true"],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
+  // Deux wrangler lancés en même temps par des workers différents se disputent parfois le socket interne de workerd
+  // (« Address already in use » sans rapport avec notre port) : on retente après une pause décalée plutôt que d'échouer.
+  let enfant!: ChildProcess;
   let journal = "";
-  enfant.stdout?.on("data", (d) => (journal += d));
-  enfant.stderr?.on("data", (d) => (journal += d));
-  const limite = Date.now() + 90_000;
-  for (;;) {
-    try {
-      await fetch(`${URL_JEU}/`);
-      break;
-    } catch {
+  for (let essai = 1; ; essai++) {
+    enfant = spawn(
+      "npx",
+      ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--persist-to", dossier, "--var", "LOCAL_TOOLS:true"],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    journal = "";
+    let sorti = false;
+    enfant.once("exit", () => (sorti = true));
+    enfant.stdout?.on("data", (d) => (journal += d));
+    enfant.stderr?.on("data", (d) => (journal += d));
+    const limite = Date.now() + 90_000;
+    while (!journal.includes("Ready on") && !sorti) {
       if (Date.now() > limite) throw new Error(`wrangler dev ne répond pas :\n${journal}`);
       await attendre(300);
     }
+    if (journal.includes("Ready on")) break;
+    if (essai >= 4 || !journal.includes("Address already in use")) throw new Error(`wrangler dev s'est arrêté :\n${journal}`);
+    await attendre(1_000 + Math.random() * 3_000);
   }
+  await fetch(`${URL_JEU}/`, { signal: AbortSignal.timeout(60_000) }).catch(() => undefined);
   return {
     arreter: async () => {
       for (const pid of descendants(enfant.pid!).reverse()) {

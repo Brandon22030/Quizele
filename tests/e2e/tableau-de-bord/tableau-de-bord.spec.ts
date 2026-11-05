@@ -275,7 +275,8 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k10-chargement");
     liberer();
-    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible();
+    // Le rechargement repasse par le Worker et D1 : sous charge, 5 s ne suffisent pas à repeindre la liste.
+    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible({ timeout: 20_000 });
     await page.unroute(/_actions\/quiz\.lister/);
   });
 
