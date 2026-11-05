@@ -79,7 +79,7 @@ describe("GameSocket : fermetures définitives", () => {
     const ws = await firstSocket();
     ws.serverClose(1008);
     expect(statuses.at(-1)).toBe("reconnecting");
-    // Moins que le délai de connexion de partysocket (4 s), au-delà duquel une tentative non ouverte est relancée.
+    // Moins que CONNECTION_TIMEOUT_MS (12 s), au-delà duquel une tentative non ouverte est relancée.
     await vi.advanceTimersByTimeAsync(2_000);
     expect(FakeWebSocket.instances).toHaveLength(2);
     FakeWebSocket.instances[1]!.open();
@@ -152,5 +152,40 @@ describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
       attempt.serverClose(1006);
     }
     expect(statuses).not.toContain("rejected");
+  });
+});
+
+describe("GameSocket : poignée de main lente (serveur ou réseau chargé)", () => {
+  // Le faux serveur ne répond jamais au ping : on s'arrête avant le seuil de silence (50 s) pour ne tester que la poignée de main.
+  // Chaque nouvelle tentative n'ouvre qu'au bout de `delayMs` : un serveur saturé met plusieurs secondes à répondre 101.
+  function slowHandshakes(delayMs: number): void {
+    const original = FakeWebSocket.instances.push.bind(FakeWebSocket.instances);
+    FakeWebSocket.instances.push = (...sockets: FakeWebSocket[]) => {
+      for (const ws of sockets) setTimeout(() => ws.readyState === FakeWebSocket.CONNECTING && ws.open(), delayMs);
+      return original(...sockets);
+    };
+  }
+
+  it("après une coupure, une reprise dont la poignée de main dure 6 s finit par aboutir", async () => {
+    await firstSocket();
+    slowHandshakes(6_000);
+    FakeWebSocket.instances[0]!.serverClose(1006);
+    expect(statuses.at(-1)).toBe("reconnecting");
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(statuses.at(-1)).toBe("open");
+  });
+
+  it("au premier chargement, une poignée de main de 6 s aboutit en \"open\"", async () => {
+    slowHandshakes(6_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(statuses).not.toContain("rejected");
+    expect(statuses.at(-1)).toBe("open");
+  });
+
+  it("une poignée de main de plus de 12 s reste abandonnée : le délai est borné", async () => {
+    slowHandshakes(14_000);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(statuses).not.toContain("open");
+    expect(statuses.at(-1)).toBe("rejected");
   });
 });
