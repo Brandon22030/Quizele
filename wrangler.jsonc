@@ -42,7 +42,8 @@
   "env": {
     "preview": {
       "name": "quizdeszeles-preview",
-      "triggers": { "crons": ["0 3 * * *"] },
+      // Limite de 5 crons par compte sur Workers Free : la purge n'est utile qu'en production.
+      "triggers": { "crons": [] },
       "d1_databases": [
         {
           "binding": "DB",
