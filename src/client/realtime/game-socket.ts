@@ -31,17 +31,18 @@ export interface GameSocketOptions {
 const PING_INTERVAL_MS = 20_000;
 // Le défaut de partysocket (4 s) abandonne chaque essai sur réseau mobile lent ou Durable Object démarré à froid :
 // l'hôte resterait des minutes en reprise, et le premier chargement finirait en "rejected". 12 s laisse aboutir une
-// poignée de main lente tout en restant borné, et bien en deçà du seuil de silence ci-dessous.
+// poignée de main lente tout en restant borné. Après une longue coupure, la période du ping (20 s) peut couper une
+// poignée de main lente, au prix d'une seule tentative relancée sans délai.
 const CONNECTION_TIMEOUT_MS = 12_000;
 // Au-delà, la connexion est considérée comme zombie (réseau mobile coupé sans événement close).
 const SILENCE_LIMIT_MS = 50_000;
 // Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs
-// consécutifs en ligne sans jamais avoir ouvert le socket (environ 12 s quand les essais échouent vite, jusqu'à environ
-// 2 min 30 si chacun est coupé à 12 s), on abandonne.
+// consécutifs en ligne sans jamais avoir ouvert le socket (environ 10 s si les essais échouent vite, environ 1 min 30
+// s'ils sont coupés à 12 s), on abandonne.
 export const MAX_FAILED_ATTEMPTS = 8;
 // Une fois la connexion établie au moins une fois, une coupure est plus probablement un réseau mobile capricieux
-// qu'un jeton refusé : on persévère de 2 à 3 minutes quand les essais échouent vite (délai plafonné à 8 s), jusqu'à
-// environ 6 minutes si chacun est coupé à 12 s, avant de conclure.
+// qu'un jeton refusé : on persévère environ 1 minute à 3 min 30 (délai plafonné à 8 s) avant de
+// conclure. Après 50 s de silence, chaque ping relance une tentative et accélère le décompte.
 export const MAX_FAILED_ATTEMPTS_AFTER_OPEN = 20;
 
 export class GameSocket {
