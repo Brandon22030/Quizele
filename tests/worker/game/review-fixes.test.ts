@@ -2,12 +2,13 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, createGame, floodUntilClosed, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
+  BUCKET_CAPACITY, CONNECT_COST, closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
   type Client,
 } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const client of opened.splice(0)) client.close();
 });
 
@@ -32,14 +33,19 @@ async function finishGame(host: Client): Promise<void> {
   await host.waitFor("finished");
 }
 
-// Ouvre un socket et renvoie son code de fermeture s'il est refermé dans le délai, null s'il reste ouvert.
-async function openOrClosed(code: string, token: string, waitMs = 60): Promise<number | null> {
+// Ouvre un socket et renvoie son code de fermeture s'il est refusé, null s'il est accepté. Un délai fixe pour
+// attendre la fermeture ne suffisait pas sous machine chargée : un refus arrivé après lui comptait comme accepté.
+// On envoie donc « ping » : un socket accepté par la partie répond « pong » (réponse automatique, sans réveiller
+// l'objet ni consommer de jeton), un socket refusé est déjà refermé et ne répondra jamais.
+async function openOrClosed(code: string, token: string): Promise<number | null> {
   const response = await rawConnect(code, token);
   expect(response.status).toBe(101);
   const ws = response.webSocket!;
   const closed = new Promise<number>((resolve) => ws.addEventListener("close", (event) => resolve(event.code)));
+  const ponged = new Promise<null>((resolve) => ws.addEventListener("message", (event) => event.data === "pong" && resolve(null)));
   ws.accept();
-  const result = await Promise.race([closed, new Promise<null>((r) => setTimeout(() => r(null), waitMs))]);
+  if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+  const result = await Promise.race([closed, ponged]);
   if (result === null) opened.push({ close: () => ws.close(1000) } as Client);
   return result;
 }
@@ -106,17 +112,25 @@ describe("fermetures applicatives définitives", () => {
   });
 
   it("le dépassement de débit reste 1008 et la taille 1009 : ce ne sont pas des fins définitives", { timeout: 60_000 }, async () => {
+    // Horloge figée : sinon un serveur ralenti par la charge traite les messages au rythme de la recharge et le flot
+    // ne vide jamais le seau.
+    freezeClock();
     const { players } = await game(1);
     const closed = closeOf(players[0]!.client);
-    expect((await floodUntilClosed(players[0]!.client, closed))?.code).toBe(1008);
+    const { close, processed } = await floodUntilClosed(players[0]!.client, closed);
+    expect(close.code).toBe(1008);
+    // Seau plein à la première connexion, un jeton déjà pris par le resume d'addPlayer, aucune recharge.
+    expect(processed).toBe(BUCKET_CAPACITY - 1);
   });
 });
 
 describe("seau à jetons et fréquence de connexion", () => {
   it("le seau d'un socket fermé proprement est conservé dans le SQLite et ne repart pas à plein", async () => {
+    // Horloge figée : le seau se recharge de 10 jetons par seconde réelle, et sous machine chargée deux secondes entre le
+    // dernier message et la fermeture suffisaient à le remettre presque plein (29,91 observé).
+    freezeClock();
     const { code, players } = await game(1);
     const { client, playerId, token } = players[0]!;
-    const startedAt = Date.now();
     for (let i = 0; i < 20; i += 1) client.send({ type: "resume" });
     await client.waitFor("snapshot", () => client.messages.filter((m) => m.type === "snapshot").length >= 21);
     const closed = closeOf(client);
@@ -124,28 +138,26 @@ describe("seau à jetons et fréquence de connexion", () => {
     await closed;
     await new Promise((r) => setTimeout(r, 50));
     const [row] = await sqlOf<{ tokens: number }>(code, `SELECT tokens FROM buckets WHERE key = 'p:${playerId}'`);
-    // 30 - 21 jetons consommés + recharge de 10/s sur le temps réellement écoulé : borne qui tient sous machine chargée.
-    const refill = (Date.now() - startedAt) / 100;
-    expect(row!.tokens).toBeLessThan(9 + refill + 1);
-    expect(row!.tokens).toBeLessThan(30);
+    // 30 - 21 jetons consommés, sans recharge.
+    expect(row!.tokens).toBe(9);
 
     const next = await connect(code, token);
     opened.push(next);
     const nextClosed = closeOf(next);
     for (let i = 0; i < 25; i += 1) next.send({ type: "resume" });
-    const reopenedAt = Date.now();
-    await Promise.race([nextClosed, next.waitFor("snapshot", () => next.messages.filter((m) => m.type === "snapshot").length >= 25, 8_000).catch(() => null)]);
-    const allowed = row!.tokens + ((Date.now() - reopenedAt) / 1000) * 10 + 2;
-    expect(next.messages.filter((m) => m.type === "snapshot").length).toBeLessThanOrEqual(allowed);
-    // Le seau conservé n'est pas plein : indépendant du temps écoulé, donc stable sous machine chargée.
-    expect(row!.tokens + 2).toBeLessThan(30);
+    // Le seau repris (9 jetons, moins le coût de reconnexion) s'épuise avant les 25 messages : fermeture en 1008.
+    expect((await nextClosed).code).toBe(1008);
+    expect(next.messages.filter((m) => m.type === "snapshot").length).toBe(row!.tokens - CONNECT_COST);
   });
 
   it("au-delà de 10 connexions d'affilée, le joueur est refermé (1008) avant d'atteindre la partie", async () => {
+    // Horloge figée dès la première connexion : la limite se recharge d'une connexion toutes les 6 s, et une boucle
+    // ralentie par la charge ne doit pas en regagner une en route.
+    freezeClock();
     const { code, players } = await game(1);
     const results: (number | null)[] = [];
     // addPlayer a déjà consommé une connexion.
-    for (let i = 0; i < 12; i += 1) results.push(await openOrClosed(code, players[0]!.token, 20));
+    for (let i = 0; i < 12; i += 1) results.push(await openOrClosed(code, players[0]!.token));
     expect(results.slice(0, 9).every((r) => r === null || r === 1000)).toBe(true);
     expect(results.slice(9)).toEqual([1008, 1008, 1008]);
   });

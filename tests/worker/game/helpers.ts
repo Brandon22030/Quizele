@@ -1,6 +1,6 @@
 import { env, exports } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { WS_SUBPROTOCOL, serverMessageSchema, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import { getDb } from "../../../src/server/db/client";
 import { gameSessions, user } from "../../../src/server/db/schema";
@@ -72,19 +72,26 @@ export async function sessionRow(sid: string) {
   return (await env.DB.prepare("SELECT status, ended_at AS endedAt FROM game_sessions WHERE id = ?").bind(sid).first<{ status: string; endedAt: number | null }>()) ?? null;
 }
 
-// Envoie des rafales de `resume` bien au-dessus du rythme de recharge du seau, jusqu'à la fermeture du socket. On attend
-// l'événement plutôt qu'un nombre fixe de messages : sous machine chargée le serveur traite plus lentement, et un
-// nombre fixe pourrait rester sous la recharge de 10 jetons par seconde.
-// Le nombre total de messages est borné : un serveur qui ne fermerait jamais ferait échouer le test (résultat null)
-// au lieu de laisser le flot partir sans limite.
+// Envoie des rafales de `resume` jusqu'à la fermeture du socket. Les appelants figent l'horloge (freezeClock) : sans
+// recharge, le seau se vide après au plus 30 messages quelle que soit la vitesse du serveur. Avec l'horloge réelle, un
+// serveur ralenti par la charge traitait le flot au rythme même de la recharge et ne fermait jamais.
+// On attend ensuite la fermeture elle-même, bornée par le délai du test, et non une fenêtre fixe qui expirait quand la
+// machine était saturée. Le nombre de messages reste borné pour ne pas laisser partir un flot sans limite.
 export const FLOOD_MAX_MESSAGES = 3_000;
 
-export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>, timeoutMs = 40_000): Promise<CloseEvent | null> {
+// Copies des constantes privées du seau dans GameSession.ts : les bornes exactes des tests en découlent. Si elles
+// changent côté serveur, ces tests échouent et doivent être revus, ce qui est voulu.
+export const BUCKET_CAPACITY = 30;
+export const CONNECT_COST = 5;
+
+// Renvoie la fermeture et le nombre de snapshots reçus pendant le flot : c'est ce nombre qui prouve la limite.
+export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>): Promise<{ close: CloseEvent; processed: number }> {
+  const snapshots = () => client.messages.filter((m) => m.type === "snapshot").length;
+  const before = snapshots();
   let event: CloseEvent | null = null;
   void closed.then((e) => (event = e));
-  const deadline = Date.now() + timeoutMs;
   let sent = 0;
-  while (event === null && sent < FLOOD_MAX_MESSAGES && Date.now() < deadline) {
+  while (event === null && sent < FLOOD_MAX_MESSAGES) {
     try {
       for (let i = 0; i < 30; i += 1) client.send({ type: "resume" });
       sent += 30;
@@ -93,7 +100,8 @@ export async function floodUntilClosed(client: Client, closed: Promise<CloseEven
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return event ?? Promise.race([closed, new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000))]);
+  const close = await closed;
+  return { close, processed: snapshots() - before };
 }
 
 export class Client {
@@ -226,6 +234,18 @@ export async function setup(playerCount: number, quiz?: QuizDefinition) {
   const players: Player[] = [];
   for (let i = 0; i < playerCount; i += 1) players.push(await addPlayer(code, `Joueur ${i}`));
   return { code, host, players };
+}
+
+// Le Durable Object tourne dans le même isolat que les tests : remplacer Date.now fige aussi son horloge. Les délais,
+// seaux à jetons et recharges ne dépendent alors plus de la durée réelle du test, donc plus de la charge de la machine.
+// Les minuteurs restent réels : l'attente d'un message ne change pas. À annuler par restore() (ou vi.restoreAllMocks).
+export function freezeClock(at: number = Date.now()) {
+  let now = at;
+  const spy = vi.spyOn(Date, "now").mockImplementation(() => now);
+  return {
+    set: (value: number) => void (now = value),
+    restore: () => spy.mockRestore(),
+  };
 }
 
 // Simule le temps écoulé en reculant l'horodatage de départ stocké : le DO juge le délai à partir de lui.

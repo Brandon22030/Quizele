@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { closeCodeOf, connect, join, setup, type Client } from "./helpers";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BUCKET_CAPACITY, CONNECT_COST, closeCodeOf, connect, freezeClock, join, setup, type Client } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const client of opened.splice(0)) client.close();
 });
 
@@ -16,11 +17,14 @@ const closeOf = (client: Client) => new Promise<CloseEvent>((resolve) => client.
 
 describe("seau à jetons et reconnexion en boucle", () => {
   it("le seau ne se remet pas à plein à chaque reconnexion du même joueur", { timeout: 60_000 }, async () => {
+    // Horloge figée : le seau se recharge de 10 jetons par seconde de temps réel. Sous machine chargée, les six tours
+    // duraient assez longtemps pour que la recharge seule laisse passer les 150 messages, et le test mesurait la
+    // charge plutôt que la reprise du seau. Sans recharge, seul le seau hérité d'une connexion à l'autre compte.
+    freezeClock();
     const { code, players } = await game(1);
     const token = players[0]!.token;
     let processed = 0;
     let closedFor1008 = 0;
-    const startedAt = Date.now();
     for (let round = 0; round < 6; round += 1) {
       const client = await connect(code, token);
       opened.push(client);
@@ -32,13 +36,11 @@ describe("seau à jetons et reconnexion en boucle", () => {
       processed += client.messages.filter((m) => m.type === "snapshot").length;
       if (outcome?.code === 1008) closedFor1008 += 1;
     }
-    // Capacité 30 + recharge de 10/s sur la durée réelle du test + une marge pour le coût des reconnexions : un seau
-    // remis à plein à chaque reconnexion laisserait passer 6 x 25 = 150 messages.
-    const allowed = 30 + ((Date.now() - startedAt) / 1000) * 10 + 5;
-    expect(processed).toBeLessThanOrEqual(allowed);
+    // Sans recharge : seau plein, moins le resume d'addPlayer, moins le coût de la première reconnexion, puis plus rien
+    // aux tours suivants (seau conservé à 0). Un seau remis à plein à chaque reconnexion laisserait passer 6 x 25 = 150
+    // messages.
+    expect(processed).toBe(BUCKET_CAPACITY - 1 - CONNECT_COST);
     expect(processed).toBeLessThan(150);
-    // Ce qui prouve que le seau n'est pas remis à plein, c'est qu'au moins une reconnexion a été refusée (1008) :
-    // une borne sur `allowed` dépendrait de la durée du test, donc de la charge de la machine.
     expect(closedFor1008).toBeGreaterThan(0);
   });
 

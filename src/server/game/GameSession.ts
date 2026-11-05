@@ -480,7 +480,13 @@ export class GameSession extends DurableObject<Env> {
   // Au plus un compteur toutes les 250 ms vers l'hôte : 200 réponses simultanées ne font pas 200 diffusions.
   private notifyCount(): void {
     const wait = COUNT_INTERVAL_MS - (Date.now() - this.lastCountAt);
-    if (wait <= 0) return this.sendCount();
+    if (wait <= 0) {
+      // Sous charge, le minuteur peut se déclencher en retard, après une réponse qui envoie déjà le compteur : laissé
+      // armé, il en enverrait un second moins de 250 ms plus tard.
+      if (this.countTimer) clearTimeout(this.countTimer);
+      this.countTimer = null;
+      return this.sendCount();
+    }
     if (this.countTimer) return;
     this.countTimer = setTimeout(() => {
       this.countTimer = null;
@@ -492,7 +498,12 @@ export class GameSession extends DurableObject<Env> {
   // les 500 ms. Les anciens arrivants ne sont jamais listés en entier.
   private notifyLobby(): void {
     const wait = LOBBY_INTERVAL_MS - (Date.now() - this.lastLobbyAt);
-    if (wait <= 0) return this.sendLobby();
+    if (wait <= 0) {
+      // Même raison que pour le compteur de réponses : un minuteur en retard ne doit pas doubler l'envoi.
+      if (this.lobbyTimer) clearTimeout(this.lobbyTimer);
+      this.lobbyTimer = null;
+      return this.sendLobby();
+    }
     if (this.lobbyTimer) return;
     this.lobbyTimer = setTimeout(() => {
       this.lobbyTimer = null;

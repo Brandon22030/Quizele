@@ -1,13 +1,14 @@
 import { runDurableObjectAlarm, runInDurableObject, evictDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ANSWER_TOLERANCE_MS } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, demoQuiz, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  closeCodeOf, connect, demoQuiz, freezeClock, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const client of opened.splice(0)) client.close();
 });
 
@@ -136,15 +137,19 @@ describe("règles de réponse", () => {
   });
 
   it("réponse tardive : acceptée dans la tolérance, fausse au-delà", async () => {
-    const { code, host, players } = await game(2);
+    const { host, players } = await game(2);
+    // Horloge figée : reculer started_at laissait une marge de 500 ms, consommée par la latence réelle entre le recul
+    // et la réception de la réponse quand la machine est chargée. Ici chaque réponse arrive à l'instant choisi.
+    const clock = freezeClock();
     host.send({ type: "start" });
-    await players[0]!.client.waitFor("question");
-    await rewindQuestion(code, 20_000 + ANSWER_TOLERANCE_MS - 500);
+    const { startedAt, durationMs } = await players[0]!.client.waitFor("question");
+    clock.set(startedAt + durationMs + ANSWER_TOLERANCE_MS);
     players[0]!.client.send({ type: "answer", questionId: "q1", optionIds: [Q1_CORRECT] });
     expect(await players[0]!.client.waitFor("answer_ack")).toMatchObject({ late: false });
-    await rewindQuestion(code, 1500);
+    clock.set(startedAt + durationMs + ANSWER_TOLERANCE_MS + 1);
     players[1]!.client.send({ type: "answer", questionId: "q1", optionIds: [Q1_CORRECT] });
     expect(await players[1]!.client.waitFor("answer_ack")).toMatchObject({ late: true });
+    clock.restore();
     host.send({ type: "reveal" });
     const [a, b] = await Promise.all(players.map((p) => p.client.waitFor("reveal")));
     expect(a!.you?.wasCorrect).toBe(true);
