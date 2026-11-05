@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PORT_PREVIEW } from "../serveurs";
+import { portDedie } from "../serveurs";
 
 const CONFIG = "dist/server/wrangler.json";
 const DELAI_SIGKILL_MS = 5_000;
@@ -47,15 +47,11 @@ function portLibre(port: number): Promise<boolean> {
   });
 }
 
-// Un worker Playwright par projet et par fichier : l'index du worker décale les ports, pour que deux projets
-// lancés en parallèle ne visent jamais le même serveur.
-const decalageWorker = Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100;
-
 // Serveur wrangler dédié (base D1 jetable) : le transport console écrit le lien magique dans sa sortie, que le
 // serveur de test partagé ne permet pas de lire. `vars` surcharge la config (méthodes de connexion actives).
 export async function lancerServeur(decalage: number, vars: Record<string, string> = {}): Promise<ServeurLocal> {
   poserGardes();
-  const port = PORT_PREVIEW + decalage + decalageWorker;
+  const port = portDedie(decalage);
   if (!(await portLibre(port))) {
     throw new Error(`Le port ${port} est déjà occupé : un serveur de test précédent tourne peut-être encore (pgrep -fl "port ${port}").`);
   }
@@ -117,7 +113,7 @@ export async function lancerServeur(decalage: number, vars: Record<string, strin
     }
 
     // Requête de chauffe : la première compile le worker, elle ne doit pas retomber sur un test chronométré.
-    await fetch(`http://localhost:${port}/connexion`).catch(() => undefined);
+    await fetch(`http://localhost:${port}/connexion`, { signal: AbortSignal.timeout(30_000) }).catch(() => undefined);
 
     return {
       url: `http://localhost:${port}`,

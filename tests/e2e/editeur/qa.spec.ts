@@ -127,17 +127,31 @@ test.describe("éditeur : QA, session réelle", () => {
     await page.goto(`${serveur.url}/quiz/${id}`);
     await hydrate(page);
     await enregistre(page);
-    const requetes: number[] = [];
-    await page.route("**/_actions/quiz.majQuestion/**", (r) => (requetes.push(Date.now()), r.continue()));
+    // Tout est horodaté dans la page, sur la même horloge : dernière frappe (keydown) et départ de la requête d'autosave.
+    // Les mesures côté pilote ajoutaient la latence du protocole, qui sous charge dépasse la marge testée.
+    await page.evaluate(() => {
+      const w = window as unknown as { __frappes: number[]; __sauvegardes: number[] };
+      w.__frappes = [];
+      w.__sauvegardes = [];
+      document.addEventListener("keydown", () => w.__frappes.push(performance.now()), true);
+      const origine = window.fetch;
+      window.fetch = function (entree, ...reste) {
+        if (String(entree instanceof Request ? entree.url : entree).includes("quiz.majQuestion")) w.__sauvegardes.push(performance.now());
+        return origine.call(this, entree, ...reste);
+      };
+    });
     await page.getByLabel("Énoncé de la question 1").click();
-    const debut = Date.now();
     await page.keyboard.type("abc", { delay: 100 });
-    const derniere = Date.now();
     await expect(statut(page)).not.toHaveText("Enregistré");
     await enregistre(page);
-    expect(requetes.length).toBe(1);
-    expect(requetes[0]! - derniere).toBeGreaterThanOrEqual(650);
-    expect(requetes[0]! - debut).toBeLessThan(5_000);
+    const { frappes, sauvegardes } = await page.evaluate(() => {
+      const w = window as unknown as { __frappes: number[]; __sauvegardes: number[] };
+      return { frappes: w.__frappes, sauvegardes: w.__sauvegardes };
+    });
+    expect(frappes).toHaveLength(3);
+    expect(sauvegardes).toHaveLength(1);
+    expect(sauvegardes[0]! - frappes[2]!).toBeGreaterThanOrEqual(650);
+    expect(sauvegardes[0]! - frappes[0]!).toBeLessThan(5_000);
   });
 
   test("deux modifications rapides : la base contient la dernière, jamais l'intermédiaire", async ({ page }) => {

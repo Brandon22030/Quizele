@@ -3,11 +3,11 @@ import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PORT_PREVIEW } from "../serveurs";
+import { portDedie } from "../serveurs";
 import { anneau, interactifs, pret, sansViolation } from "./aide";
 
 // Parcours réel : vrai Worker local (bundle dist/server), vraie D1 migrée, vrai Durable Object. Aucun appel distant.
-// Serveur dédié (LOCAL_TOOLS=true, que le preview des e2e n'a pas) et état D1 isolé dans un dossier temporaire.
+// Serveur dédié (LOCAL_TOOLS=true passé explicitement, sans dépendre du preview des e2e) et état D1 isolé dans un dossier temporaire.
 const CONFIG = "dist/server/wrangler.json";
 const questions = [
   {
@@ -71,7 +71,7 @@ test.afterAll(async () => {
 test("D1 sans migrations : l'inscription répond 500 (cause de l'erreur signalée par l'implémenteur)", async ({ browserName: _nav }, info) => {
   test.setTimeout(150_000);
   dossier = mkdtempSync(join(tmpdir(), "qz10-d1-"));
-  const port = PORT_PREVIEW + 30 + (info.project.name === "mobile" ? 0 : 1);
+  const port = portDedie(70 + (info.project.name === "mobile" ? 0 : 1));
   serveur = await demarrer(port, join(dossier, "vide"), false);
   const res = await fetch(`http://localhost:${port}/api/parties/ABCDEF/joueurs`, {
     method: "POST",
@@ -87,7 +87,7 @@ test("D1 sans migrations : l'inscription répond 500 (cause de l'erreur signalé
 test.describe("avec D1 migrée", () => {
   test.beforeAll(async ({ browserName: _nav }, info) => {
     test.setTimeout(150_000);
-    const port = PORT_PREVIEW + 30 + (info.project.name === "mobile" ? 0 : 1);
+    const port = portDedie(70 + (info.project.name === "mobile" ? 0 : 1));
     persistMigree = join(dossier || (dossier = mkdtempSync(join(tmpdir(), "qz10-d1-"))), "migree");
     serveur = await demarrer(port, persistMigree, true);
     base = `http://localhost:${port}`;

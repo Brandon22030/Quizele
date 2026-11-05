@@ -154,8 +154,10 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     await menuCopie.click();
     await page.getByRole("button", { name: "Supprimer" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    // Le toast part tout seul au bout de 4 s et s'affiche dans le même rendu que le nouveau compteur : on le lit en premier.
+    // Sous charge, attendre d'abord le compteur (jusqu'à 5 s) laissait le toast expirer avant sa propre vérification.
+    await expect(page.getByRole("status").filter({ hasText: "Quiz supprimé." })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("tab", { name: "Mes quiz (2)" })).toBeVisible();
-    await expect(page.getByRole("status").filter({ hasText: "Quiz supprimé." })).toBeVisible();
     // La copie était en tête de liste : le focus passe à la carte suivante.
     await expect(page.getByRole("button", { name: /^Plus d'actions pour Les paraboles$/ })).toBeFocused();
   });
@@ -248,6 +250,8 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
   });
 
   test("erreur serveur, puis Réessayer : squelettes annoncés pendant le rechargement, puis la liste", async ({ page }) => {
+    // Deux lancements de wrangler d1 execute (panne puis rétablissement) : chacun dure plusieurs secondes sous charge.
+    test.setTimeout(120_000);
     await connecter(page, serveur);
     // Panne de lecture : la table des questions disparaît le temps de la panne, la page rend l'état d'erreur.
     serveur.sql("ALTER TABLE questions RENAME TO questions_off");
@@ -273,7 +277,8 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     expect(await axe(page)).toEqual([]);
     await capturer(page, "k10-chargement");
     liberer();
-    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible();
+    // Le rechargement repasse par le Worker et D1 : sous charge, 5 s ne suffisent pas à repeindre la liste.
+    await expect(page.getByRole("button", { name: "Lancer" }).first()).toBeVisible({ timeout: 20_000 });
     await page.unroute(/_actions\/quiz\.lister/);
   });
 

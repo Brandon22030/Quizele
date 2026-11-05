@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
-import { anneau, interactifs, mouvement, pret, reponseJson, sansViolation } from "./aide";
+import { anneau, interactifs, mouvement, pret, reponseJson, sansApercuServeur, sansViolation } from "./aide";
+
+test.beforeEach(async ({ page }) => sansApercuServeur(page));
 
 const cases = (page: Page) => page.getByRole("group", { name: "Code de la partie" }).getByRole("textbox");
 const valeurCode = async (page: Page) => (await cases(page).evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).join("");
@@ -328,6 +330,7 @@ test.describe("/j/<code> : accessibilité", () => {
   test("mouvement réduit : pas d'animation, squelette de vérification compris", async ({ browser, baseURL }) => {
     const ctx = await browser.newContext({ reducedMotion: "reduce", baseURL, viewport: { width: 390, height: 844 } });
     const page = await ctx.newPage();
+    await sansApercuServeur(page);
     await page.route("**/api/parties/ABCDEF/joueurs", async (r) => {
       await new Promise((ok) => setTimeout(ok, 500));
       await r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ playerId: "p1", token: "tok" }) });

@@ -264,28 +264,78 @@ test("choix multiple : rien n'est envoyé sans « Valider la sélection », qui 
   await j.contexte.close();
 });
 
-test("chrono à zéro : « Temps écoulé », tuiles inactives, aucun envoi, la correction n'arrive que sur ordre", async ({ browser }) => {
+test("chrono à zéro : aucun envoi, la correction ne vient que du serveur (ordre ou échéance + 2 s)", async ({ browser }) => {
   test.setTimeout(90_000);
   const partie = await lancerPartie({ questions: [unique("Chrono ?", 10)] });
   const hote = new Hote(partie.code, partie.hostToken);
   const j = await ouvrirJoueur(browser, partie.code, "Lent");
   const envoyes = espionner(j.page);
+  // Tout est horodaté dans la page, sur la même horloge (performance.now) : le chrono à zéro, le verdict rendu, et l'arrivée de
+  // la trame « reveal » (écouteur posé à la construction de la socket, donc exécuté avant celui de l'application).
+  const trames: number[] = [];
+  j.page.on("websocket", (ws) =>
+    ws.on("framereceived", (f) => {
+      try {
+        if (JSON.parse(String(f.payload)).type === "reveal") trames.push(trames.length);
+      } catch {
+        // trame de service (pong)
+      }
+    }),
+  );
+  await j.page.addInitScript(() => {
+    interface Horodatage {
+      zero: number | null;
+      verdict: number | null;
+      reveal: { at: number; verdictDejaLa: boolean } | null;
+    }
+    const t: Horodatage = { zero: null, verdict: null, reveal: null };
+    (window as unknown as { __t: Horodatage }).__t = t;
+    const verdictPresent = () => [...document.querySelectorAll("h1, h2, h3, h4, [role=heading]")].some((h) => /JUSTE|PAS CETTE/.test(h.textContent ?? ""));
+    const lire = () => {
+      if (t.zero === null && document.querySelector('[role="timer"][aria-label="Temps écoulé"]')) t.zero = performance.now();
+      if (t.verdict === null && verdictPresent()) t.verdict = performance.now();
+    };
+    new MutationObserver(lire).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+    const Origine = window.WebSocket;
+    window.WebSocket = class extends Origine {
+      constructor(...args: ConstructorParameters<typeof WebSocket>) {
+        super(...args);
+        this.addEventListener("message", (e) => {
+          try {
+            if (JSON.parse(String(e.data)).type === "reveal" && t.reveal === null) t.reveal = { at: performance.now(), verdictDejaLa: verdictPresent() };
+          } catch {
+            // trame de service (pong)
+          }
+        });
+      }
+    } as typeof WebSocket;
+  });
+  await j.page.reload();
   await pret(j.page);
   await hote.envoyer({ type: "start" });
   await expect(j.page.getByRole("timer")).toBeVisible();
-  await expect(j.page.getByRole("heading", { name: "JUSTE !" })).toHaveCount(0);
   await expect(j.page.getByRole("timer")).toHaveAttribute("aria-label", "Temps écoulé", { timeout: 30_000 });
   await expect(j.page.getByText("Temps écoulé, on attend la suite.")).toBeVisible();
   // La tuile reste lisible mais n'est plus un bouton : plus rien à toucher.
   await expect(j.page.getByRole("button", { name: /Alpha/ })).toHaveCount(0);
   await expect(j.page.getByText("Alpha")).toBeVisible();
-  // Aucun verdict avant l'ordre de l'animateur, et aucune réponse envoyée à notre insu.
-  await j.page.waitForTimeout(1500);
-  await expect(j.page.getByRole("heading", { name: /JUSTE|PAS CETTE/ })).toHaveCount(0);
-  expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
-  await hote.envoyer({ type: "reveal" });
-  await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible();
+
+  // Aucun ordre de l'animateur : la révélation vient du serveur, à l'échéance + 2 s.
+  await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible({ timeout: 30_000 });
   await expect(j.page.getByText("Tu n'as pas répondu à temps")).toBeVisible();
+  const { zero, verdict, reveal } = await j.page.evaluate(
+    () => (window as unknown as { __t: { zero: number | null; verdict: number | null; reveal: { at: number; verdictDejaLa: boolean } | null } }).__t,
+  );
+  expect(zero, "« Temps écoulé » observé").not.toBeNull();
+  expect(verdict, "verdict observé").not.toBeNull();
+  expect(reveal, "trame reveal observée dans la page").not.toBeNull();
+  expect(trames, "une seule trame reveal reçue").toHaveLength(1);
+  // Ni verdict ni trame reveal avant le chrono à zéro ; aucun verdict dans le DOM à l'arrivée de la trame ; le verdict
+  // n'est rendu qu'après elle.
+  expect(reveal!.verdictDejaLa).toBe(false);
+  expect(reveal!.at).toBeGreaterThanOrEqual(zero!);
+  expect(verdict!).toBeGreaterThanOrEqual(reveal!.at);
+  expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
   hote.fermer();
   await j.contexte.close();
 });

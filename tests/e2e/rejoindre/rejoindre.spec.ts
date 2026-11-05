@@ -2,6 +2,9 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { sansApercuServeur } from "./aide";
+
+test.beforeEach(async ({ page }) => sansApercuServeur(page));
 
 const DOSSIER = join(process.cwd(), "..", "Quizele", ".agents", "tasks", "QZ-002-astro-cloudflare", "captures");
 mkdirSync(DOSSIER, { recursive: true });

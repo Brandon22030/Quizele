@@ -1,14 +1,30 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { once } from "node:events";
+import { PORT_PREVIEW, portDedie } from "../serveurs";
 
-// Port propre à ces specs : le serveur du config Playwright ne porte pas LOCAL_TOOLS, requis par la route de lancement locale.
-export const PORT_JEU = Number(process.env.E2E_PORT_JEU ?? 4522);
+// Port propre à ces specs (E2E_PORT_JEU l'emporte, sinon dérivé de E2E_PORT_PREVIEW comme les autres serveurs) : serveur dédié lancé avec LOCAL_TOOLS=true (requis par la route de lancement locale), sans dépendre de la config du serveur Playwright.
+// Un serveur par worker Playwright : deux fichiers de ce dossier tournent en parallèle et se disputeraient le même port
+// (le second lancement échoue à s'y lier mais le sondage de démarrage répond, d'où des tests sur une base qui n'est pas la leur).
+export const PORT_JEU = portDedie(90, process.env.E2E_PORT_JEU ? Number(process.env.E2E_PORT_JEU) - 90 : PORT_PREVIEW);
 export const URL_JEU = `http://localhost:${PORT_JEU}`;
 const CONFIG = "dist/server/wrangler.json";
 export const SOUS_PROTOCOLE = "quizdeszeles.v1";
 
 const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function terminerArbre(enfant: ChildProcess) {
+  if (!enfant.pid) return;
+  for (const pid of descendants(enfant.pid).reverse()) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // déjà arrêté
+    }
+  }
+}
 
 function descendants(racine: number): number[] {
   const lignes = execFileSync("ps", ["-A", "-o", "pid=,ppid="], { encoding: "utf8" }).split("\n").filter(Boolean);
@@ -34,35 +50,47 @@ export interface ServeurLocal {
 // d'autres projets font tourner leurs workerd sur la machine.
 export async function demarrerServeur(): Promise<ServeurLocal> {
   if (!existsSync(CONFIG)) throw new Error("dist/server/wrangler.json absent : lancer `npm run build` d'abord.");
-  execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG], { stdio: "ignore" });
-  const enfant: ChildProcess = spawn(
-    "npx",
-    ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--var", "LOCAL_TOOLS:true"],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
+  // Base jetable : l'état local par défaut est celui du serveur preview des e2e, que cette migration verrouillait (échec
+  // sous charge) et dont elle changeait les réponses (un code fictif devenait « inconnu »).
+  const dossier = mkdtempSync(join(tmpdir(), "qz002-11-"));
+  // Deux wrangler lancés en même temps par des workers différents se disputent parfois le socket interne de workerd
+  // (« Address already in use » sans rapport avec notre port) : on retente après une pause décalée plutôt que d'échouer.
+  let enfant!: ChildProcess;
   let journal = "";
-  enfant.stdout?.on("data", (d) => (journal += d));
-  enfant.stderr?.on("data", (d) => (journal += d));
-  const limite = Date.now() + 90_000;
-  for (;;) {
-    try {
-      await fetch(`${URL_JEU}/`);
-      break;
-    } catch {
-      if (Date.now() > limite) throw new Error(`wrangler dev ne répond pas :\n${journal}`);
-      await attendre(300);
+  try {
+    execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG, "--persist-to", dossier], { stdio: "ignore" });
+    for (let essai = 1; ; essai++) {
+      enfant = spawn(
+        "npx",
+        ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--persist-to", dossier, "--var", "LOCAL_TOOLS:true"],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      journal = "";
+      let sorti = false;
+      enfant.once("exit", () => (sorti = true));
+      enfant.stdout?.on("data", (d) => (journal += d));
+      enfant.stderr?.on("data", (d) => (journal += d));
+      const limite = Date.now() + 90_000;
+      while (!journal.includes("Ready on") && !sorti) {
+        if (Date.now() > limite) throw new Error(`wrangler dev ne répond pas :\n${journal}`);
+        await attendre(300);
+      }
+      if (journal.includes("Ready on")) break;
+      if (essai >= 4 || !journal.includes("Address already in use")) throw new Error(`wrangler dev s'est arrêté :\n${journal}`);
+      await attendre(1_000 + Math.random() * 3_000);
     }
+    await fetch(`${URL_JEU}/`, { signal: AbortSignal.timeout(60_000) }).catch(() => undefined);
+  } catch (erreur) {
+    // Arbre de processus et base jetable ne doivent pas survivre à un démarrage manqué.
+    if (enfant) terminerArbre(enfant);
+    rmSync(dossier, { recursive: true, force: true });
+    throw erreur;
   }
   return {
     arreter: async () => {
-      for (const pid of descendants(enfant.pid!).reverse()) {
-        try {
-          process.kill(pid, "SIGTERM");
-        } catch {
-          // déjà arrêté
-        }
-      }
+      terminerArbre(enfant);
       await Promise.race([once(enfant, "exit"), attendre(5000)]);
+      rmSync(dossier, { recursive: true, force: true });
     },
   };
 }
