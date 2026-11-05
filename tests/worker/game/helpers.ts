@@ -79,7 +79,15 @@ export async function sessionRow(sid: string) {
 // machine était saturée. Le nombre de messages reste borné pour ne pas laisser partir un flot sans limite.
 export const FLOOD_MAX_MESSAGES = 3_000;
 
-export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>): Promise<CloseEvent> {
+// Copies des constantes privées du seau dans GameSession.ts : les bornes exactes des tests en découlent. Si elles
+// changent côté serveur, ces tests échouent et doivent être revus, ce qui est voulu.
+export const BUCKET_CAPACITY = 30;
+export const CONNECT_COST = 5;
+
+// Renvoie la fermeture et le nombre de snapshots reçus pendant le flot : c'est ce nombre qui prouve la limite.
+export async function floodUntilClosed(client: Client, closed: Promise<CloseEvent>): Promise<{ close: CloseEvent; processed: number }> {
+  const snapshots = () => client.messages.filter((m) => m.type === "snapshot").length;
+  const before = snapshots();
   let event: CloseEvent | null = null;
   void closed.then((e) => (event = e));
   let sent = 0;
@@ -92,7 +100,8 @@ export async function floodUntilClosed(client: Client, closed: Promise<CloseEven
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  return closed;
+  const close = await closed;
+  return { close, processed: snapshots() - before };
 }
 
 export class Client {

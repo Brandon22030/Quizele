@@ -3,7 +3,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS, WS_SUBPROTOCOL } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
+  BUCKET_CAPACITY, closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, reuseCode, sessionRow, setup, sidFor, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
@@ -168,7 +168,10 @@ describe("limites des messages entrants", () => {
     freezeClock();
     const { host } = await game(0);
     const closed = closeOf(host);
-    expect((await floodUntilClosed(host, closed)).code).toBe(1008);
+    const { close, processed } = await floodUntilClosed(host, closed);
+    expect(close.code).toBe(1008);
+    // Seau plein à la première connexion, un jeton déjà pris par le resume de setup, aucune recharge.
+    expect(processed).toBe(BUCKET_CAPACITY - 1);
   });
 
   it("une rafale raisonnable (20 messages) reste acceptée", async () => {
@@ -295,7 +298,10 @@ describe("regroupement du compteur de réponses", () => {
     await host.waitFor("question");
     // Minuteurs et horloge du Durable Object simulés : on reproduit exactement la charge qui retarde le minuteur.
     const calls = await runInDurableObject(stubFor(code), (instance) => {
-      const session = instance as unknown as { notifyCount(): void; sendCount(): void };
+      const session = instance as unknown as { notifyCount(): void; sendCount(): void; lastCountAt: number };
+      // [2, 3] suppose qu'aucun compteur n'a encore été envoyé (lastCountAt = 0) : le premier appel part alors tout de
+      // suite. Aucun joueur n'a répondu, donc c'est le cas ; on le vérifie pour que l'hypothèse ne casse pas en silence.
+      const lastCountAtBefore = session.lastCountAt;
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
       const sendCount = vi.spyOn(session, "sendCount");
       const t0 = Date.now();
@@ -311,9 +317,34 @@ describe("regroupement du compteur de réponses", () => {
       vi.setSystemTime(t0 + 310);
       session.notifyCount();
       vi.runAllTimers();
-      return [afterLateTimer, sendCount.mock.calls.length];
+      return [lastCountAtBefore, afterLateTimer, sendCount.mock.calls.length];
     });
-    expect(calls).toEqual([2, 3]);
+    expect(calls).toEqual([0, 2, 3]);
+  });
+
+  it("salle d'attente : un minuteur en retard ne double pas la liste déjà envoyée après l'intervalle de 500 ms", async () => {
+    const { code } = await game(0);
+    const calls = await runInDurableObject(stubFor(code), (instance) => {
+      const session = instance as unknown as { notifyLobby(): void; sendLobby(): void; lastLobbyAt: number };
+      // Même hypothèse que pour le compteur : aucune liste envoyée (lastLobbyAt = 0), aucun joueur n'ayant rejoint.
+      const lastLobbyAtBefore = session.lastLobbyAt;
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const sendLobby = vi.spyOn(session, "sendLobby");
+      const t0 = Date.now();
+      session.notifyLobby();
+      vi.setSystemTime(t0 + 10);
+      session.notifyLobby();
+      // Le minuteur armé pour t0 + 500 ne s'est pas encore déclenché quand l'arrivée suivante tombe à t0 + 600.
+      vi.setSystemTime(t0 + 600);
+      session.notifyLobby();
+      vi.runAllTimers();
+      const afterLateTimer = sendLobby.mock.calls.length;
+      vi.setSystemTime(t0 + 610);
+      session.notifyLobby();
+      vi.runAllTimers();
+      return [lastLobbyAtBefore, afterLateTimer, sendLobby.mock.calls.length];
+    });
+    expect(calls).toEqual([0, 2, 3]);
   });
 });
 

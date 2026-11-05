@@ -1,13 +1,14 @@
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ANSWER_TOLERANCE_MS, MAX_PLAYERS } from "../../../src/shared/protocol";
 import {
-  addPlayer, closeCodeOf, createGame, connect, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
+  addPlayer, closeCodeOf, createGame, connect, freezeClock, join, newCode, rawConnect, rewindQuestion, setup, signFor, stubFor, withoutCorrection,
   type Client,
 } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const client of opened.splice(0)) client.close();
 });
 
@@ -227,12 +228,16 @@ describe("réponses : cas limites", () => {
     return client.messages.filter((m) => m.type === "answer_ack")[before]!;
   };
 
-  it("juste avant la limite (durée + 2 s - 1,5 s) : acceptée et juste ; après (+ 1,5 s) : tardive et fausse", async () => {
+  it("à la limite exacte (durée + 2 s) : acceptée et juste ; 1 ms après : tardive et fausse", async () => {
+    // Horloge figée : reculer started_at laissait 1,5 s de marge, que la latence réelle peut consommer sous charge.
+    const clock = freezeClock();
     const { code, host, players } = await start(2);
-    await rewindQuestion(code, 20_000 + ANSWER_TOLERANCE_MS - 1_500);
+    const { startedAt, durationMs } = await players[0]!.client.waitFor("question");
+    clock.set(startedAt + durationMs + ANSWER_TOLERANCE_MS);
     expect(await answerAndAck(players[0]!.client, "q1", ["q1b"])).toMatchObject({ late: false, duplicate: false });
-    await rewindQuestion(code, 3_000);
+    clock.set(startedAt + durationMs + ANSWER_TOLERANCE_MS + 1);
     expect(await answerAndAck(players[1]!.client, "q1", ["q1b"])).toMatchObject({ late: true, duplicate: false });
+    clock.restore();
     host.send({ type: "reveal" });
     const reveals = await Promise.all(players.map((p) => p.client.waitFor("reveal")));
     expect(reveals.map((r) => r.you?.wasCorrect)).toEqual([true, false]);

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { closeCodeOf, connect, freezeClock, join, setup, type Client } from "./helpers";
+import { BUCKET_CAPACITY, CONNECT_COST, closeCodeOf, connect, freezeClock, join, setup, type Client } from "./helpers";
 
 const opened: Client[] = [];
 afterEach(() => {
@@ -36,9 +36,10 @@ describe("seau à jetons et reconnexion en boucle", () => {
       processed += client.messages.filter((m) => m.type === "snapshot").length;
       if (outcome?.code === 1008) closedFor1008 += 1;
     }
-    // Sans recharge, la capacité de 30 jetons borne tout ce que le joueur peut faire traiter, reconnexions comprises :
-    // un seau remis à plein à chaque reconnexion laisserait passer 6 x 25 = 150 messages.
-    expect(processed).toBeLessThanOrEqual(30);
+    // Sans recharge : seau plein, moins le resume d'addPlayer, moins le coût de la première reconnexion, puis plus rien
+    // aux tours suivants (seau conservé à 0). Un seau remis à plein à chaque reconnexion laisserait passer 6 x 25 = 150
+    // messages.
+    expect(processed).toBe(BUCKET_CAPACITY - 1 - CONNECT_COST);
     expect(processed).toBeLessThan(150);
     expect(closedFor1008).toBeGreaterThan(0);
   });

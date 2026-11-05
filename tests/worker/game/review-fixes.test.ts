@@ -2,7 +2,7 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLAYER_TOKEN_TTL_MS } from "../../../src/shared/protocol";
 import {
-  closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
+  BUCKET_CAPACITY, CONNECT_COST, closeCodeOf, connect, createGame, floodUntilClosed, freezeClock, hostToken, join, newCode, rawConnect, setup, signFor, stubFor,
   type Client,
 } from "./helpers";
 
@@ -117,7 +117,10 @@ describe("fermetures applicatives définitives", () => {
     freezeClock();
     const { players } = await game(1);
     const closed = closeOf(players[0]!.client);
-    expect((await floodUntilClosed(players[0]!.client, closed)).code).toBe(1008);
+    const { close, processed } = await floodUntilClosed(players[0]!.client, closed);
+    expect(close.code).toBe(1008);
+    // Seau plein à la première connexion, un jeton déjà pris par le resume d'addPlayer, aucune recharge.
+    expect(processed).toBe(BUCKET_CAPACITY - 1);
   });
 });
 
@@ -144,7 +147,7 @@ describe("seau à jetons et fréquence de connexion", () => {
     for (let i = 0; i < 25; i += 1) next.send({ type: "resume" });
     // Le seau repris (9 jetons, moins le coût de reconnexion) s'épuise avant les 25 messages : fermeture en 1008.
     expect((await nextClosed).code).toBe(1008);
-    expect(next.messages.filter((m) => m.type === "snapshot").length).toBeLessThanOrEqual(row!.tokens);
+    expect(next.messages.filter((m) => m.type === "snapshot").length).toBe(row!.tokens - CONNECT_COST);
   });
 
   it("au-delà de 10 connexions d'affilée, le joueur est refermé (1008) avant d'atteindre la partie", async () => {
