@@ -422,19 +422,24 @@ describe("route locale de charge", () => {
   it("le bon secret, en local (MAIL_TRANSPORT=console), crée une partie jouable", async () => {
     await prepareDb();
     expect(env.MAIL_TRANSPORT).toBe("console");
-    // LOCAL_TOOLS n'est pas dans la config de test : la route exige désormais ce drapeau explicite en plus du transport.
+    // La route exige le drapeau LOCAL_TOOLS en plus du transport : on le force puis on restaure la valeur de la config.
     const flags = env as unknown as Record<string, string | undefined>;
+    const initial = flags.LOCAL_TOOLS;
     flags.LOCAL_TOOLS = "true";
-    const response = await call({ "x-local-secret": env.PLAYER_TOKEN_SECRET as string });
-    expect(response.status).toBe(201);
-    const { code, hostToken: token } = (await response.json()) as { code: string; hostToken: string };
-    const host = await connect(code, token);
-    opened.push(host);
-    host.send({ type: "resume" });
-    expect(await host.waitFor("snapshot")).toMatchObject({ role: "host", phase: "lobby" });
-    const joined = await addPlayer(code, "Awa");
-    opened.push(joined.client);
-    delete flags.LOCAL_TOOLS;
+    try {
+      const response = await call({ "x-local-secret": env.PLAYER_TOKEN_SECRET as string });
+      expect(response.status).toBe(201);
+      const { code, hostToken: token } = (await response.json()) as { code: string; hostToken: string };
+      const host = await connect(code, token);
+      opened.push(host);
+      host.send({ type: "resume" });
+      expect(await host.waitFor("snapshot")).toMatchObject({ role: "host", phase: "lobby" });
+      const joined = await addPlayer(code, "Awa");
+      opened.push(joined.client);
+    } finally {
+      if (initial === undefined) delete flags.LOCAL_TOOLS;
+      else flags.LOCAL_TOOLS = initial;
+    }
   });
 });
 

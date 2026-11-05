@@ -15,8 +15,6 @@ export default defineConfig({
   security: { checkOrigin: true },
   vite: {
     plugins: [tailwindcss()],
-    // Config inline : empêche Vite de charger l'ancien postcss.config.mjs de Next (supprimé en QZ-002-18).
-    css: { postcss: { plugins: [] } },
     // Pré-bundle explicite : sans lui, l'optimisation à froid de Vite recharge la page en cours de route
     // (« Invalid hook call », import dynamique de button.tsx en échec).
     optimizeDeps: {
@@ -30,7 +28,6 @@ export default defineConfig({
         "clsx",
         "tailwind-merge",
         "partysocket",
-        "@base-ui/react",
         "lucide-react",
         "qrcode.react",
       ],
