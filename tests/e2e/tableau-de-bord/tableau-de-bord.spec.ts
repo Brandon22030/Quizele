@@ -250,6 +250,8 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
   });
 
   test("erreur serveur, puis Réessayer : squelettes annoncés pendant le rechargement, puis la liste", async ({ page }) => {
+    // Deux lancements de wrangler d1 execute (panne puis rétablissement) : chacun dure plusieurs secondes sous charge.
+    test.setTimeout(120_000);
     await connecter(page, serveur);
     // Panne de lecture : la table des questions disparaît le temps de la panne, la page rend l'état d'erreur.
     serveur.sql("ALTER TABLE questions RENAME TO questions_off");

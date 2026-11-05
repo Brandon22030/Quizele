@@ -279,9 +279,9 @@ test("chrono à zéro : « Temps écoulé », tuiles inactives, aucun envoi, la 
   // La tuile reste lisible mais n'est plus un bouton : plus rien à toucher.
   await expect(j.page.getByRole("button", { name: /Alpha/ })).toHaveCount(0);
   await expect(j.page.getByText("Alpha")).toBeVisible();
-  // Aucun verdict avant l'ordre de l'animateur, et aucune réponse envoyée à notre insu.
-  await j.page.waitForTimeout(1500);
-  await expect(j.page.getByRole("heading", { name: /JUSTE|PAS CETTE/ })).toHaveCount(0);
+  // Aucun verdict à l'écoulement du chrono, et aucune réponse envoyée à notre insu. Pas d'attente ajoutée : le serveur révèle
+  // seul ANSWER_TOLERANCE_MS (2 s) après l'échéance, et sous charge 1,5 s d'attente suffisaient à franchir ce délai.
+  await expect(j.page.getByRole("heading", { name: /JUSTE|PAS CETTE/ })).toHaveCount(0, { timeout: 500 });
   expect(envoyes.filter((m) => m.type === "answer")).toHaveLength(0);
   await hote.envoyer({ type: "reveal" });
   await expect(j.page.getByRole("heading", { name: /PAS CETTE\s*FOIS/ })).toBeVisible();
