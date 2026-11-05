@@ -47,7 +47,7 @@
         {
           "binding": "DB",
           "database_name": "quizdeszeles-preview",
-          "database_id": "A_REMPLACER",
+          "database_id": "c4a7fc4f-23d2-46c3-9fa6-67d8e783f5e5",
           "migrations_dir": "migrations"
         }
       ],
