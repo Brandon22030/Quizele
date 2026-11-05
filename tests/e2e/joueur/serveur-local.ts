@@ -1,5 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { once } from "node:events";
 
 // Port propre à ces specs : serveur dédié lancé avec LOCAL_TOOLS=true (requis par la route de lancement locale), sans dépendre de la config du serveur Playwright.
@@ -34,10 +36,13 @@ export interface ServeurLocal {
 // d'autres projets font tourner leurs workerd sur la machine.
 export async function demarrerServeur(): Promise<ServeurLocal> {
   if (!existsSync(CONFIG)) throw new Error("dist/server/wrangler.json absent : lancer `npm run build` d'abord.");
-  execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG], { stdio: "ignore" });
+  // Base jetable : l'état local par défaut est celui du serveur preview des e2e, que cette migration verrouillait (échec
+  // sous charge) et dont elle changeait les réponses (un code fictif devenait « inconnu »).
+  const dossier = mkdtempSync(join(tmpdir(), "qz002-11-"));
+  execFileSync("npx", ["wrangler", "d1", "migrations", "apply", "DB", "--local", "--config", CONFIG, "--persist-to", dossier], { stdio: "ignore" });
   const enfant: ChildProcess = spawn(
     "npx",
-    ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--var", "LOCAL_TOOLS:true"],
+    ["wrangler", "dev", "--config", CONFIG, "--port", String(PORT_JEU), "--local", "--persist-to", dossier, "--var", "LOCAL_TOOLS:true"],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
   let journal = "";
@@ -63,6 +68,7 @@ export async function demarrerServeur(): Promise<ServeurLocal> {
         }
       }
       await Promise.race([once(enfant, "exit"), attendre(5000)]);
+      rmSync(dossier, { recursive: true, force: true });
     },
   };
 }

@@ -330,6 +330,7 @@ test.describe("/j/<code> : accessibilité", () => {
   test("mouvement réduit : pas d'animation, squelette de vérification compris", async ({ browser, baseURL }) => {
     const ctx = await browser.newContext({ reducedMotion: "reduce", baseURL, viewport: { width: 390, height: 844 } });
     const page = await ctx.newPage();
+    await sansApercuServeur(page);
     await page.route("**/api/parties/ABCDEF/joueurs", async (r) => {
       await new Promise((ok) => setTimeout(ok, 500));
       await r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ playerId: "p1", token: "tok" }) });
