@@ -154,3 +154,37 @@ describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
     expect(statuses).not.toContain("rejected");
   });
 });
+
+describe("GameSocket : poignée de main lente (serveur ou réseau chargé)", () => {
+  // Chaque nouvelle tentative n'ouvre qu'au bout de `delaiMs` : un serveur saturé met plusieurs secondes à répondre 101.
+  function poigneesLentes(delaiMs: number): void {
+    const original = FakeWebSocket.instances.push.bind(FakeWebSocket.instances);
+    FakeWebSocket.instances.push = (...sockets: FakeWebSocket[]) => {
+      for (const ws of sockets) setTimeout(() => ws.readyState === FakeWebSocket.CONNECTING && ws.open(), delaiMs);
+      return original(...sockets);
+    };
+  }
+
+  it("après une coupure, une reprise dont la poignée de main dure 6 s finit par aboutir", async () => {
+    await firstSocket();
+    poigneesLentes(6_000);
+    FakeWebSocket.instances[0]!.serverClose(1006);
+    expect(statuses.at(-1)).toBe("reconnecting");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(statuses.at(-1)).toBe("open");
+  });
+
+  it("au premier chargement, une poignée de main de 6 s aboutit au lieu de mener à \"rejected\"", async () => {
+    poigneesLentes(6_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(statuses).not.toContain("rejected");
+    expect(statuses.at(-1)).toBe("open");
+  });
+
+  it("une poignée de main de plus de 12 s reste abandonnée : le délai est borné", async () => {
+    poigneesLentes(14_000);
+    await vi.advanceTimersByTimeAsync(600_000);
+    expect(statuses).not.toContain("open");
+    expect(statuses.at(-1)).toBe("rejected");
+  });
+});

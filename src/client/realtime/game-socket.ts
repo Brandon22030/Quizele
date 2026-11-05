@@ -29,6 +29,10 @@ export interface GameSocketOptions {
 }
 
 const PING_INTERVAL_MS = 20_000;
+// Le défaut de partysocket (4 s) abandonne chaque essai sur réseau mobile lent ou Durable Object démarré à froid :
+// l'hôte resterait des minutes en reprise, et le premier chargement finirait en "rejected". 12 s laisse aboutir une
+// poignée de main lente tout en restant borné, et bien en deçà du seuil de silence ci-dessous.
+const CONNECTION_TIMEOUT_MS = 12_000;
 // Au-delà, la connexion est considérée comme zombie (réseau mobile coupé sans événement close).
 const SILENCE_LIMIT_MS = 50_000;
 // Un refus HTTP (jeton signé avec un secret qui a changé) n'arrive qu'en 1006 anonyme. Après autant d'échecs
@@ -57,6 +61,7 @@ export class GameSocket {
         maxEnqueuedMessages: 20,
         minReconnectionDelay: 500,
         maxReconnectionDelay: 8_000,
+        connectionTimeout: CONNECTION_TIMEOUT_MS,
         shouldReconnectOnClose: (event) => terminalStatusFor(event.code) === null,
         WebSocket: options.WebSocket,
       },
