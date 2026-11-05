@@ -117,7 +117,7 @@ export async function lancerServeur(decalage: number, vars: Record<string, strin
     }
 
     // Requête de chauffe : la première compile le worker, elle ne doit pas retomber sur un test chronométré.
-    await fetch(`http://localhost:${port}/connexion`).catch(() => undefined);
+    await fetch(`http://localhost:${port}/connexion`, { signal: AbortSignal.timeout(30_000) }).catch(() => undefined);
 
     return {
       url: `http://localhost:${port}`,

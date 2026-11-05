@@ -2,7 +2,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { once } from "node:events";
 
-// Port propre à ces specs : le serveur du config Playwright ne porte pas LOCAL_TOOLS, requis par la route de lancement locale.
+// Port propre à ces specs : serveur dédié lancé avec LOCAL_TOOLS=true (requis par la route de lancement locale), sans dépendre de la config du serveur Playwright.
 export const PORT_JEU = Number(process.env.E2E_PORT_JEU ?? 4522);
 export const URL_JEU = `http://localhost:${PORT_JEU}`;
 const CONFIG = "dist/server/wrangler.json";

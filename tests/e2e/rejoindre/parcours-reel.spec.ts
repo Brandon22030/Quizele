@@ -7,7 +7,7 @@ import { PORT_PREVIEW } from "../serveurs";
 import { anneau, interactifs, pret, sansViolation } from "./aide";
 
 // Parcours réel : vrai Worker local (bundle dist/server), vraie D1 migrée, vrai Durable Object. Aucun appel distant.
-// Serveur dédié (LOCAL_TOOLS=true, que le preview des e2e n'a pas) et état D1 isolé dans un dossier temporaire.
+// Serveur dédié (LOCAL_TOOLS=true passé explicitement, sans dépendre du preview des e2e) et état D1 isolé dans un dossier temporaire.
 const CONFIG = "dist/server/wrangler.json";
 const questions = [
   {

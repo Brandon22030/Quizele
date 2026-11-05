@@ -154,8 +154,10 @@ test.describe("tableau de bord de l'animateur (vraie session)", () => {
     await menuCopie.click();
     await page.getByRole("button", { name: "Supprimer" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Supprimer" }).click();
+    // Le toast part tout seul au bout de 4 s et s'affiche dans le même rendu que le nouveau compteur : on le lit en premier.
+    // Sous charge, attendre d'abord le compteur (jusqu'à 5 s) laissait le toast expirer avant sa propre vérification.
+    await expect(page.getByRole("status").filter({ hasText: "Quiz supprimé." })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("tab", { name: "Mes quiz (2)" })).toBeVisible();
-    await expect(page.getByRole("status").filter({ hasText: "Quiz supprimé." })).toBeVisible();
     // La copie était en tête de liste : le focus passe à la carte suivante.
     await expect(page.getByRole("button", { name: /^Plus d'actions pour Les paraboles$/ })).toBeFocused();
   });

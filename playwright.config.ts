@@ -17,7 +17,9 @@ export default defineConfig({
       command: `npm run build && npm run preview -- --port ${PORT_PREVIEW}`,
       url: URL_PREVIEW,
       reuseExistingServer,
-      timeout: 180_000,
+      // Build (jusqu'à environ 4 min machine chargée) puis démarrage de wrangler : la marge évite les faux échecs, une vraie
+      // panne (build en erreur, processus mort) reste signalée aussitôt par Playwright sans attendre ce délai.
+      timeout: 600_000,
     },
     {
       // --ignore-lock : reste au premier plan (sans lui astro dev 7 se détache en démon quand il détecte un agent)
@@ -25,7 +27,8 @@ export default defineConfig({
       command: `npx astro dev --port ${PORT_DEV} --ignore-lock`,
       url: `${URL_DEV}/dev/styleguide-base`,
       reuseExistingServer,
-      timeout: 120_000,
+      // La première requête compile le dev server Vite à froid ; sous charge, 120 s ne suffisent pas.
+      timeout: 300_000,
     },
   ],
   projects: [
