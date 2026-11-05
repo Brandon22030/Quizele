@@ -71,7 +71,7 @@ test.afterAll(async () => {
 test("D1 sans migrations : l'inscription répond 500 (cause de l'erreur signalée par l'implémenteur)", async ({ browserName: _nav }, info) => {
   test.setTimeout(150_000);
   dossier = mkdtempSync(join(tmpdir(), "qz10-d1-"));
-  const port = PORT_PREVIEW + 30 + (info.project.name === "mobile" ? 0 : 1);
+  const port = PORT_PREVIEW + 70 + Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100 + (info.project.name === "mobile" ? 0 : 1);
   serveur = await demarrer(port, join(dossier, "vide"), false);
   const res = await fetch(`http://localhost:${port}/api/parties/ABCDEF/joueurs`, {
     method: "POST",
@@ -87,7 +87,7 @@ test("D1 sans migrations : l'inscription répond 500 (cause de l'erreur signalé
 test.describe("avec D1 migrée", () => {
   test.beforeAll(async ({ browserName: _nav }, info) => {
     test.setTimeout(150_000);
-    const port = PORT_PREVIEW + 30 + (info.project.name === "mobile" ? 0 : 1);
+    const port = PORT_PREVIEW + 70 + Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100 + (info.project.name === "mobile" ? 0 : 1);
     persistMigree = join(dossier || (dossier = mkdtempSync(join(tmpdir(), "qz10-d1-"))), "migree");
     serveur = await demarrer(port, persistMigree, true);
     base = `http://localhost:${port}`;

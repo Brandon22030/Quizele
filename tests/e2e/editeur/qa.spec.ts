@@ -132,11 +132,12 @@ test.describe("éditeur : QA, session réelle", () => {
     await page.getByLabel("Énoncé de la question 1").click();
     const debut = Date.now();
     await page.keyboard.type("abc", { delay: 100 });
-    const derniere = Date.now();
     await expect(statut(page)).not.toHaveText("Enregistré");
     await enregistre(page);
     expect(requetes.length).toBe(1);
-    expect(requetes[0]! - derniere).toBeGreaterThanOrEqual(650);
+    // La dernière frappe part au plus tôt 2 x 100 ms après `debut` : mesurer depuis le retour de type() ajoutait la latence
+    // du pilote (sous charge, de quoi tomber sous le seuil alors que le délai applicatif est correct).
+    expect(requetes[0]! - debut).toBeGreaterThanOrEqual(200 + 650);
     expect(requetes[0]! - debut).toBeLessThan(5_000);
   });
 

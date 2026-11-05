@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { once } from "node:events";
 
 // Port propre à ces specs : serveur dédié lancé avec LOCAL_TOOLS=true (requis par la route de lancement locale), sans dépendre de la config du serveur Playwright.
-export const PORT_JEU = Number(process.env.E2E_PORT_JEU ?? 4522);
+// Un serveur par worker Playwright : deux fichiers de ce dossier tournent en parallèle et se disputeraient le même port
+// (le second lancement échoue à s'y lier mais le sondage de démarrage répond, d'où des tests sur une base qui n'est pas la leur).
+export const PORT_JEU = Number(process.env.E2E_PORT_JEU ?? 4522) + Number(process.env.TEST_PARALLEL_INDEX ?? 0) * 100;
 export const URL_JEU = `http://localhost:${PORT_JEU}`;
 const CONFIG = "dist/server/wrangler.json";
 export const SOUS_PROTOCOLE = "quizdeszeles.v1";
