@@ -56,8 +56,8 @@
       },
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
       "vars": {
-        "BETTER_AUTH_URL": "A_REMPLACER",
-        "MAIL_FROM": "A_REMPLACER",
+        "BETTER_AUTH_URL": "https://quizdeszeles-preview.brandon-9d1.workers.dev",
+        "MAIL_FROM": "Quizdeszeles <onboarding@resend.dev>",
         "MAIL_TRANSPORT": "resend",
         "MAGIC_LINK_ENABLED": "false",
         "GOOGLE_CLIENT_ID": ""
