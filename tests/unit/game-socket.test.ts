@@ -156,6 +156,7 @@ describe("GameSocket : refus HTTP répétés (rotation du secret)", () => {
 });
 
 describe("GameSocket : poignée de main lente (serveur ou réseau chargé)", () => {
+  // Le faux serveur ne répond jamais au ping : on s'arrête avant le seuil de silence (50 s) pour ne tester que la poignée de main.
   // Chaque nouvelle tentative n'ouvre qu'au bout de `delaiMs` : un serveur saturé met plusieurs secondes à répondre 101.
   function poigneesLentes(delaiMs: number): void {
     const original = FakeWebSocket.instances.push.bind(FakeWebSocket.instances);
@@ -170,13 +171,13 @@ describe("GameSocket : poignée de main lente (serveur ou réseau chargé)", () 
     poigneesLentes(6_000);
     FakeWebSocket.instances[0]!.serverClose(1006);
     expect(statuses.at(-1)).toBe("reconnecting");
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(statuses.at(-1)).toBe("open");
   });
 
   it("au premier chargement, une poignée de main de 6 s aboutit au lieu de mener à \"rejected\"", async () => {
     poigneesLentes(6_000);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(statuses).not.toContain("rejected");
     expect(statuses.at(-1)).toBe("open");
   });
