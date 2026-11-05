@@ -168,7 +168,7 @@ describe("limites des messages entrants", () => {
     freezeClock();
     const { host } = await game(0);
     const closed = closeOf(host);
-    expect((await floodUntilClosed(host, closed))?.code).toBe(1008);
+    expect((await floodUntilClosed(host, closed)).code).toBe(1008);
   });
 
   it("une rafale raisonnable (20 messages) reste acceptée", async () => {

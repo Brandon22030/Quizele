@@ -117,7 +117,7 @@ describe("fermetures applicatives définitives", () => {
     freezeClock();
     const { players } = await game(1);
     const closed = closeOf(players[0]!.client);
-    expect((await floodUntilClosed(players[0]!.client, closed))?.code).toBe(1008);
+    expect((await floodUntilClosed(players[0]!.client, closed)).code).toBe(1008);
   });
 });
 
