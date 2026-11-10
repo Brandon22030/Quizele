@@ -1,0 +1,259 @@
+@import "tailwindcss";
+@import "@fontsource/lilita-one/400.css";
+@import "@fontsource/bangers/400.css";
+@import "@fontsource/caveat-brush/400.css";
+@import "@fontsource/baloo-2/500.css";
+@import "@fontsource/baloo-2/600.css";
+@import "@fontsource/baloo-2/700.css";
+@import "@fontsource/baloo-2/800.css";
+
+/* Jetons « Affiche de fête » (QZ-001). Seul fichier autorisé à contenir des couleurs en dur. */
+@theme inline {
+  /* Les espaces de noms sont remis à zéro : seuls les jetons ci-dessous existent (aucune couleur, taille, rayon ni ombre inventés). */
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --font-*: initial;
+
+  /* Couleurs. Contrastes vérifiés dans maquette.html (tableau calculé). */
+  --color-jaune-soleil: #ffd400; /* fond principal */
+  --color-creme: #fff4cc;        /* papier, tuiles, champs, texte sur vert */
+  --color-vert-foret: #0b4a2a;   /* encre : texte, contours, reliefs, fond animateur */
+  --color-vert-nuit: #06301b;    /* texte sur états vifs, contours sur fond forêt */
+  --color-vert-vif: #22a43a;     /* extrusions et décor uniquement, jamais en texte */
+  --color-vert-mousse: #2b5a3b;  /* texte secondaire (5,58 sur jaune, 7,25 sur crème) */
+  --color-vert-eclat: #3cc24f;   /* état juste, texte vert-nuit dessus (6,24) */
+  --color-piment: #c8241b;       /* état faux, chrono critique, suppression (crème dessus : 5,12) */
+  --color-separateur: color-mix(in srgb, var(--color-vert-foret) 25%, transparent); /* filets pointillés sur papier crème */
+  --color-mangue: #ff8a1f;       /* attention, chrono <= 10 s (vert-nuit dessus : 6,16) */
+
+  /* Polices : une par rôle */
+  --font-affiche: "Lilita One", "Baloo 2", system-ui, sans-serif;       /* titres, chiffres, boutons */
+  --font-badge: "Bangers", "Baloo 2", system-ui, sans-serif;        /* étoiles, exclamations */
+  --font-note: "Caveat Brush", "Baloo 2", system-ui, sans-serif;    /* bulles manuscrites */
+  --font-sans: "Baloo 2", system-ui, sans-serif;           /* tout le texte courant */
+
+  /* Échelle typographique. Les tailles géantes ont leur jeton : plus de text-7xl/9xl hors système. */
+  --text-xs: 13px;
+  --text-xs--line-height: 1.45;
+  --text-sm: 15px;
+  --text-sm--line-height: 1.45;
+  --text-base: 17px;
+  --text-base--line-height: 1.5;
+  --text-lg: 20px;
+  --text-lg--line-height: 1.3;
+  --text-xl: 26px;
+  --text-xl--line-height: 1.15;
+  --text-2xl: 34px;
+  --text-2xl--line-height: 1.1;
+  --text-3xl: 44px;
+  --text-3xl--line-height: 1.05;
+  --text-4xl: 60px;  /* titre d'écran, code mobile */
+  --text-4xl--line-height: 1;
+  --text-5xl: 84px;  /* héro accueil mobile */
+  --text-5xl--line-height: 0.95;
+  --text-6xl: 120px; /* score final, héro bureau */
+  --text-6xl--line-height: 0.95;
+  --text-7xl: 176px; /* code de session projeté */
+  --text-7xl--line-height: 1;
+
+  /* Rayons */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 32px;
+  --radius-pill: 9999px;
+
+  /* Espacements, grille de 4 px */
+  --spacing-trait: 3px; /* épaisseur des contours (remplace --spacing-rule) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-pastille-option: 28px;  /* pastille de OptionMode */
+  --spacing-8: 32px;
+  --spacing-pastille-marque: 36px;  /* pastille de Marque */
+  --spacing-10: 40px;
+  --spacing-11: 44px; /* cible tactile minimale */
+  --spacing-12: 48px;
+  --spacing-14: 56px; /* bouton principal */
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-menu: 232px; /* largeur du menu de compte */
+  /* Gabarits propres aux écrans de jeu (maquette QZ-001), nommés plutôt que numérotés : ils sortent de la grille de 4 px d'usage courant. */
+  --spacing-chrono: 128px;       /* anneau du chrono */
+  --spacing-scene: 300px;        /* scène de l'attente et du verdict juste (explosion de 300) */
+  --spacing-scene-coeur: 288px;  /* explosion crème de l'attente, posée sur celle de 300 */
+  --spacing-scene-basse: 260px;  /* scène du verdict « Pas cette fois » */
+  --spacing-badge-grand: 240px;  /* étoile « JUSTE ! » */
+  --spacing-badge-moyen: 220px;  /* étoile « Pas cette fois ! » */
+  --spacing-badge-petit: 144px;  /* étoile des écrans terminaux */
+  --spacing-marche: 104px;       /* largeur des marches 2 et 3 du podium */
+  --spacing-marche-large: 112px; /* largeur de la marche 1 */
+  --spacing-marche-haute: 120px; /* hauteur de la marche 1 */
+  --spacing-marche-moyenne: 80px;/* hauteur de la marche 2 */
+  --spacing-ecran: 400px;        /* largeur maximale d'une planche mobile dans le styleguide */
+
+  /* Ombres « relief » : dures, sans flou, décalées vers le bas à gauche comme l'affiche */
+  --shadow-relief-sm: -3px 3px 0 0 var(--color-vert-foret);
+  --shadow-relief: -5px 5px 0 0 var(--color-vert-foret);
+  --shadow-relief-lg: -8px 8px 0 0 var(--color-vert-foret);
+  --shadow-relief-vif: -5px 5px 0 0 var(--color-vert-vif);
+  --shadow-relief-jaune: -5px 5px 0 0 var(--color-jaune-soleil);
+  --shadow-relief-appui: -1px 1px 0 0 var(--color-vert-foret);
+
+  /* Lettrage affiche : contour vert forêt + extrusion 3D vert vif (Tailwind 4.1+, utilitaire text-shadow-*) */
+  --text-shadow-affiche: 3.0px 0.0px 0 var(--color-vert-foret), 2.8px 1.1px 0 var(--color-vert-foret), 2.1px 2.1px 0 var(--color-vert-foret), 1.1px 2.8px 0 var(--color-vert-foret), 0.0px 3.0px 0 var(--color-vert-foret), -1.1px 2.8px 0 var(--color-vert-foret), -2.1px 2.1px 0 var(--color-vert-foret), -2.8px 1.1px 0 var(--color-vert-foret), -3.0px 0.0px 0 var(--color-vert-foret), -2.8px -1.1px 0 var(--color-vert-foret), -2.1px -2.1px 0 var(--color-vert-foret), -1.1px -2.8px 0 var(--color-vert-foret), -0.0px -3.0px 0 var(--color-vert-foret), 1.1px -2.8px 0 var(--color-vert-foret), 2.1px -2.1px 0 var(--color-vert-foret), 2.8px -1.1px 0 var(--color-vert-foret), -1px 1px 0 var(--color-vert-vif), -2px 2px 0 var(--color-vert-vif), -3px 3px 0 var(--color-vert-vif), -4px 4px 0 var(--color-vert-vif), -5px 5px 0 var(--color-vert-vif), -6px 6px 0 var(--color-vert-vif), -7px 7px 0 var(--color-vert-vif), -4.0px 7.0px 0 var(--color-vert-foret), -4.2px 8.1px 0 var(--color-vert-foret), -4.9px 9.1px 0 var(--color-vert-foret), -5.9px 9.8px 0 var(--color-vert-foret), -7.0px 10.0px 0 var(--color-vert-foret), -8.1px 9.8px 0 var(--color-vert-foret), -9.1px 9.1px 0 var(--color-vert-foret), -9.8px 8.1px 0 var(--color-vert-foret), -10.0px 7.0px 0 var(--color-vert-foret), -9.8px 5.9px 0 var(--color-vert-foret), -9.1px 4.9px 0 var(--color-vert-foret), -8.1px 4.2px 0 var(--color-vert-foret), -7.0px 4.0px 0 var(--color-vert-foret), -5.9px 4.2px 0 var(--color-vert-foret), -4.9px 4.9px 0 var(--color-vert-foret), -4.2px 5.9px 0 var(--color-vert-foret);
+  --text-shadow-affiche-sm: 2.0px 0.0px 0 var(--color-vert-foret), 1.8px 0.8px 0 var(--color-vert-foret), 1.4px 1.4px 0 var(--color-vert-foret), 0.8px 1.8px 0 var(--color-vert-foret), 0.0px 2.0px 0 var(--color-vert-foret), -0.8px 1.8px 0 var(--color-vert-foret), -1.4px 1.4px 0 var(--color-vert-foret), -1.8px 0.8px 0 var(--color-vert-foret), -2.0px 0.0px 0 var(--color-vert-foret), -1.8px -0.8px 0 var(--color-vert-foret), -1.4px -1.4px 0 var(--color-vert-foret), -0.8px -1.8px 0 var(--color-vert-foret), -0.0px -2.0px 0 var(--color-vert-foret), 0.8px -1.8px 0 var(--color-vert-foret), 1.4px -1.4px 0 var(--color-vert-foret), 1.8px -0.8px 0 var(--color-vert-foret), -1px 1px 0 var(--color-vert-vif), -2px 2px 0 var(--color-vert-vif), -3px 3px 0 var(--color-vert-vif), -1.0px 3.0px 0 var(--color-vert-foret), -1.2px 3.8px 0 var(--color-vert-foret), -1.6px 4.4px 0 var(--color-vert-foret), -2.2px 4.8px 0 var(--color-vert-foret), -3.0px 5.0px 0 var(--color-vert-foret), -3.8px 4.8px 0 var(--color-vert-foret), -4.4px 4.4px 0 var(--color-vert-foret), -4.8px 3.8px 0 var(--color-vert-foret), -5.0px 3.0px 0 var(--color-vert-foret), -4.8px 2.2px 0 var(--color-vert-foret), -4.4px 1.6px 0 var(--color-vert-foret), -3.8px 1.2px 0 var(--color-vert-foret), -3.0px 1.0px 0 var(--color-vert-foret), -2.2px 1.2px 0 var(--color-vert-foret), -1.6px 1.6px 0 var(--color-vert-foret), -1.2px 2.2px 0 var(--color-vert-foret);
+
+  /* Animations */
+  --animate-pop: pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  --animate-tremble: tremble 0.5s ease-in-out infinite;
+  --animate-brille: brille 1.4s linear infinite;
+  --animate-tourne: tourne 14s linear infinite;
+  --animate-rebond: rebond 1s ease-in-out infinite;
+
+  @keyframes pop {
+    from { transform: scale(0.4) rotate(-8deg); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes tremble {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-4deg) scale(1.03); }
+    75% { transform: rotate(4deg) scale(1.03); }
+  }
+  @keyframes brille {
+    from { background-position: 100% 0; }
+    to { background-position: 0 0; }
+  }
+  @keyframes tourne {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes rebond {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(calc(var(--spacing-3) * -1)); }
+  }
+}
+
+/* Thème forêt piloté par l'attribut data-theme (une seule source de vérité). Le papier crème (data-papier : feuilles, modales ; details[open][data-repli] : repli ouvert, sans JavaScript)
+   interrompt le thème : son contenu reste vert forêt sur crème même si la page est en forêt. */
+@custom-variant foret (&:where([data-theme=foret], [data-theme=foret] *):not(:where([data-papier] *, details[open][data-repli] *)));
+
+/* L'espace de noms spacing ne génère pas border-trait ni outline-trait : les largeurs de bordure et de contour sont des utilitaires dédiés, alimentés par le jeton --spacing-trait. */
+@utility border-trait {
+  border-style: var(--tw-border-style, solid);
+  border-width: var(--spacing-trait);
+}
+@utility outline-trait {
+  outline-style: var(--tw-outline-style, solid);
+  outline-width: var(--spacing-trait);
+}
+/* Même raison : l'épaisseur du soulignement des liens vient du jeton, aucun utilitaire natif ne la lit. */
+@utility decoration-trait {
+  text-decoration-thickness: var(--spacing-trait);
+}
+
+/* Formes réutilisables, en variables CSS : clip-path et mask ne passent pas par le thème Tailwind. */
+@layer components {
+  :root {
+    --forme-etoile: polygon(50% 1.5%,58.9% 11%,71.3% 5.8%,74.9% 18.7%,88.5% 19.3%,86% 32.6%,96.5% 39.4%,90% 50%,99.5% 61.6%,86% 67.4%,91.4% 83%,74.9% 81.3%,71.6% 94.9%,58.9% 89%,50% 99.9%,41.1% 89%,29.4% 92.8%,25.1% 81.3%,12.8% 79.7%,14% 67.4%,2.2% 60.9%,10% 50%,2.6% 39.2%,14% 32.6%,9.4% 17.6%,25.1% 18.7%,29.2% 6.8%,41.1% 11%);
+    --forme-explosion: polygon(50% 0%,56.1% 7.4%,64.1% 2%,67.9% 10.9%,77% 7.9%,78.2% 17.5%,87.8% 17.3%,86.2% 26.8%,95.5% 29.2%,91.3% 37.9%,99.5% 42.9%,93% 50%,99.5% 57.1%,91.3% 62.1%,95.5% 70.8%,86.2% 73.2%,87.8% 82.7%,78.2% 82.5%,77% 92.1%,67.9% 89.1%,64.1% 98%,56.1% 92.6%,50% 100%,43.9% 92.6%,35.9% 98%,32.1% 89.1%,23% 92.1%,21.8% 82.5%,12.2% 82.7%,13.8% 73.2%,4.5% 70.8%,8.7% 62.1%,0.5% 57.1%,7% 50%,0.5% 42.9%,8.7% 37.9%,4.5% 29.2%,13.8% 26.8%,12.2% 17.3%,21.8% 17.5%,23% 7.9%,32.1% 10.9%,35.9% 2%,43.9% 7.4%);
+    /* Bord déchiré : masque SVG répété, la couleur suit background-color */
+    --masque-dechire: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12' preserveAspectRatio='none'%3E%3Cpath d='M0 12V6L7 3L13 7L20 2L28 6L34 1L41 5L49 3L55 8L62 2L70 5L77 1L84 6L91 3L98 7L105 2L113 5L120 6V12Z'/%3E%3C/svg%3E");
+  }
+
+  .forme-etoile {
+    clip-path: var(--forme-etoile);
+  }
+  .forme-explosion {
+    clip-path: var(--forme-explosion);
+  }
+  /* Ticket : encoches de perforation découpées par un masque (le fond de page reste visible), ombre vive en filtre
+     car un box-shadow serait coupé par le masque. Rayon de l'encoche = --spacing-3. */
+  .ticket-perfore {
+    -webkit-mask:
+      radial-gradient(circle var(--spacing-3) at 0 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--spacing-3) at 100% 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) right / 51% 100% no-repeat;
+    mask:
+      radial-gradient(circle var(--spacing-3) at 0 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) left / 51% 100% no-repeat,
+      radial-gradient(circle var(--spacing-3) at 100% 50%, transparent calc(var(--spacing-3) - 1px), black var(--spacing-3)) right / 51% 100% no-repeat;
+  }
+  .ticket-ombre {
+    filter: drop-shadow(calc(var(--spacing-1) * -1.5) calc(var(--spacing-1) * 1.5) 0 var(--color-vert-vif));
+  }
+  /* Le dégradé du squelette fait 300 % de large pour que animate-brille le fasse défiler d'un bord à l'autre. */
+  .squelette-brillance {
+    background-size: 300% 100%;
+  }
+  /* Safari masque le triangle natif de <summary> uniquement par ce pseudo-élément. */
+  .resume-sans-marqueur::-webkit-details-marker {
+    display: none;
+  }
+  /* Trame pointillée façon impression des écrans joueurs, très discrète. */
+  .trame-points {
+    background-image: radial-gradient(color-mix(in srgb, var(--color-vert-foret) 10%, transparent) 1.2px, transparent 1.4px);
+    background-size: var(--spacing-4) var(--spacing-4);
+  }
+  /* Anneau du chrono : --progression (0 à 100) vient du composant, --couleur-anneau du niveau (data-niveau). */
+  .anneau-chrono {
+    --couleur-anneau: var(--color-vert-foret);
+    background: conic-gradient(var(--couleur-anneau) calc(var(--progression, 100) * 1%), color-mix(in srgb, var(--color-vert-foret) 15%, transparent) 0);
+    -webkit-mask: radial-gradient(closest-side, transparent 78%, var(--color-vert-foret) 79%);
+    mask: radial-gradient(closest-side, transparent 78%, var(--color-vert-foret) 79%);
+  }
+  .anneau-chrono[data-niveau="critique"] {
+    --couleur-anneau: var(--color-piment);
+  }
+  .bord-dechire {
+    mask-image: var(--masque-dechire);
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background-color: var(--color-jaune-soleil);
+    color: var(--color-vert-foret);
+    -webkit-text-size-adjust: 100%;
+  }
+  html[data-theme="foret"] {
+    background-color: var(--color-vert-foret);
+    color: var(--color-creme);
+  }
+  body {
+    min-height: 100dvh;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+  }
+
+  /* Anneau de focus : vert forêt sur jaune, jaune sur fond forêt. Le papier crème (data-papier) interrompt le thème forêt,
+     comme la variante foret (zone ou page entière) : sans cela le focus serait jaune sur crème (environ 1,1:1). */
+  :focus-visible {
+    outline: var(--spacing-trait) solid var(--color-vert-foret);
+    outline-offset: 2px;
+  }
+  :where([data-theme="foret"]) :focus-visible:not(:where([data-papier] *, details[open][data-repli] *)) {
+    outline-color: var(--color-jaune-soleil);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop,
+  .animate-tremble,
+  .animate-brille,
+  .animate-tourne,
+  .animate-rebond {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

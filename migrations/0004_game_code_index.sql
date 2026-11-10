@@ -1,0 +1,1 @@
+CREATE INDEX `game_sessions_code_created_idx` ON `game_sessions` (`code`,`created_at`);

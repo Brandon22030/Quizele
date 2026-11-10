@@ -1,0 +1,35 @@
+---
+import Base from "../../layouts/Base.astro";
+import DemoInteractive, { DemoRefus, DemoToasts } from "../../components/ui/demo-interactive";
+import { DemoRepliOuvert, DemoStatiqueForet, DemoStatiqueJaune } from "../../components/ui/demo-statique";
+
+// Guide de style : n'existe qu'en développement.
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404 });
+}
+
+// ?theme=foret : thème porté par <html data-theme="foret"> (écrans animateur), pas seulement par une zone.
+// ?cas=repli | toasts | refus : blocs supplémentaires pour les tests de revue.
+const theme = Astro.url.searchParams.get("theme") === "foret" ? "foret" : "soleil";
+const cas = Astro.url.searchParams.get("cas");
+---
+
+<Base title="Guide de style - composants de base" theme={theme}>
+  <main class="flex flex-col">
+    <div class="flex flex-col gap-8 px-4 py-8">
+      <DemoStatiqueJaune />
+      <section class="flex flex-col gap-4">
+        <h2 class="font-affiche text-2xl">Composants interactifs</h2>
+        <DemoInteractive client:load />
+      </section>
+      {cas === "repli" && <DemoRepliOuvert client:load />}
+      {cas === "toasts" && <DemoToasts client:load />}
+      {cas === "refus" && <DemoRefus client:load />}
+    </div>
+
+    <div data-theme="foret" class="flex flex-col gap-6 bg-vert-foret px-4 py-8 text-creme">
+      <DemoStatiqueForet />
+      <DemoInteractive client:load foret />
+    </div>
+  </main>
+</Base>

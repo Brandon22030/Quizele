@@ -1,0 +1,17 @@
+---
+import Base from "../../../layouts/Base.astro";
+import Jouer from "../../../islands/joueur/Jouer";
+import { GAME_CODE_PATTERN } from "../../../server/game/router";
+
+// Page publique : le jeton du joueur vit dans le navigateur, le serveur ne rend que la coquille.
+const code = (Astro.params.code ?? "").toUpperCase();
+if (!GAME_CODE_PATTERN.test(code)) {
+  return Astro.redirect("/");
+}
+---
+
+<Base title="Quizdeszeles : partie en cours">
+  <main>
+    <Jouer client:load code={code} />
+  </main>
+</Base>

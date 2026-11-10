@@ -1,0 +1,43 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../layouts/Base.astro";
+import Connexion from "../islands/connexion/Connexion";
+import PageMessage from "../islands/connexion/PageMessage";
+import { Explosion } from "../components/ui/explosion";
+import { Marque } from "../components/ui/marque";
+import { TitreAffiche } from "../components/ui/titre-affiche";
+import { availableLoginMethods } from "../server/auth/auth";
+import { safeReturnPath } from "../server/auth/routes";
+import { messageErreurRedirection, retourBrut } from "../islands/connexion/logique";
+
+const methodes = availableLoginMethods(env);
+const retour = safeReturnPath(retourBrut(Astro.url.search), Astro.url.origin);
+
+// Une personne déjà connectée n'a rien à faire ici.
+if (Astro.locals.user) return Astro.redirect(retour);
+
+const erreurInitiale = messageErreurRedirection(Astro.url.searchParams.get("error"));
+const aucuneMethode = !methodes.google && !methodes.magicLink;
+---
+
+<Base title="Connexion - Quizdeszeles">
+  {
+    aucuneMethode ? (
+      <PageMessage code="!" titre="Connexion indisponible">
+        Aucune méthode de connexion n'est configurée pour le moment. Réessaie plus tard.
+      </PageMessage>
+    ) : (
+      <main class="flex min-h-dvh flex-col items-center gap-6 px-4 py-8 text-center">
+        <Marque />
+        <div class="flex flex-1 flex-col items-center justify-center gap-5">
+          <Explosion variante="soleil" className="font-affiche text-4xl">
+            <span aria-hidden="true">?</span>
+          </Explosion>
+          <TitreAffiche className="max-w-xs text-3xl">Connecte-toi</TitreAffiche>
+          <p class="max-w-xs text-base font-bold text-vert-foret">Pour créer et animer tes quiz. Les joueurs n'ont pas besoin de compte.</p>
+          <Connexion client:load google={methodes.google} magicLink={methodes.magicLink} retour={retour} erreurInitiale={erreurInitiale} />
+        </div>
+      </main>
+    )
+  }
+</Base>

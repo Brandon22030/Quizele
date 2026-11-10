@@ -1,0 +1,54 @@
+---
+import Base from "../../../layouts/Base.astro";
+import { ArrowLeft } from "lucide-react";
+import { Marque } from "../../../components/ui/marque";
+import { TitreAffiche } from "../../../components/ui/titre-affiche";
+import { TraitsEnergie } from "../../../components/ui/traits-energie";
+import { env } from "cloudflare:workers";
+import { CODE_LENGTH, sanitizeCode } from "../../../components/jeu/code-input";
+import Rejoindre from "../../../islands/rejoindre/Rejoindre";
+import { getDb } from "../../../server/db/client";
+import { findJoinPreviewByCode } from "../../../server/db/sessions";
+
+// Un code mal formé ne mène nulle part : on garde ce qui est valide et le joueur complète à la main (état vide).
+const brut = Astro.params.code ?? "";
+const code = sanitizeCode(brut).slice(0, CODE_LENGTH);
+// Une seule adresse par partie (QR, cache) : minuscules, séparateurs ou excédent mènent à la forme normalisée.
+if (code !== "" && code !== brut) return Astro.redirect(`/j/${code}`, 301);
+
+let apercu: { titre: string; animateur?: string } | undefined;
+let echecInitial: "game_not_found" | "game_finished" | undefined;
+if (code.length === CODE_LENGTH) {
+  // Lecture d'agrément : si la base ne répond pas, la page reste utilisable et l'API dira la vérité à l'envoi.
+  const partie = await findJoinPreviewByCode(getDb(env.DB), code).catch(() => undefined);
+  if (partie === null) echecInitial = "game_not_found";
+  else if (partie?.status === "ended") echecInitial = "game_finished";
+  else if (partie) apercu = { titre: partie.quizTitle, animateur: partie.hostName.trim() || undefined };
+}
+// Le statut d'une partie change vite (lancement, fin) : un cache court et privé suffit à absorber les rechargements.
+Astro.response.headers.set("Cache-Control", "private, max-age=30");
+---
+
+<Base title="Rejoindre une partie - Quizdeszeles">
+  <div class="flex min-h-dvh flex-col pb-10">
+    <header class="flex items-center gap-3 px-4 py-2">
+      <a href="/" aria-label="Retour à l'accueil" class="grid size-11 shrink-0 place-items-center rounded-sm border-trait border-vert-foret bg-creme text-vert-foret shadow-relief-sm">
+        <ArrowLeft aria-hidden="true" className="size-5" />
+      </a>
+      <Marque />
+    </header>
+    <main class="flex flex-1 flex-col">
+      <section class="relative px-5 pt-8 text-center">
+        <TraitsEnergie className="absolute top-5 left-5" />
+        <TitreAffiche as="h1" className="-rotate-3 text-4xl">REJOINDRE</TitreAffiche>
+        <p class="mt-5 font-bold">Saisis le code à {CODE_LENGTH} caractères affiché par l'animateur.</p>
+      </section>
+      <div class="mt-8">
+        <Rejoindre client:load initialCode={code} apercu={apercu} echecInitial={echecInitial} />
+        <noscript>
+          <p class="mt-6 px-5 text-center font-bold">Active JavaScript pour jouer.</p>
+        </noscript>
+      </div>
+    </main>
+  </div>
+</Base>

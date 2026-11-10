@@ -1,0 +1,45 @@
+---
+import { env } from "cloudflare:workers";
+import Base from "../../../layouts/Base.astro";
+import Apercu from "../../../islands/apercu/Apercu";
+import type { EtatApercu } from "../../../islands/apercu/logique";
+import { getDb } from "../../../server/db/client";
+import { actionFailure, charger } from "../../../server/quiz/handlers";
+
+// Le middleware redirige déjà vers /connexion : ce garde sert au typage.
+const user = Astro.locals.user;
+const quizId = Astro.params.id ?? "";
+if (!user) return Astro.redirect(`/connexion?retour=${encodeURIComponent(`/quiz/${quizId}/apercu`)}`);
+
+// Les bonnes réponses ne quittent le serveur que pour le propriétaire : charger filtre sur owner_id, et le quiz d'un
+// autre animateur répond « introuvable » sans rien révéler.
+let initial: EtatApercu;
+try {
+  const { quiz } = await charger(getDb(env.DB), user, { quizId });
+  initial = {
+    etat: "pret",
+    donnees: {
+      quizId: quiz.id,
+      title: quiz.title,
+      showCorrectAnswer: quiz.showCorrectAnswer,
+      questions: quiz.questions.map((q) => ({
+        id: q.id,
+        type: q.type,
+        prompt: q.prompt,
+        durationSec: q.durationSec,
+        reference: q.reference,
+        explanation: q.explanation,
+        options: q.options.map((o) => ({ id: o.id, label: o.label, isCorrect: o.isCorrect })),
+      })),
+    },
+  };
+} catch (error) {
+  const echec = actionFailure("charger", error);
+  Astro.response.status = echec.code === "NOT_FOUND" ? 404 : 500;
+  initial = { etat: "erreur", message: echec.message, reessayable: echec.code === "INTERNAL_SERVER_ERROR" };
+}
+---
+
+<Base title="Aperçu du quiz - Quizdeszeles">
+  <Apercu client:load quizId={quizId} initial={initial} />
+</Base>

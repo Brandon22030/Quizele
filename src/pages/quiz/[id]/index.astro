@@ -1,0 +1,18 @@
+---
+import Base from "../../../layouts/Base.astro";
+import Editeur from "../../../islands/editeur/Editeur";
+
+// La page ne lit pas le quiz : l'îlot le charge par l'action `quiz.charger`, qui vérifie le propriétaire. Le serveur ne rend
+// que la coquille (squelette), la session est déjà exigée par le middleware.
+const { id } = Astro.params;
+if (!id) return Astro.redirect("/tableau-de-bord");
+
+const numero = Number(Astro.url.searchParams.get("question"));
+const question = Number.isInteger(numero) && numero > 0 ? numero : undefined;
+---
+
+<Base title="Éditeur de quiz - Quizdeszeles">
+  <main>
+    <Editeur client:load quizId={id} question={question} />
+  </main>
+</Base>

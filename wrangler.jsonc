@@ -1,0 +1,91 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "quizdeszeles",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./dist"
+  },
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["0 3 * * *"] },
+
+  // Niveau supérieur = développement local uniquement : valeurs factices, aucun secret réel.
+  // Les identifiants A_REMPLACER sont fournis par QZ-002-21.
+  // Les environnements nommés n'héritent ni des bindings ni des vars, d'où la répétition.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "quizdeszeles-local",
+      "database_id": "A_REMPLACER",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
+  "vars": {
+    "BETTER_AUTH_SECRET": "factice-local-better-auth-secret-32-caracteres-minimum",
+    "BETTER_AUTH_URL": "http://localhost:4321",
+    "PLAYER_TOKEN_SECRET": "factice-local-player-token-secret-32-caracteres-minimum",
+    "RESEND_API_KEY": "",
+    "MAIL_FROM": "Quizdeszeles <local@example.invalid>",
+    "MAIL_TRANSPORT": "console",
+    "LOCAL_TOOLS": "true",
+    "MAGIC_LINK_ENABLED": "true",
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": ""
+  },
+
+  "env": {
+    "preview": {
+      "name": "quizdeszeles-preview",
+      // Limite de 5 crons par compte sur Workers Free : la purge n'est utile qu'en production.
+      "triggers": { "crons": [] },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "quizdeszeles-preview",
+          "database_id": "c4a7fc4f-23d2-46c3-9fa6-67d8e783f5e5",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
+      "vars": {
+        "BETTER_AUTH_URL": "https://quizdeszeles-preview.brandon-9d1.workers.dev",
+        "MAIL_FROM": "Quizdeszeles <onboarding@resend.dev>",
+        "MAIL_TRANSPORT": "resend",
+        "MAGIC_LINK_ENABLED": "false",
+        "GOOGLE_CLIENT_ID": "439791967743-88j6o41qiujsl0r9gnh29jrn404oclqj.apps.googleusercontent.com"
+      }
+    },
+    "production": {
+      "name": "quizdeszeles",
+      "triggers": { "crons": ["0 3 * * *"] },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "quizdeszeles-production",
+          "database_id": "A_REMPLACER",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [{ "name": "GAME_SESSION", "class_name": "GameSession" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
+      "vars": {
+        "BETTER_AUTH_URL": "A_REMPLACER",
+        "MAIL_FROM": "A_REMPLACER",
+        "MAIL_TRANSPORT": "resend",
+        "MAGIC_LINK_ENABLED": "false",
+        "GOOGLE_CLIENT_ID": ""
+      }
+    }
+  }
+}
