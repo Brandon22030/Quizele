@@ -42,12 +42,13 @@
   "env": {
     "preview": {
       "name": "quizdeszeles-preview",
-      "triggers": { "crons": ["0 3 * * *"] },
+      // Limite de 5 crons par compte sur Workers Free : la purge n'est utile qu'en production.
+      "triggers": { "crons": [] },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "quizdeszeles-preview",
-          "database_id": "A_REMPLACER",
+          "database_id": "c4a7fc4f-23d2-46c3-9fa6-67d8e783f5e5",
           "migrations_dir": "migrations"
         }
       ],
@@ -56,11 +57,11 @@
       },
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameSession"] }],
       "vars": {
-        "BETTER_AUTH_URL": "A_REMPLACER",
-        "MAIL_FROM": "A_REMPLACER",
+        "BETTER_AUTH_URL": "https://quizdeszeles-preview.brandon-9d1.workers.dev",
+        "MAIL_FROM": "Quizdeszeles <onboarding@resend.dev>",
         "MAIL_TRANSPORT": "resend",
         "MAGIC_LINK_ENABLED": "false",
-        "GOOGLE_CLIENT_ID": ""
+        "GOOGLE_CLIENT_ID": "439791967743-88j6o41qiujsl0r9gnh29jrn404oclqj.apps.googleusercontent.com"
       }
     },
     "production": {
