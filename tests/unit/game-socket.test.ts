@@ -188,4 +188,17 @@ describe("GameSocket : poignée de main lente (serveur ou réseau chargé)", () 
     expect(statuses).not.toContain("open");
     expect(statuses.at(-1)).toBe("rejected");
   });
+  it("une poignée de main de 11 s (juste sous le délai de 12 s) aboutit sans relance", async () => {
+    slowHandshakes(11_000);
+    await vi.advanceTimersByTimeAsync(11_500);
+    expect(statuses.at(-1)).toBe("open");
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it("une poignée de main de 13 s est coupée à 12 s puis la tentative est relancée", async () => {
+    slowHandshakes(13_000);
+    await vi.advanceTimersByTimeAsync(13_000);
+    expect(statuses).not.toContain("open");
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(1);
+  });
 });
